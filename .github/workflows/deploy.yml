@@ -1,30 +1,30 @@
 name: Deploy
 on:
- push:
- branches: [main, test]
+  push:
+    branches: [main, test]
 
 jobs:
- deploy:
- runs-on: ubuntu-latest
- steps:
- - name: Deploy to server
- uses: appleboy/ssh-action@v1
- with:
- host: ${{ secrets.DEPLOY_HOST }}
- username: root
- key: ${{ secrets.DEPLOY_SSH_KEY }}
- command_timeout: 30m
- script: |
- if [ "${{ github.ref_name }}" = "main" ]; then
- cd /root/new-api
- git checkout -- docker-compose.yml
- git pull origin main
- docker-compose up -d --build new-api
- echo "Production deployed"
- elif [ "${{ github.ref_name }}" = "test" ]; then
- cd /root/new-api-test
- git checkout -- docker-compose.yml
- git pull origin test
- docker-compose up -d --build new-api
- echo "Test deployed"
- fi
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: root
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            if [ "${{ github.ref_name }}" = "main" ]; then
+              cd /root/new-api
+              git checkout -- docker-compose.yml
+              git pull origin main
+              docker-compose up -d --build new-api
+              echo "Production deployed"
+            elif [ "${{ github.ref_name }}" = "test" ]; then
+              cd /root/new-api-test
+              git checkout -- docker-compose.yml
+              git pull origin test
+              docker-compose up -d --build new-api
+              echo "Test deployed"
+            fi
