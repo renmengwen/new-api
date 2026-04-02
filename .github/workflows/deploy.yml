@@ -17,11 +17,11 @@ jobs:
             if [ "${{ github.ref_name }}" = "main" ]; then
               cd /www/wwwroot/new-api
               git pull origin main
-              docker-compose restart new-api
+              docker-compose up -d --build new-api
               echo "Production deployed"
             elif [ "${{ github.ref_name }}" = "test" ]; then
               cd /www/wwwroot/new-api-test
               git pull origin test
-              docker-compose restart new-api
+              docker-compose up -d --build new-api
               echo "Test deployed"
             fi
