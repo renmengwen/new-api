@@ -15,12 +15,12 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             if [ "${{ github.ref_name }}" = "main" ]; then
-              cd /www/wwwroot/new-api
+              cd /root/new-api
               git pull origin main
               docker-compose up -d --build new-api
               echo "Production deployed"
             elif [ "${{ github.ref_name }}" = "test" ]; then
-              cd /www/wwwroot/new-api-test
+              cd /root/new-api-test
               git pull origin test
               docker-compose up -d --build new-api
               echo "Test deployed"
