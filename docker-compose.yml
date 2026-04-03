@@ -1,49 +1,49 @@
 version: '3.4'
 
 services:
- new-api:
- build: .
- container_name: new-api-test
- restart: always
- command: --log-dir /app/logs
- ports:
- - "3001:3000"
- volumes:
- - ./test-data:/data
- - ./test-logs:/app/logs
- environment:
- - SQL_DSN=postgresql://root:123456@postgres-test:5432/new-api-test
- - REDIS_CONN_STRING=redis://redis-test
- - TZ=Asia/Shanghai
- depends_on:
- - redis
- - postgres
- networks:
- - new-api-test-network
+  new-api:
+    build: .
+    container_name: new-api-test
+    restart: always
+    command: --log-dir /app/logs
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./test-data:/data
+      - ./test-logs:/app/logs
+    environment:
+      - SQL_DSN=postgresql://root:123456@postgres-test:5432/new-api-test
+      - REDIS_CONN_STRING=redis://redis-test
+      - TZ=Asia/Shanghai
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - new-api-test-network
 
- redis:
- image: redis:latest
- container_name: redis-test
- restart: always
- networks:
- - new-api-test-network
+  redis:
+    image: redis:latest
+    container_name: redis-test
+    restart: always
+    networks:
+      - new-api-test-network
 
- postgres:
- image: postgres:15
- container_name: postgres-test
- restart: always
- environment:
- POSTGRES_USER: root
- POSTGRES_PASSWORD: 123456
- POSTGRES_DB: new-api-test
- volumes:
- - pg_data_test:/var/lib/postgresql/data
- networks:
- - new-api-test-network
+  postgres:
+    image: postgres:15
+    container_name: postgres-test
+    restart: always
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: new-api-test
+    volumes:
+      - pg_data_test:/var/lib/postgresql/data
+    networks:
+      - new-api-test-network
 
 volumes:
- pg_data_test:
+  pg_data_test:
 
 networks:
- new-api-test-network:
- driver: bridge
+  new-api-test-network:
+    driver: bridge
