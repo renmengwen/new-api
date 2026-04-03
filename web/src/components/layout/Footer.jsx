@@ -194,7 +194,7 @@ const FooterBar = () => {
               © {currentYear} {systemName}. {t('版权所有')}
             </Typography.Text>
           </div>
-
+{/* 
           <div className='text-sm'>
             <span className='!text-semi-color-text-1'>
               {t('设计与开发由')}{' '}
@@ -207,7 +207,7 @@ const FooterBar = () => {
             >
               New API
             </a>
-          </div>
+          </div> */}
         </div>
       </footer>
     ),
