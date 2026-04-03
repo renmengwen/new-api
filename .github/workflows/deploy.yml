@@ -1,5 +1,7 @@
-name: Build and Deploy
+cd D:\code3\new-api
 
+@"
+name: Build and Deploy
 
 on:
  push:
@@ -22,16 +24,16 @@ jobs:
  uses: docker/login-action@v3
  with:
  registry: ghcr.io
- username: ${{ github.actor }}
- password: ${{ secrets.GITHUB_TOKEN }}
+ username: `${{ github.actor }}
+ password: `${{{ secrets.GITHUB_TOKEN }}
 
  - name: Determine image tag
  id: tag
  run: |
- if [ "${{ github.ref_name }}" = "main" ]; then
- echo "value=latest" >> $GITHUB_OUTPUT
+ if [ "`${{ github.ref_name }}" = "main" ]; then
+ echo "value=latest" >> `$GITHUB_OUTPUT
  else
- echo "value=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+ echo "value=`${{ github.ref_name }}" >> `$GITHUB_OUTPUT
  fi
 
  - name: Build and push
@@ -40,7 +42,7 @@ jobs:
  context: .
  platforms: linux/amd64
  push: true
- tags: ghcr.io/renmengwen/new-api:${{ steps.tag.outputs.value }}
+ tags: ghcr.io/renmengwen/new-api:`${{ steps.tag.outputs.value }}
  cache-from: type=gha
  cache-to: type=gha,mode=max
 
@@ -51,19 +53,20 @@ jobs:
  - name: Deploy to server
  uses: appleboy/ssh-action@v1
  with:
- host: ${{ secrets.DEPLOY_HOST }}
+ host: `${{{ secrets.DEPLOY_HOST }}
  username: root
- key: ${{ secrets.DEPLOY_SSH_KEY }}
+ key: `${{{ secrets.DEPLOY_SSH_KEY }}
  command_timeout: 30m
  script: |
- if [ "${{ github.ref_name }}" = "main" ]; then
+ if [ "`${{ github.ref_name }}" = "main" ]; then
  cd /root/new-api
  docker-compose pull new-api
  docker-compose up -d
  echo "Production deployed"
- elif [ "${{ github.ref_name }}" = "test" ]; then
+ elif [ "`${{ github.ref_name }}" = "test" ]; then
  cd /root/new-api-test
  docker-compose pull new-api
  docker-compose up -d
  echo "Test deployed"
  fi
+"@ | Out-File -FilePath .github\workflows\deploy.yml -Encoding utf8
