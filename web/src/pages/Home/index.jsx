@@ -170,7 +170,7 @@ const Home = () => {
                     className={`text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-semi-color-text-0 leading-tight ${isChinese ? 'tracking-wide md:tracking-wider' : ''}`}
                   >
                     <>
-                      {t('统一的')}
+                     神州AI - {t('统一的')}
                       <br />
                       <span className='shine-text'>{t('大模型接口网关')}</span>
                     </>
