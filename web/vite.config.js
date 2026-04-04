@@ -72,7 +72,7 @@ export default defineConfig({
             const libs = {
               'react-core': ['react', 'react-dom', 'react-router-dom'],
               'semi-ui': ['@douyinfe/semi-icons', '@douyinfe/semi-ui'],
-              'tools': ['axios', 'history', 'marked'],
+              tools: ['axios', 'history', 'marked'],
               'react-components': [
                 'react-dropzone',
                 'react-fireworks',
@@ -90,17 +90,6 @@ export default defineConfig({
                 '@visactor/vchart',
                 '@visactor/vchart-semi-theme',
               ],
-              markdown: [
-                'react-markdown',
-                'remark-gfm',
-                'remark-breaks',
-                'remark-math',
-                'rehype-katex',
-                'rehype-highlight',
-                'mermaid',
-                'katex',
-              ],
-              icons: ['lucide-react', 'react-icons', 'qrcode.react', '@lobehub/icons'],
             };
             for (const [chunkName, packages] of Object.entries(libs)) {
               if (packages.some((pkg) => id.includes(pkg.replace('/', '/')))) {
