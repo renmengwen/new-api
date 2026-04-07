@@ -1053,6 +1053,9 @@ const EditChannelModal = (props) => {
               base_url: inputs['base_url'],
               type: inputs['type'],
               key: inputs['key'],
+              setting: inputs['setting'],
+              settings: inputs['settings'],
+              header_override: inputs['header_override'],
             },
             { skipErrorHandler: true },
           );

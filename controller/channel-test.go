@@ -616,7 +616,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 				Model:  model,
 				Prompt: "a cute cat",
 				N:      lo.ToPtr(uint(1)),
-				Size:   "1024x1024",
+				Size:   defaultChannelTestImageSize(model, channel),
 			}
 		case constant.EndpointTypeJinaRerank:
 			// 返回 RerankRequest
@@ -729,6 +729,16 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	}
 
 	return testRequest
+}
+
+func defaultChannelTestImageSize(modelName string, channel *model.Channel) string {
+	normalizedModel := strings.ToLower(strings.TrimSpace(modelName))
+	if channel != nil && channel.Type == constant.ChannelTypeVolcEngine {
+		if strings.Contains(normalizedModel, "seedream-5") {
+			return "2048x2048"
+		}
+	}
+	return "1024x1024"
 }
 
 func TestChannel(c *gin.Context) {

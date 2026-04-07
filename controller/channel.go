@@ -972,9 +972,12 @@ func UpdateChannel(c *gin.Context) {
 
 func FetchModels(c *gin.Context) {
 	var req struct {
-		BaseURL string `json:"base_url"`
-		Type    int    `json:"type"`
-		Key     string `json:"key"`
+		BaseURL        string `json:"base_url"`
+		Type           int    `json:"type"`
+		Key            string `json:"key"`
+		Setting        string `json:"setting"`
+		Settings       string `json:"settings"`
+		HeaderOverride string `json:"header_override"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -985,14 +988,24 @@ func FetchModels(c *gin.Context) {
 		return
 	}
 
-	baseURL := req.BaseURL
-	if baseURL == "" {
-		baseURL = constant.ChannelBaseURLs[req.Type]
-	}
-
 	// remove line breaks and extra spaces.
 	key := strings.TrimSpace(req.Key)
 	key = strings.Split(key, "\n")[0]
+	channel := &model.Channel{
+		Type:          req.Type,
+		Key:           key,
+		OtherSettings: req.Settings,
+	}
+	if baseURL := strings.TrimSpace(req.BaseURL); baseURL != "" {
+		channel.BaseURL = common.GetPointer(baseURL)
+	}
+	if setting := strings.TrimSpace(req.Setting); setting != "" {
+		channel.Setting = common.GetPointer(setting)
+	}
+	if headerOverride := strings.TrimSpace(req.HeaderOverride); headerOverride != "" {
+		channel.HeaderOverride = common.GetPointer(headerOverride)
+	}
+	baseURL := channel.GetBaseURL()
 
 	if req.Type == constant.ChannelTypeOllama {
 		models, err := ollama.FetchOllamaModels(baseURL, key)
@@ -1017,7 +1030,7 @@ func FetchModels(c *gin.Context) {
 	}
 
 	if req.Type == constant.ChannelTypeGemini {
-		models, err := gemini.FetchGeminiModels(baseURL, key, "")
+		models, err := gemini.FetchGeminiModels(baseURL, key, channel.GetSetting().Proxy)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -1033,8 +1046,31 @@ func FetchModels(c *gin.Context) {
 		return
 	}
 
-	client := &http.Client{}
-	url := fmt.Sprintf("%s/v1/models", baseURL)
+	var url string
+	switch req.Type {
+	case constant.ChannelTypeAli:
+		url = fmt.Sprintf("%s/compatible-mode/v1/models", baseURL)
+	case constant.ChannelTypeZhipu_v4:
+		if plan, ok := constant.ChannelSpecialBases[baseURL]; ok && plan.OpenAIBaseURL != "" {
+			url = fmt.Sprintf("%s/models", plan.OpenAIBaseURL)
+		} else {
+			url = fmt.Sprintf("%s/api/paas/v4/models", baseURL)
+		}
+	case constant.ChannelTypeVolcEngine:
+		if plan, ok := constant.ChannelSpecialBases[baseURL]; ok && plan.OpenAIBaseURL != "" {
+			url = fmt.Sprintf("%s/models", plan.OpenAIBaseURL)
+		} else {
+			url = fmt.Sprintf("%s/api/v3/models", baseURL)
+		}
+	case constant.ChannelTypeMoonshot:
+		if plan, ok := constant.ChannelSpecialBases[baseURL]; ok && plan.OpenAIBaseURL != "" {
+			url = fmt.Sprintf("%s/models", plan.OpenAIBaseURL)
+		} else {
+			url = fmt.Sprintf("%s/v1/models", baseURL)
+		}
+	default:
+		url = fmt.Sprintf("%s/v1/models", baseURL)
+	}
 
 	request, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -1045,7 +1081,24 @@ func FetchModels(c *gin.Context) {
 		return
 	}
 
-	request.Header.Set("Authorization", "Bearer "+key)
+	headers, err := buildFetchModelsHeaders(channel, key)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": fmt.Sprintf("鑾峰彇妯″瀷鍒楄〃澶辫触: %s", err.Error()),
+		})
+		return
+	}
+	request.Header = headers
+
+	client, err := service.NewProxyHttpClient(channel.GetSetting().Proxy)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
 
 	response, err := client.Do(request)
 	if err != nil {
@@ -1057,9 +1110,9 @@ func FetchModels(c *gin.Context) {
 	}
 	//check status code
 	if response.StatusCode != http.StatusOK {
-		c.JSON(http.StatusInternalServerError, gin.H{
+		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": "Failed to fetch models",
+			"message": fmt.Sprintf("鑾峰彇妯″瀷鍒楄〃澶辫触: upstream returned %d", response.StatusCode),
 		})
 		return
 	}
@@ -1071,7 +1124,7 @@ func FetchModels(c *gin.Context) {
 		} `json:"data"`
 	}
 
-	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+	if err := common.DecodeJson(response.Body, &result); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": err.Error(),

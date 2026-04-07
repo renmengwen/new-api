@@ -37,6 +37,11 @@ func formatRequest(requestBody io.Reader, requestHeader http.Header) (*AwsClaude
 		return nil, err
 	}
 	awsClaudeRequest.AnthropicVersion = "bedrock-2023-05-31"
+	// Some Bedrock Claude models reject requests that specify both temperature and top_p.
+	// Prefer temperature because the playground enables it by default.
+	if awsClaudeRequest.Temperature != nil && awsClaudeRequest.TopP != 0 {
+		awsClaudeRequest.TopP = 0
+	}
 
 	// check header anthropic-beta
 	anthropicBetaValues := requestHeader.Get("anthropic-beta")
@@ -95,15 +100,18 @@ func convertToNovaRequest(req *dto.GeneralOpenAIRequest) *NovaRequest {
 	}
 
 	// 设置推理配置
+	// 注意：AWS Bedrock 的某些模型不允许同时指定 temperature 和 top_p，只能使用其中一个
+	// 优先使用 temperature，如果 temperature 为空则使用 top_p
 	if (req.MaxTokens != nil && *req.MaxTokens != 0) || (req.Temperature != nil && *req.Temperature != 0) || (req.TopP != nil && *req.TopP != 0) || (req.TopK != nil && *req.TopK != 0) || req.Stop != nil {
 		novaReq.InferenceConfig = &NovaInferenceConfig{}
 		if req.MaxTokens != nil && *req.MaxTokens != 0 {
 			novaReq.InferenceConfig.MaxTokens = int(*req.MaxTokens)
 		}
+		// 互斥处理：优先使用 temperature，忽略 top_p
 		if req.Temperature != nil && *req.Temperature != 0 {
 			novaReq.InferenceConfig.Temperature = *req.Temperature
-		}
-		if req.TopP != nil && *req.TopP != 0 {
+		} else if req.TopP != nil && *req.TopP != 0 {
+			// 只有当 temperature 为空时才使用 top_p
 			novaReq.InferenceConfig.TopP = *req.TopP
 		}
 		if req.TopK != nil && *req.TopK != 0 {
