@@ -1,15 +1,22 @@
-﻿name: Build and Deploy
+name: Deploy
 
 on:
   push:
-    branches: [main, test]
+    branches:
+      - main
+      - test
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  build_image:
     runs-on: ubuntu-latest
     permissions:
-      packages: write
       contents: read
+      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,11 +36,13 @@ jobs:
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
             echo "value=latest" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref_name }}" = "test" ]; then
+            echo "value=test" >> $GITHUB_OUTPUT
           else
             echo "value=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build and push
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -43,11 +52,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
-    needs: build
+  deploy_prod:
+    if: github.ref_name == 'main'
+    needs: build_image
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to server
+      - name: Deploy production to old server
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -55,14 +65,26 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           command_timeout: 30m
           script: |
-            if [ "${{ github.ref_name }}" = "main" ]; then
-              cd /root/new-api
-              docker-compose pull new-api
-              docker-compose up -d
-              echo "Production deployed"
-            elif [ "${{ github.ref_name }}" = "test" ]; then
-              cd /root/new-api-test
-              docker-compose pull new-api
-              docker-compose up -d
-              echo "Test deployed"
-            fi
+            cd /root/new-api
+            docker-compose pull new-api
+            docker-compose up -d
+            echo "Production deployed"
+
+  deploy_test:
+    if: github.ref_name == 'test'
+    needs: build_image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy test to new server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.TEST_DEPLOY_HOST }}
+          username: root
+          key: ${{ secrets.TEST_DEPLOY_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            cd /root/new-api-test-deploy
+            docker compose pull
+            docker compose up -d
+            docker image prune -f
+            echo "Test deployed"
