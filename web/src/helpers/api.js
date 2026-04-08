@@ -25,6 +25,7 @@ import {
 } from './utils';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
+import { getSelectedPlayableModel } from './playgroundModelSelection';
 
 export let API = axios.create({
   baseURL: import.meta.env.VITE_REACT_APP_SERVER_URL
@@ -187,13 +188,7 @@ export const processModelsData = (data, currentModel) => {
     value: model,
   }));
 
-  const hasCurrentModel = modelOptions.some(
-    (option) => option.value === currentModel,
-  );
-  const selectedModel =
-    hasCurrentModel && modelOptions.length > 0
-      ? currentModel
-      : modelOptions[0]?.value;
+  const selectedModel = getSelectedPlayableModel(data, currentModel);
 
   return { modelOptions, selectedModel };
 };

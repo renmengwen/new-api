@@ -520,12 +520,32 @@ func GetUserModels(c *gin.Context) {
 		return
 	}
 	groups := service.GetUserUsableGroups(user.Group)
+	selectedGroup := strings.TrimSpace(c.Query("group"))
 	var models []string
-	for group := range groups {
+	filteredBySelectedGroup := false
+	appendGroupModels := func(group string) {
 		for _, g := range model.GetGroupEnabledModels(group) {
 			if !common.StringsContains(models, g) {
 				models = append(models, g)
 			}
+		}
+	}
+
+	if selectedGroup != "" {
+		if selectedGroup == "auto" {
+			filteredBySelectedGroup = true
+			for _, group := range service.GetUserAutoGroup(user.Group) {
+				appendGroupModels(group)
+			}
+		} else if _, ok := groups[selectedGroup]; ok {
+			filteredBySelectedGroup = true
+			appendGroupModels(selectedGroup)
+		}
+	}
+
+	if !filteredBySelectedGroup {
+		for group := range groups {
+			appendGroupModels(group)
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{
