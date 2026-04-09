@@ -37,6 +37,7 @@ const routerMap = {
   redemption: '/console/redemption',
   topup: '/console/topup',
   user: '/console/user',
+  'admin-users': '/console/admin-users',
   agents: '/console/agents',
   'permission-templates': '/console/permission-templates',
   'user-permissions': '/console/user-permissions',
@@ -179,6 +180,11 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('用户管理'),
         itemKey: 'user',
         to: '/user',
+      },
+      {
+        text: t('管理员管理'),
+        itemKey: 'admin-users',
+        to: '/console/admin-users',
       },
       {
         text: t('代理商管理'),
@@ -547,5 +553,4 @@ const SiderBar = ({ onNavigate = () => {} }) => {
 };
 
 export default SiderBar;
-
 

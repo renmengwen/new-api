@@ -97,11 +97,26 @@ func ListUserPermissionTargets(pageInfo *common.PageInfo, keyword string, userTy
 		return nil, 0, err
 	}
 	for idx := range items {
-		if items[idx].UserType == "" {
-			items[idx].UserType = deriveUserTypeFromRole(items[idx].Role)
-		}
+		items[idx].UserType = normalizePermissionTargetUserType(items[idx].UserType, items[idx].Role)
 	}
 	return items, total, nil
+}
+
+func normalizePermissionTargetUserType(userType string, role int) string {
+	switch role {
+	case common.RoleRootUser:
+		return model.UserTypeRoot
+	case common.RoleAdminUser:
+		if userType == model.UserTypeAgent {
+			return model.UserTypeAgent
+		}
+		return model.UserTypeAdmin
+	default:
+		if userType != "" {
+			return userType
+		}
+		return model.UserTypeEndUser
+	}
 }
 
 func GetUserPermissionDetail(userId int) (*UserPermissionDetail, error) {

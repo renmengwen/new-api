@@ -5,7 +5,7 @@ import CardPro from '../../components/common/ui/CardPro';
 import { API, createCardProPagination, showError, timestamp2string } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
-import { QUOTA_ENTRY_TYPE_OPTIONS } from '../AdminConsole/permissionCatalogUi';
+import { QUOTA_ENTRY_TYPE_OPTIONS } from '../AdminConsole/permissionCatalogUiClean';
 
 const { Text } = Typography;
 

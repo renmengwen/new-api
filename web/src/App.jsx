@@ -54,6 +54,7 @@ const OAuth2Callback = lazy(() => import('./components/auth/OAuth2Callback'));
 const PersonalSetting = lazy(() => import('./components/settings/PersonalSetting'));
 const Setup = lazy(() => import('./pages/Setup'));
 const User = lazy(() => import('./pages/User'));
+const AdminManagers = lazy(() => import('./pages/AdminManagersPageV2'));
 const AdminAgents = lazy(() => import('./pages/AdminAgentsPageV2'));
 const AdminPermissionTemplates = lazy(() => import('./pages/AdminPermissionTemplatesPageV2'));
 const AdminUserPermissions = lazy(() => import('./pages/AdminUserPermissionsPageV3'));
@@ -172,6 +173,14 @@ function App() {
             <AdminRoute>
               <Suspense fallback={<Loading />}><User /></Suspense>
             </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/admin-users'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading />}><AdminManagers /></Suspense>
+            </PrivateRoute>
           }
         />
         <Route

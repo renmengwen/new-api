@@ -20,7 +20,7 @@ import { useUserPermissions } from '../../hooks/common/useUserPermissions';
 import {
   ADMIN_PERMISSION_RESOURCES,
   PERMISSION_PROFILE_TYPE_OPTIONS,
-} from '../AdminConsole/permissionCatalogUi';
+} from '../AdminConsole/permissionCatalogUiClean';
 
 const { Text } = Typography;
 

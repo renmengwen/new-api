@@ -25,7 +25,7 @@ import {
   DATA_SCOPE_OPTIONS,
   MENU_OVERRIDE_OPTIONS,
   USER_PERMISSION_TYPE_OPTIONS,
-} from '../AdminConsole/permissionCatalogUi';
+} from '../AdminConsole/permissionCatalogUiClean';
 
 const { Text } = Typography;
 
@@ -219,6 +219,15 @@ const AdminUserPermissionsPageV3 = () => {
       }
 
       const data = res.data.data || {};
+      const resolvedUserType = data.user?.user_type || record.user_type || '';
+      setEditingUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              user_type: resolvedUserType,
+            }
+          : record,
+      );
       setSelectedProfileId(data.binding?.profile_id || 0);
       setActionOverrideMap(buildActionOverrideMap(data.action_overrides || []));
       setMenuOverrideMap(buildMenuOverrideMap(data.menu_overrides || []));

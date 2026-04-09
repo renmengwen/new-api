@@ -296,6 +296,17 @@ func SetApiRouter(router *gin.Engine) {
 			adminAgentRoute.POST("/:id/disable", controller.DisableAgent)
 		}
 
+		adminManagerRoute := apiRouter.Group("/admin/admin-users")
+		adminManagerRoute.Use(middleware.AdminPlatformAuth())
+		{
+			adminManagerRoute.GET("", controller.GetAdminManagers)
+			adminManagerRoute.POST("", controller.CreateAdminManager)
+			adminManagerRoute.GET("/:id", controller.GetAdminManager)
+			adminManagerRoute.PUT("/:id", controller.UpdateAdminManager)
+			adminManagerRoute.POST("/:id/enable", controller.EnableAdminManager)
+			adminManagerRoute.POST("/:id/disable", controller.DisableAdminManager)
+		}
+
 		adminUserRoute := apiRouter.Group("/admin/users")
 		adminUserRoute.Use(middleware.AdminPlatformAuth())
 		{

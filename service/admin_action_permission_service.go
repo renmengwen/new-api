@@ -12,6 +12,7 @@ import (
 const (
 	ResourcePermissionManagement = "permission_management"
 	ResourceAgentManagement      = "agent_management"
+	ResourceAdminManagement      = "admin_management"
 	ResourceUserManagement       = "user_management"
 	ResourceQuotaManagement      = "quota_management"
 	ResourceAuditManagement      = "audit_management"
@@ -32,6 +33,7 @@ const (
 var adminActionCatalog = map[string][]string{
 	ResourcePermissionManagement: {ActionRead, ActionBindProfile},
 	ResourceAgentManagement:      {ActionRead, ActionCreate, ActionUpdate, ActionUpdateStatus},
+	ResourceAdminManagement:      {ActionRead, ActionCreate, ActionUpdate, ActionUpdateStatus},
 	ResourceUserManagement:       {ActionRead, ActionUpdateStatus},
 	ResourceQuotaManagement:      {ActionReadSummary, ActionAdjust, ActionAdjustBatch, ActionLedgerRead},
 	ResourceAuditManagement:      {ActionRead},

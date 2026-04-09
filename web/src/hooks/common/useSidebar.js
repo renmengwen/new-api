@@ -52,6 +52,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     deployment: true,
     redemption: true,
     user: true,
+    'admin-users': true,
     agents: true,
     'permission-templates': true,
     'user-permissions': true,

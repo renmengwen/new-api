@@ -58,6 +58,44 @@ func TestListUserPermissionTargets(t *testing.T) {
 	require.Equal(t, model.UserTypeEndUser, firstItem["user_type"])
 }
 
+func TestListUserPermissionTargetsNormalizesLegacyRootUserType(t *testing.T) {
+	db := setupAdminPermissionTestDB(t)
+
+	user := model.User{
+		Username:    "legacy_root_permission_list",
+		Password:    "hashed-password",
+		DisplayName: "Legacy Root Permission List",
+		Role:        common.RoleRootUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeEndUser,
+		Group:       "default",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	ctx, recorder := newAdminPermissionContext(t, http.MethodGet, "/api/admin/user-permissions/users?p=1&page_size=10", nil)
+	ctx.Request.URL.RawQuery = "p=1&page_size=10"
+	GetUserPermissionTargets(ctx)
+
+	var response adminPermissionPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+
+	var found map[string]any
+	for _, rawItem := range items {
+		item, ok := rawItem.(map[string]any)
+		require.True(t, ok)
+		if int(item["id"].(float64)) == user.Id {
+			found = item
+			break
+		}
+	}
+	require.NotNil(t, found)
+	require.Equal(t, model.UserTypeRoot, found["user_type"])
+}
+
 func TestGetUserPermissionDetailReturnsMergedOverrides(t *testing.T) {
 	db := setupAdminPermissionTestDB(t)
 
