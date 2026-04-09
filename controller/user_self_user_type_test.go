@@ -121,3 +121,40 @@ func TestGetSelfIncludesActionPermissions(t *testing.T) {
 	require.Equal(t, true, actions["quota_management.adjust"])
 	require.Equal(t, true, actions["user_management.read"])
 }
+
+func TestGetSelfTreatsLegacyRootUserTypeAsRoot(t *testing.T) {
+	db := setupGetSelfTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.PermissionProfile{},
+		&model.PermissionProfileItem{},
+		&model.UserPermissionBinding{},
+	))
+
+	user := model.User{
+		Username:    "legacy-root",
+		Password:    "hashed-password",
+		DisplayName: "Legacy Root",
+		Role:        common.RoleRootUser,
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		UserType:    model.UserTypeEndUser,
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+	ctx.Set("id", user.Id)
+	ctx.Set("role", user.Role)
+
+	GetSelf(ctx)
+
+	var response getSelfResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, model.UserTypeRoot, response.Data["user_type"])
+
+	permissions, ok := response.Data["permissions"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, model.UserTypeRoot, permissions["profile_type"])
+}

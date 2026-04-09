@@ -20,10 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect, useMemo, useContext, useRef } from 'react';
 import { StatusContext } from '../../context/Status';
 import { API } from '../../helpers';
-import {
-  buildFallbackUserSidebarConfig,
-  inferSidebarUserType,
-} from './sidebarFallback';
+import { buildFallbackUserSidebarConfig } from './sidebarFallback';
 
 // 创建一个全局事件系统来同步所有useSidebar实例
 const sidebarEventTarget = new EventTarget();
@@ -175,8 +172,7 @@ export const useSidebar = () => {
         rawSidebarModules === null ||
         (typeof rawSidebarModules === 'object' &&
           !Array.isArray(rawSidebarModules) &&
-          Object.keys(rawSidebarModules).length === 0 &&
-          !['root', 'admin'].includes(inferSidebarUserType(responseData)));
+          Object.keys(rawSidebarModules).length === 0);
       if (res.data.success && !shouldUseFallbackConfig) {
         let config;
         // 检查sidebar_modules是字符串还是对象

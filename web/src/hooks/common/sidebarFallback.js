@@ -2,13 +2,15 @@ const ROLE_ADMIN_THRESHOLD = 10;
 const ROLE_ROOT_THRESHOLD = 100;
 
 export const inferSidebarUserType = (user = {}) => {
-  if (typeof user?.user_type === 'string' && user.user_type) {
-    return user.user_type;
-  }
-
   const role = Number(user?.role ?? 0);
   if (role >= ROLE_ROOT_THRESHOLD) {
     return 'root';
+  }
+  if (user?.user_type === 'agent') {
+    return 'agent';
+  }
+  if (typeof user?.user_type === 'string' && user.user_type) {
+    return user.user_type;
   }
   if (role >= ROLE_ADMIN_THRESHOLD) {
     return 'admin';

@@ -71,3 +71,13 @@ test('root users keep settings access by fallback', () => {
   assert.equal(config.admin.enabled, true);
   assert.equal(config.admin.setting, true);
 });
+
+test('root role overrides stale end_user user_type during fallback inference', () => {
+  const config = buildFallbackUserSidebarConfig(DEFAULT_ADMIN_CONFIG, {
+    role: 100,
+    user_type: 'end_user',
+  });
+
+  assert.equal(config.admin.enabled, true);
+  assert.equal(config.admin.setting, true);
+});

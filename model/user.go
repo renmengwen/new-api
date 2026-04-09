@@ -79,15 +79,18 @@ func (user *User) ToBaseUser() *UserBase {
 }
 
 func (user *User) GetUserType() string {
-	if user.UserType != "" {
-		return user.UserType
-	}
 	switch user.Role {
 	case common.RoleRootUser:
 		return UserTypeRoot
 	case common.RoleAdminUser:
+		if user.UserType == UserTypeAgent {
+			return UserTypeAgent
+		}
 		return UserTypeAdmin
 	default:
+		if user.UserType != "" {
+			return user.UserType
+		}
 		return UserTypeEndUser
 	}
 }
