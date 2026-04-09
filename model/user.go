@@ -2,7 +2,6 @@ package model
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -18,16 +17,30 @@ import (
 
 const UserNameMaxLength = 20
 
+type UserPhaseOneMeta struct {
+	InvitedByPromoCodeId int    `json:"invited_by_promo_code_id" gorm:"default:0"`
+	CommissionEnabled    bool   `json:"commission_enabled" gorm:"default:true"`
+	FreezeReason         string `json:"freeze_reason" gorm:"type:varchar(255);default:''"`
+	FreezeAt             int64  `json:"freeze_at" gorm:"bigint;default:0"`
+}
+
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int            `json:"id"`
-	Username         string         `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password         string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	OriginalPassword string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName      string         `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Id               int    `json:"id"`
+	Username         string `json:"username" gorm:"unique;index" validate:"max=20"`
+	Password         string `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	OriginalPassword string `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName      string `json:"display_name" gorm:"index" validate:"max=20"`
+	Role             int    `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status           int    `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	UserType         string `json:"user_type" gorm:"type:varchar(32);default:'end_user';index"`
+	ParentAgentId    int    `json:"parent_agent_id" gorm:"default:0;index"`
+	Phone            string `json:"phone" gorm:"type:varchar(32);default:''"`
+	LastActiveAt     int64  `json:"last_active_at" gorm:"bigint;default:0;index"`
+	RegisterIP       string `json:"register_ip" gorm:"type:varchar(64);default:''"`
+	SourceChannel    string `json:"source_channel" gorm:"type:varchar(64);default:''"`
+	UserPhaseOneMeta `gorm:"embedded"`
 	Email            string         `json:"email" gorm:"index" validate:"max=50"`
 	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
 	DiscordId        string         `json:"discord_id" gorm:"column:discord_id;index"`
@@ -65,6 +78,24 @@ func (user *User) ToBaseUser() *UserBase {
 	return cache
 }
 
+func (user *User) GetUserType() string {
+	if user.UserType != "" {
+		return user.UserType
+	}
+	switch user.Role {
+	case common.RoleRootUser:
+		return UserTypeRoot
+	case common.RoleAdminUser:
+		return UserTypeAdmin
+	default:
+		return UserTypeEndUser
+	}
+}
+
+func (user *User) FillUserType() {
+	user.UserType = user.GetUserType()
+}
+
 func (user *User) GetAccessToken() string {
 	if user.AccessToken == nil {
 		return ""
@@ -79,7 +110,7 @@ func (user *User) SetAccessToken(token string) {
 func (user *User) GetSetting() dto.UserSetting {
 	setting := dto.UserSetting{}
 	if user.Setting != "" {
-		err := json.Unmarshal([]byte(user.Setting), &setting)
+		err := common.Unmarshal([]byte(user.Setting), &setting)
 		if err != nil {
 			common.SysLog("failed to unmarshal setting: " + err.Error())
 		}
@@ -88,7 +119,7 @@ func (user *User) GetSetting() dto.UserSetting {
 }
 
 func (user *User) SetSetting(setting dto.UserSetting) {
-	settingBytes, err := json.Marshal(setting)
+	settingBytes, err := common.Marshal(setting)
 	if err != nil {
 		common.SysLog("failed to marshal setting: " + err.Error())
 		return
@@ -149,7 +180,7 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 	// 普通用户不包含admin区域
 
 	// 转换为JSON字符串
-	configBytes, err := json.Marshal(defaultConfig)
+	configBytes, err := common.Marshal(defaultConfig)
 	if err != nil {
 		common.SysLog("生成默认边栏配置失败: " + err.Error())
 		return ""
@@ -384,6 +415,7 @@ func (user *User) Insert(inviterId int) error {
 			return err
 		}
 	}
+	user.FillUserType()
 	user.Quota = common.QuotaForNewUser
 	//user.SetAccessToken(common.GetUUID())
 	user.AffCode = common.GetRandomString(4)
@@ -398,6 +430,9 @@ func (user *User) Insert(inviterId int) error {
 	result := DB.Create(user)
 	if result.Error != nil {
 		return result.Error
+	}
+	if _, err = InitQuotaAccount(QuotaOwnerTypeUser, user.Id, user.Quota); err != nil {
+		return err
 	}
 
 	// 用户创建成功后，根据角色初始化边栏配置
@@ -443,6 +478,7 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 			return err
 		}
 	}
+	user.FillUserType()
 	user.Quota = common.QuotaForNewUser
 	user.AffCode = common.GetRandomString(4)
 
@@ -455,6 +491,9 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 	result := tx.Create(user)
 	if result.Error != nil {
 		return result.Error
+	}
+	if _, err = InitQuotaAccountTx(tx, QuotaOwnerTypeUser, user.Id, user.Quota); err != nil {
+		return err
 	}
 
 	return nil

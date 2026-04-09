@@ -35,7 +35,7 @@ func Login(c *gin.Context) {
 		return
 	}
 	var loginRequest LoginRequest
-	err := json.NewDecoder(c.Request.Body).Decode(&loginRequest)
+	err := common.DecodeJson(c.Request.Body, &loginRequest)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -90,6 +90,7 @@ func setupLogin(user *model.User, c *gin.Context) {
 	session.Set("id", user.Id)
 	session.Set("username", user.Username)
 	session.Set("role", user.Role)
+	session.Set("user_type", user.GetUserType())
 	session.Set("status", user.Status)
 	session.Set("group", user.Group)
 	err := session.Save()
@@ -105,6 +106,7 @@ func setupLogin(user *model.User, c *gin.Context) {
 			"username":     user.Username,
 			"display_name": user.DisplayName,
 			"role":         user.Role,
+			"user_type":    user.GetUserType(),
 			"status":       user.Status,
 			"group":        user.Group,
 		},
@@ -138,7 +140,7 @@ func Register(c *gin.Context) {
 		return
 	}
 	var user model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&user)
+	err := common.DecodeJson(c.Request.Body, &user)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -179,6 +181,7 @@ func Register(c *gin.Context) {
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
 	}
+	cleanUser.UserType = model.UserTypeEndUser
 	if err := cleanUser.Insert(inviterId); err != nil {
 		common.ApiError(c, err)
 		return
@@ -377,7 +380,7 @@ func GetSelf(c *gin.Context) {
 	user.Remark = ""
 
 	// 计算用户权限信息
-	permissions := calculateUserPermissions(userRole)
+	permissions := service.BuildUserPermissions(id, userRole)
 
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
@@ -388,6 +391,7 @@ func GetSelf(c *gin.Context) {
 		"username":          user.Username,
 		"display_name":      user.DisplayName,
 		"role":              user.Role,
+		"user_type":         user.GetUserType(),
 		"status":            user.Status,
 		"email":             user.Email,
 		"github_id":         user.GitHubId,
