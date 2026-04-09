@@ -48,6 +48,7 @@ func setupAdminQuotaTestDB(t *testing.T) *gorm.DB {
 		&model.PermissionProfile{},
 		&model.PermissionProfileItem{},
 		&model.UserPermissionBinding{},
+		&model.UserDataScopeOverride{},
 		&model.AgentUserRelation{},
 		&model.QuotaAccount{},
 		&model.QuotaTransferOrder{},
@@ -340,6 +341,38 @@ func TestAgentCannotReadOrAdjustUnownedUserQuota(t *testing.T) {
 	var ownedAdjustResponse adminQuotaAPIResponse
 	require.NoError(t, common.Unmarshal(ownedAdjustRecorder.Body.Bytes(), &ownedAdjustResponse))
 	require.True(t, ownedAdjustResponse.Success)
+}
+
+func TestAgentQuotaScopeOverrideAllAllowsUnownedUserQuota(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	agent := seedQuotaUser(t, db, "quota_scope_all_agent", 0)
+	agent.Role = common.RoleAdminUser
+	agent.UserType = model.UserTypeAgent
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", agent.Id).Updates(map[string]any{
+		"role":      agent.Role,
+		"user_type": agent.UserType,
+	}).Error)
+
+	unownedUser := seedQuotaUser(t, db, "quota_scope_all_target", 500)
+	require.NoError(t, db.Create(&model.UserDataScopeOverride{
+		UserId:      agent.Id,
+		ResourceKey: "quota_management",
+		ScopeType:   model.ScopeTypeAll,
+		CreatedAtTs: common.GetTimestamp(),
+		UpdatedAtTs: common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, "agent",
+		permissionGrant{Resource: "quota_management", Action: "read_summary"},
+	)
+
+	summaryCtx, summaryRecorder := newAdminQuotaContextWithOperator(t, http.MethodGet, "/api/admin/users/"+strconv.Itoa(unownedUser.Id)+"/quota-summary", nil, agent.Id, common.RoleAdminUser)
+	summaryCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(unownedUser.Id)}}
+	GetUserQuotaSummary(summaryCtx)
+
+	var summaryResponse adminQuotaAPIResponse
+	require.NoError(t, common.Unmarshal(summaryRecorder.Body.Bytes(), &summaryResponse))
+	require.True(t, summaryResponse.Success)
+	require.Equal(t, float64(unownedUser.Id), summaryResponse.Data["user_id"])
 }
 
 func TestAgentQuotaLedgerOnlyReturnsOwnedUsers(t *testing.T) {

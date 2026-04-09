@@ -185,6 +185,59 @@ func TestGetAgentReturnsProfileAndQuotaSummary(t *testing.T) {
 	require.Equal(t, float64(5000), quotaSummary["balance"])
 }
 
+func TestUpdateAgentUpdatesProfileAndWritesAudit(t *testing.T) {
+	db := setupAdminAgentTestDB(t)
+
+	user := model.User{
+		Username:    "agent_update_1",
+		Password:    "hashed-password",
+		DisplayName: "Agent Before",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAgent,
+		Group:       "default",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	require.NoError(t, db.Create(&model.AgentProfile{
+		UserId:       user.Id,
+		AgentName:    "Before Agent",
+		CompanyName:  "Old Co",
+		ContactPhone: "13800000000",
+		Remark:       "old remark",
+		Status:       model.CommonStatusEnabled,
+		CreatedAtTs:  common.GetTimestamp(),
+		UpdatedAtTs:  common.GetTimestamp(),
+	}).Error)
+
+	ctx, recorder := newAdminAgentContext(t, http.MethodPut, "/api/admin/agents/"+strconv.Itoa(user.Id), map[string]any{
+		"display_name":  "Agent After",
+		"agent_name":    "After Agent",
+		"company_name":  "New Co",
+		"contact_phone": "13900000000",
+		"remark":        "new remark",
+	})
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+	UpdateAgent(ctx)
+
+	var response adminAgentAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+
+	var reloaded model.User
+	require.NoError(t, db.First(&reloaded, user.Id).Error)
+	require.Equal(t, "Agent After", reloaded.DisplayName)
+	require.Equal(t, "13900000000", reloaded.Phone)
+
+	var profile model.AgentProfile
+	require.NoError(t, db.Where("user_id = ?", user.Id).First(&profile).Error)
+	require.Equal(t, "After Agent", profile.AgentName)
+	require.Equal(t, "New Co", profile.CompanyName)
+	require.Equal(t, "new remark", profile.Remark)
+
+	var audit model.AdminAuditLog
+	require.NoError(t, db.Where("action_module = ? AND action_type = ? AND target_id = ?", "agent", "update", user.Id).First(&audit).Error)
+}
+
 func TestUpdateAgentStatusDisablesAgent(t *testing.T) {
 	db := setupAdminAgentTestDB(t)
 

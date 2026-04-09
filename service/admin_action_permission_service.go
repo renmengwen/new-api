@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -19,6 +20,7 @@ const (
 const (
 	ActionRead         = "read"
 	ActionCreate       = "create"
+	ActionUpdate       = "update"
 	ActionUpdateStatus = "update_status"
 	ActionBindProfile  = "bind_profile"
 	ActionReadSummary  = "read_summary"
@@ -29,7 +31,7 @@ const (
 
 var adminActionCatalog = map[string][]string{
 	ResourcePermissionManagement: {ActionRead, ActionBindProfile},
-	ResourceAgentManagement:      {ActionRead, ActionCreate, ActionUpdateStatus},
+	ResourceAgentManagement:      {ActionRead, ActionCreate, ActionUpdate, ActionUpdateStatus},
 	ResourceUserManagement:       {ActionRead, ActionUpdateStatus},
 	ResourceQuotaManagement:      {ActionReadSummary, ActionAdjust, ActionAdjustBatch, ActionLedgerRead},
 	ResourceAuditManagement:      {ActionRead},
@@ -48,12 +50,9 @@ func RequirePermissionAction(operatorUserId int, operatorRole int, resourceKey s
 		return errors.New("permission denied")
 	}
 
-	profile, actionMap, err := getActivePermissionActionMap(operator.Id)
+	_, actionMap, _, err := getEffectivePermissionState(operator.Id)
 	if err != nil {
 		return err
-	}
-	if profile == nil {
-		return errors.New("permission profile not assigned")
 	}
 	if !actionMap[permissionActionKey(resourceKey, actionKey)] {
 		return errors.New("permission denied")
@@ -82,7 +81,7 @@ func BuildUserPermissions(userId int, userRole int) map[string]any {
 		return permissions
 	}
 
-	profile, actionMap, err := getActivePermissionActionMap(operator.Id)
+	profile, actionMap, sidebarModules, err := getEffectivePermissionState(operator.Id)
 	if err != nil {
 		permissions["actions"] = actions
 		return permissions
@@ -93,6 +92,7 @@ func BuildUserPermissions(userId int, userRole int) map[string]any {
 		}
 	}
 	permissions["actions"] = actions
+	permissions["sidebar_modules"] = sidebarModules
 	if profile != nil {
 		permissions["profile_id"] = profile.Id
 		permissions["profile_name"] = profile.ProfileName
@@ -130,8 +130,133 @@ func getActivePermissionActionMap(userId int) (*model.PermissionProfile, map[str
 	return &profile, actionMap, nil
 }
 
+func getEffectivePermissionState(userId int) (*model.PermissionProfile, map[string]bool, map[string]any, error) {
+	user, err := model.GetUserById(userId, true)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	baseSidebar := buildLegacySidebarPermissions(user.Role)
+	sidebarModules, _ := baseSidebar["sidebar_modules"].(map[string]any)
+	if sidebarModules == nil {
+		sidebarModules = map[string]any{}
+	}
+
+	profile, actionMap, err := getActivePermissionActionMap(userId)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	actionOverrides, err := loadUserPermissionOverrides(userId)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	menuOverrides, err := loadUserMenuOverrides(userId)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return profile, mergeActionOverrides(actionMap, actionOverrides), mergeMenuOverrides(sidebarModules, menuOverrides), nil
+}
+
 func permissionActionKey(resourceKey string, actionKey string) string {
 	return resourceKey + "." + actionKey
+}
+
+func loadUserPermissionOverrides(userId int) ([]model.UserPermissionOverride, error) {
+	var overrides []model.UserPermissionOverride
+	err := model.DB.Where("user_id = ?", userId).Find(&overrides).Error
+	if isMissingPermissionOverrideTableError(err) {
+		return []model.UserPermissionOverride{}, nil
+	}
+	return overrides, err
+}
+
+func loadUserMenuOverrides(userId int) ([]model.UserMenuOverride, error) {
+	var overrides []model.UserMenuOverride
+	err := model.DB.Where("user_id = ?", userId).Find(&overrides).Error
+	if isMissingPermissionOverrideTableError(err) {
+		return []model.UserMenuOverride{}, nil
+	}
+	return overrides, err
+}
+
+func loadUserDataScopeOverrides(userId int) ([]model.UserDataScopeOverride, error) {
+	var overrides []model.UserDataScopeOverride
+	err := model.DB.Where("user_id = ?", userId).Find(&overrides).Error
+	if isMissingPermissionOverrideTableError(err) {
+		return []model.UserDataScopeOverride{}, nil
+	}
+	return overrides, err
+}
+
+func isMissingPermissionOverrideTableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, "no such table") ||
+		strings.Contains(errMsg, "doesn't exist") ||
+		strings.Contains(errMsg, "does not exist") ||
+		strings.Contains(errMsg, "undefined table")
+}
+
+func mergeActionOverrides(actionMap map[string]bool, overrides []model.UserPermissionOverride) map[string]bool {
+	merged := make(map[string]bool, len(actionMap)+len(overrides))
+	for key, allowed := range actionMap {
+		merged[key] = allowed
+	}
+
+	for _, override := range overrides {
+		key := permissionActionKey(override.ResourceKey, override.ActionKey)
+		switch override.Effect {
+		case model.PermissionEffectAllow:
+			merged[key] = true
+		case model.PermissionEffectDeny:
+			merged[key] = false
+		}
+	}
+	return merged
+}
+
+func mergeMenuOverrides(sidebarModules map[string]any, overrides []model.UserMenuOverride) map[string]any {
+	merged := cloneSidebarModules(sidebarModules)
+	for _, override := range overrides {
+		section := ensureSidebarSection(merged, override.SectionKey)
+		switch override.Effect {
+		case model.MenuEffectShow:
+			section["enabled"] = true
+			section[override.ModuleKey] = true
+		case model.MenuEffectHide:
+			section[override.ModuleKey] = false
+		}
+	}
+	return merged
+}
+
+func cloneSidebarModules(sidebarModules map[string]any) map[string]any {
+	clone := make(map[string]any, len(sidebarModules))
+	for key, value := range sidebarModules {
+		if section, ok := value.(map[string]any); ok {
+			sectionClone := make(map[string]any, len(section))
+			for sectionKey, sectionValue := range section {
+				sectionClone[sectionKey] = sectionValue
+			}
+			clone[key] = sectionClone
+			continue
+		}
+		clone[key] = value
+	}
+	return clone
+}
+
+func ensureSidebarSection(sidebarModules map[string]any, sectionKey string) map[string]any {
+	if section, ok := sidebarModules[sectionKey].(map[string]any); ok {
+		return section
+	}
+	section := map[string]any{"enabled": true}
+	sidebarModules[sectionKey] = section
+	return section
 }
 
 func buildLegacySidebarPermissions(userRole int) map[string]any {

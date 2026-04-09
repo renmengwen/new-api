@@ -63,7 +63,7 @@ func GetUserQuotaSummary(userId int) (map[string]any, error) {
 }
 
 func GetScopedUserQuotaSummary(userId int, operatorUserId int, operatorRole int) (map[string]any, error) {
-	if _, err := GetManagedEndUser(userId, operatorUserId, operatorRole); err != nil {
+	if _, err := GetManagedEndUserForResource(userId, operatorUserId, operatorRole, ResourceQuotaManagement); err != nil {
 		return nil, err
 	}
 	return GetUserQuotaSummary(userId)
@@ -83,7 +83,7 @@ func AdjustUserQuota(req AdjustUserQuotaRequest) (map[string]any, error) {
 	}
 	req.OperatorUserType = operator.GetUserType()
 
-	user, err := GetManagedEndUser(req.TargetUserId, operator.Id, operator.Role)
+	user, err := GetManagedEndUserForResource(req.TargetUserId, operator.Id, operator.Role, ResourceQuotaManagement)
 	if err != nil {
 		return nil, err
 	}
@@ -223,6 +223,7 @@ func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRo
 		managedUserSubQuery := ApplyManagedEndUserScope(
 			model.DB.Model(&model.User{}).Select("users.id"),
 			operator,
+			ResourceQuotaManagement,
 		)
 		managedAccountSubQuery := model.DB.Model(&model.QuotaAccount{}).
 			Select("id").
@@ -232,7 +233,7 @@ func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRo
 	}
 
 	if userId > 0 {
-		managedUser, err := GetManagedEndUser(userId, requesterUserId, requesterRole)
+		managedUser, err := GetManagedEndUserForResource(userId, requesterUserId, requesterRole, ResourceQuotaManagement)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -297,7 +298,7 @@ func AdjustUserQuotaBatch(req AdjustUserQuotaBatchRequest) (map[string]any, erro
 	failedItems := make([]QuotaBatchFailureItem, 0)
 
 	for _, userId := range req.TargetUserIds {
-		user, err := GetManagedEndUser(userId, operator.Id, operator.Role)
+		user, err := GetManagedEndUserForResource(userId, operator.Id, operator.Role, ResourceQuotaManagement)
 		if err != nil {
 			failure := QuotaBatchFailureItem{
 				TargetUserId: userId,

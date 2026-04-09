@@ -267,12 +267,31 @@ func SetApiRouter(router *gin.Engine) {
 			adminPermissionRoute.PUT("/users/:id", controller.UpdateUserPermissionBinding)
 		}
 
+		adminPermissionTemplateRoute := apiRouter.Group("/admin/permission-templates")
+		adminPermissionTemplateRoute.Use(middleware.AdminPlatformAuth())
+		{
+			adminPermissionTemplateRoute.GET("", controller.GetPermissionTemplates)
+			adminPermissionTemplateRoute.GET("/:id", controller.GetPermissionTemplate)
+			adminPermissionTemplateRoute.POST("", controller.CreatePermissionTemplate)
+			adminPermissionTemplateRoute.PUT("/:id", controller.UpdatePermissionTemplate)
+		}
+
+		adminUserPermissionRoute := apiRouter.Group("/admin/user-permissions")
+		adminUserPermissionRoute.Use(middleware.AdminPlatformAuth())
+		{
+			adminUserPermissionRoute.GET("/users", controller.GetUserPermissionTargets)
+			adminUserPermissionRoute.GET("/users/:id", controller.GetUserPermissionDetail)
+			adminUserPermissionRoute.PUT("/users/:id/template", controller.UpdateUserPermissionTemplate)
+			adminUserPermissionRoute.PUT("/users/:id/overrides", controller.UpdateUserPermissionOverrides)
+		}
+
 		adminAgentRoute := apiRouter.Group("/admin/agents")
 		adminAgentRoute.Use(middleware.AdminPlatformAuth())
 		{
 			adminAgentRoute.GET("", controller.GetAgents)
 			adminAgentRoute.POST("", controller.CreateAgent)
 			adminAgentRoute.GET("/:id", controller.GetAgent)
+			adminAgentRoute.PUT("/:id", controller.UpdateAgent)
 			adminAgentRoute.POST("/:id/enable", controller.EnableAgent)
 			adminAgentRoute.POST("/:id/disable", controller.DisableAgent)
 		}

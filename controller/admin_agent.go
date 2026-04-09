@@ -70,6 +70,30 @@ func GetAgent(c *gin.Context) {
 	common.ApiSuccess(c, data)
 }
 
+func UpdateAgent(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceAgentManagement, service.ActionUpdate) {
+		return
+	}
+	userId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	var req service.UpdateAgentRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	if err := service.UpdateAgentWithOperator(userId, req, c.GetInt("id"), service.ResolveOperatorUserType(c.GetInt("id"), c.GetInt("role")), c.ClientIP()); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, gin.H{"id": userId})
+}
+
 func EnableAgent(c *gin.Context) {
 	updateAgentStatus(c, common.UserStatusEnabled)
 }

@@ -20,6 +20,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect, useMemo, useContext, useRef } from 'react';
 import { StatusContext } from '../../context/Status';
 import { API } from '../../helpers';
+import {
+  buildFallbackUserSidebarConfig,
+  inferSidebarUserType,
+} from './sidebarFallback';
 
 // 创建一个全局事件系统来同步所有useSidebar实例
 const sidebarEventTarget = new EventTarget();
@@ -51,12 +55,54 @@ export const DEFAULT_ADMIN_CONFIG = {
     deployment: true,
     redemption: true,
     user: true,
+    agents: true,
+    'permission-templates': true,
+    'user-permissions': true,
+    'quota-ledger': true,
     subscription: true,
     setting: true,
   },
 };
 
 const deepClone = (value) => JSON.parse(JSON.stringify(value));
+
+const getStoredUser = () => {
+  try {
+    const raw = localStorage.getItem('user');
+    return raw ? JSON.parse(raw) : {};
+  } catch (error) {
+    return {};
+  }
+};
+
+const normalizeUserSidebarConfig = (config) => {
+  if (!config || typeof config !== 'object') return {};
+
+  const normalized = {};
+  Object.entries(config).forEach(([sectionKey, sectionValue]) => {
+    if (sectionValue === false) {
+      normalized[sectionKey] = { enabled: false };
+      return;
+    }
+    if (sectionValue === true) {
+      normalized[sectionKey] = { enabled: true };
+      return;
+    }
+    if (!sectionValue || typeof sectionValue !== 'object') {
+      return;
+    }
+
+    normalized[sectionKey] = {
+      enabled: sectionValue.enabled !== false,
+    };
+    Object.keys(sectionValue).forEach((moduleKey) => {
+      if (moduleKey === 'enabled') return;
+      normalized[sectionKey][moduleKey] = sectionValue[moduleKey] !== false;
+    });
+  });
+
+  return normalized;
+};
 
 export const mergeAdminConfig = (savedConfig) => {
   const merged = deepClone(DEFAULT_ADMIN_CONFIG);
@@ -114,20 +160,40 @@ export const useSidebar = () => {
       }
 
       const res = await API.get('/api/user/self');
-      if (res.data.success && res.data.data.sidebar_modules) {
+      const responseData = res.data?.data ?? {};
+      const permissionsSidebarModules = Object.prototype.hasOwnProperty.call(
+        responseData?.permissions ?? {},
+        'sidebar_modules',
+      )
+        ? responseData.permissions.sidebar_modules
+        : undefined;
+      const rawSidebarModules =
+        permissionsSidebarModules ?? responseData.sidebar_modules;
+      const shouldUseFallbackConfig =
+        rawSidebarModules === false ||
+        rawSidebarModules === undefined ||
+        rawSidebarModules === null ||
+        (typeof rawSidebarModules === 'object' &&
+          !Array.isArray(rawSidebarModules) &&
+          Object.keys(rawSidebarModules).length === 0 &&
+          !['root', 'admin'].includes(inferSidebarUserType(responseData)));
+      if (res.data.success && !shouldUseFallbackConfig) {
         let config;
         // 检查sidebar_modules是字符串还是对象
-        if (typeof res.data.data.sidebar_modules === 'string') {
-          config = JSON.parse(res.data.data.sidebar_modules);
+        if (typeof rawSidebarModules === 'string') {
+          config = JSON.parse(rawSidebarModules);
         } else {
-          config = res.data.data.sidebar_modules;
+          config = rawSidebarModules;
         }
-        setUserConfig(config);
+        setUserConfig(normalizeUserSidebarConfig(config));
       } else {
         // 当用户没有配置时，生成一个基于管理员配置的默认用户配置
         // 这样可以确保权限控制正确生效
-        const defaultUserConfig = {};
-        Object.keys(adminConfig).forEach((sectionKey) => {
+        const defaultUserConfig = buildFallbackUserSidebarConfig(
+          adminConfig,
+          responseData,
+        );
+        Object.keys({}).forEach((sectionKey) => {
           if (adminConfig[sectionKey]?.enabled) {
             defaultUserConfig[sectionKey] = { enabled: true };
             // 为每个管理员允许的模块设置默认值为true
@@ -141,12 +207,15 @@ export const useSidebar = () => {
             });
           }
         });
-        setUserConfig(defaultUserConfig);
+        setUserConfig(normalizeUserSidebarConfig(defaultUserConfig));
       }
     } catch (error) {
       // 出错时也生成默认配置，而不是设置为空对象
-      const defaultUserConfig = {};
-      Object.keys(adminConfig).forEach((sectionKey) => {
+      const defaultUserConfig = buildFallbackUserSidebarConfig(
+        adminConfig,
+        getStoredUser(),
+      );
+      Object.keys({}).forEach((sectionKey) => {
         if (adminConfig[sectionKey]?.enabled) {
           defaultUserConfig[sectionKey] = { enabled: true };
           Object.keys(adminConfig[sectionKey]).forEach((moduleKey) => {
@@ -156,7 +225,7 @@ export const useSidebar = () => {
           });
         }
       });
-      setUserConfig(defaultUserConfig);
+      setUserConfig(normalizeUserSidebarConfig(defaultUserConfig));
     } finally {
       if (shouldShowLoader) {
         setLoading(false);

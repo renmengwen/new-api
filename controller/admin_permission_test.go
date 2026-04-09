@@ -47,6 +47,9 @@ func setupAdminPermissionTestDB(t *testing.T) *gorm.DB {
 		&model.PermissionProfile{},
 		&model.PermissionProfileItem{},
 		&model.UserPermissionBinding{},
+		&model.UserPermissionOverride{},
+		&model.UserMenuOverride{},
+		&model.UserDataScopeOverride{},
 		&model.AdminAuditLog{},
 	))
 

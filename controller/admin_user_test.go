@@ -45,6 +45,7 @@ func setupAdminUserTestDB(t *testing.T) *gorm.DB {
 		&model.PermissionProfile{},
 		&model.PermissionProfileItem{},
 		&model.UserPermissionBinding{},
+		&model.UserDataScopeOverride{},
 		&model.AgentUserRelation{},
 		&model.QuotaAccount{},
 		&model.AdminAuditLog{},
@@ -169,6 +170,43 @@ func TestGetAdminUsersForAgentFiltersOwnedUsers(t *testing.T) {
 	firstItem, ok := items[0].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, float64(owned.Id), firstItem["id"])
+}
+
+func TestGetAdminUsersForAgentAllowsAllScopeOverride(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	agent := seedManagedUser(t, db, "agent_scope_all_operator", model.UserTypeAgent, common.RoleAdminUser, 0, 0)
+	owned := seedManagedUser(t, db, "owned_scope_all_end_user", model.UserTypeEndUser, common.RoleCommonUser, 300, agent.Id)
+	_ = seedManagedUser(t, db, "unowned_scope_all_end_user", model.UserTypeEndUser, common.RoleCommonUser, 500, 0)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   owned.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	require.NoError(t, db.Create(&model.UserDataScopeOverride{
+		UserId:      agent.Id,
+		ResourceKey: "user_management",
+		ScopeType:   model.ScopeTypeAll,
+		CreatedAtTs: common.GetTimestamp(),
+		UpdatedAtTs: common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, "agent",
+		permissionGrant{Resource: "user_management", Action: "read"},
+	)
+
+	ctx, recorder := newAdminUserContext(t, http.MethodGet, "/api/admin/users?p=1&page_size=10", agent.Id, common.RoleAdminUser)
+	GetAdminUsers(ctx)
+
+	var response adminUserPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, 2, response.Data.Total)
+
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+	require.Len(t, items, 2)
 }
 
 func TestGetAdminUserReturnsQuotaSummary(t *testing.T) {

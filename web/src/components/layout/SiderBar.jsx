@@ -25,7 +25,7 @@ import { ChevronLeft } from 'lucide-react';
 import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useSidebar } from '../../hooks/common/useSidebar';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
-import { isAdmin, isAgentUser, isRoot, showError } from '../../helpers';
+import { isAdmin, isRoot, showError } from '../../helpers';
 import SkeletonWrapper from './components/SkeletonWrapper';
 
 import { Nav, Divider, Button } from '@douyinfe/semi-ui';
@@ -37,6 +37,10 @@ const routerMap = {
   redemption: '/console/redemption',
   topup: '/console/topup',
   user: '/console/user',
+  agents: '/console/agents',
+  'permission-templates': '/console/permission-templates',
+  'user-permissions': '/console/user-permissions',
+  'quota-ledger': '/console/quota-ledger',
   subscription: '/console/subscription',
   log: '/console/log',
   midjourney: '/console/midjourney',
@@ -67,8 +71,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   const [openedKeys, setOpenedKeys] = useState([]);
   const location = useLocation();
   const [routerMapState, setRouterMapState] = useState(routerMap);
-  const agentUser = isAgentUser();
-
   const workspaceItems = useMemo(() => {
     const items = [
       {
@@ -152,37 +154,51 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('渠道管理'),
         itemKey: 'channel',
         to: '/channel',
-        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('订阅管理'),
         itemKey: 'subscription',
         to: '/subscription',
-        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('模型管理'),
         itemKey: 'models',
         to: '/console/models',
-        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('模型部署'),
         itemKey: 'deployment',
         to: '/deployment',
-        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('兑换码管理'),
         itemKey: 'redemption',
         to: '/redemption',
-        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('用户管理'),
         itemKey: 'user',
         to: '/user',
-        className: isAdmin() || agentUser ? '' : 'tableHiddle',
+      },
+      {
+        text: t('代理商管理'),
+        itemKey: 'agents',
+        to: '/console/agents',
+      },
+      {
+        text: t('权限模板管理'),
+        itemKey: 'permission-templates',
+        to: '/console/permission-templates',
+      },
+      {
+        text: t('用户权限管理'),
+        itemKey: 'user-permissions',
+        to: '/console/user-permissions',
+      },
+      {
+        text: t('额度流水'),
+        itemKey: 'quota-ledger',
+        to: '/console/quota-ledger',
       },
       {
         text: t('系统设置'),
@@ -199,7 +215,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     });
 
     return filteredItems;
-  }, [agentUser, isAdmin(), isRoot(), t, isModuleVisible]);
+  }, [isRoot(), t, isModuleVisible]);
 
   const chatMenuItems = useMemo(() => {
     const items = [
@@ -477,7 +493,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
           )}
 
           {/* 运营后台区域，仅在管理员或代理商且配置允许时显示 */}
-          {(isAdmin() || agentUser) && hasSectionVisibleModules('admin') && (
+          {hasSectionVisibleModules('admin') && (
             <>
               <Divider className='sidebar-divider' />
               <div>
@@ -531,7 +547,5 @@ const SiderBar = ({ onNavigate = () => {} }) => {
 };
 
 export default SiderBar;
-
-
 
 

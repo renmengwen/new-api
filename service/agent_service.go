@@ -18,6 +18,14 @@ type CreateAgentRequest struct {
 	Remark       string `json:"remark"`
 }
 
+type UpdateAgentRequest struct {
+	DisplayName  string `json:"display_name"`
+	AgentName    string `json:"agent_name"`
+	CompanyName  string `json:"company_name"`
+	ContactPhone string `json:"contact_phone"`
+	Remark       string `json:"remark"`
+}
+
 type AgentListItem struct {
 	Id           int    `json:"id"`
 	Username     string `json:"username"`
@@ -186,6 +194,91 @@ func GetAgentDetail(userId int) (map[string]any, error) {
 			"status":         account.Status,
 		},
 	}, nil
+}
+
+func UpdateAgentWithOperator(userId int, req UpdateAgentRequest, operatorUserId int, operatorUserType string, ip string) error {
+	now := common.GetTimestamp()
+
+	var user model.User
+	if err := model.DB.First(&user, userId).Error; err != nil {
+		return err
+	}
+	if user.GetUserType() != model.UserTypeAgent {
+		return errors.New("agent user not found")
+	}
+
+	var profile model.AgentProfile
+	if err := model.DB.Where("user_id = ?", userId).First(&profile).Error; err != nil {
+		return err
+	}
+
+	nextDisplayName := firstNonEmpty(strings.TrimSpace(req.DisplayName), strings.TrimSpace(req.AgentName), user.DisplayName)
+	nextAgentName := firstNonEmpty(strings.TrimSpace(req.AgentName), nextDisplayName, profile.AgentName)
+	nextCompanyName := strings.TrimSpace(req.CompanyName)
+	nextContactPhone := strings.TrimSpace(req.ContactPhone)
+	nextRemark := strings.TrimSpace(req.Remark)
+
+	beforeJSON, _ := common.Marshal(map[string]any{
+		"display_name":  user.DisplayName,
+		"agent_name":    profile.AgentName,
+		"company_name":  profile.CompanyName,
+		"contact_phone": profile.ContactPhone,
+		"remark":        profile.Remark,
+	})
+	afterJSON, _ := common.Marshal(map[string]any{
+		"display_name":  nextDisplayName,
+		"agent_name":    nextAgentName,
+		"company_name":  nextCompanyName,
+		"contact_phone": nextContactPhone,
+		"remark":        nextRemark,
+	})
+
+	tx := model.DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if err := tx.Model(&model.User{}).Where("id = ?", userId).Updates(map[string]any{
+		"display_name": nextDisplayName,
+		"phone":        nextContactPhone,
+	}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if err := tx.Model(&model.AgentProfile{}).Where("user_id = ?", userId).Updates(map[string]any{
+		"agent_name":    nextAgentName,
+		"company_name":  nextCompanyName,
+		"contact_phone": nextContactPhone,
+		"remark":        nextRemark,
+		"updated_at":    now,
+	}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if err := CreateAdminAuditLogTx(tx, AuditLogInput{
+		OperatorUserId:   operatorUserId,
+		OperatorUserType: operatorUserType,
+		ActionModule:     "agent",
+		ActionType:       "update",
+		ActionDesc:       "update agent profile",
+		TargetType:       "user",
+		TargetId:         userId,
+		BeforeJSON:       string(beforeJSON),
+		AfterJSON:        string(afterJSON),
+		IP:               ip,
+	}); err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit().Error
 }
 
 func UpdateAgentStatus(userId int, status int) error {

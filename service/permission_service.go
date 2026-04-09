@@ -218,7 +218,7 @@ func deriveUserTypeFromRole(role int) string {
 
 func MustBeAdminOrAgentUserType(userType string) error {
 	switch userType {
-	case model.UserTypeRoot, model.UserTypeAdmin, model.UserTypeAgent:
+	case model.UserTypeRoot, model.UserTypeAdmin, model.UserTypeAgent, model.UserTypeEndUser:
 		return nil
 	default:
 		return errors.New("unsupported user_type for permission management")
@@ -231,6 +231,8 @@ func permissionProfileTypeForUserType(userType string) string {
 		return model.UserTypeAdmin
 	case model.UserTypeAgent:
 		return model.UserTypeAgent
+	case model.UserTypeEndUser:
+		return model.UserTypeEndUser
 	default:
 		return ""
 	}

@@ -182,7 +182,7 @@ func RootAuth() func(c *gin.Context) {
 func AdminPlatformAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		authHelper(c, func(role int, userType string) bool {
-			return role >= common.RoleAdminUser || userType == model.UserTypeAgent
+			return role >= common.RoleCommonUser
 		})
 	}
 }

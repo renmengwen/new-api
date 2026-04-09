@@ -44,3 +44,10 @@ const (
 	LedgerDirectionIn  = "in"
 	LedgerDirectionOut = "out"
 )
+
+const (
+	PermissionEffectAllow = "allow"
+	PermissionEffectDeny  = "deny"
+	MenuEffectShow        = "show"
+	MenuEffectHide        = "hide"
+)
