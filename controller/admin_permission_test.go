@@ -44,6 +44,8 @@ func setupAdminPermissionTestDB(t *testing.T) *gorm.DB {
 	model.LOG_DB = db
 	require.NoError(t, db.AutoMigrate(
 		&model.User{},
+		&model.AgentProfile{},
+		&model.AgentUserRelation{},
 		&model.PermissionProfile{},
 		&model.PermissionProfileItem{},
 		&model.UserPermissionBinding{},

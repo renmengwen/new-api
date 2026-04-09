@@ -66,7 +66,7 @@ func UpdateUserPermissionBinding(c *gin.Context) {
 		return
 	}
 
-	binding, err := service.UpdateUserPermissionBinding(userId, req.ProfileId, c.GetInt("id"), service.ResolveOperatorUserType(c.GetInt("id"), c.GetInt("role")), c.ClientIP())
+	binding, err := service.UpdateUserPermissionBinding(userId, req.ProfileId, c.GetInt("id"), c.GetInt("role"), service.ResolveOperatorUserType(c.GetInt("id"), c.GetInt("role")), c.ClientIP())
 	if err != nil {
 		common.ApiError(c, err)
 		return

@@ -61,9 +61,13 @@ type UserPermissionDetail struct {
 	EffectiveDataScopes map[string]string              `json:"effective_data_scopes"`
 }
 
-func ListUserPermissionTargets(pageInfo *common.PageInfo, keyword string, userType string) ([]UserPermissionTargetView, int64, error) {
+func ListUserPermissionTargets(pageInfo *common.PageInfo, keyword string, userType string, operatorUserId int, operatorRole int) ([]UserPermissionTargetView, int64, error) {
 	var items []UserPermissionTargetView
 	var total int64
+	operator, err := ResolveOperatorUser(operatorUserId, operatorRole)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	query := model.DB.Model(&model.User{}).
 		Select(
@@ -77,17 +81,24 @@ func ListUserPermissionTargets(pageInfo *common.PageInfo, keyword string, userTy
 		like := "%" + strings.TrimSpace(keyword) + "%"
 		query = query.Where("users.username LIKE ? OR users.display_name LIKE ? OR users.email LIKE ?", like, like, like)
 	}
-	if userType != "" {
-		query = query.Where("users.user_type = ? OR (COALESCE(users.user_type, '') = '' AND ? = ? AND users.role < ?)", userType, userType, model.UserTypeEndUser, common.RoleAdminUser)
-	}
-
 	countQuery := model.DB.Model(&model.User{})
 	if keyword != "" {
 		like := "%" + strings.TrimSpace(keyword) + "%"
 		countQuery = countQuery.Where("username LIKE ? OR display_name LIKE ? OR email LIKE ?", like, like, like)
 	}
-	if userType != "" {
-		countQuery = countQuery.Where("user_type = ? OR (COALESCE(user_type, '') = '' AND ? = ? AND role < ?)", userType, userType, model.UserTypeEndUser, common.RoleAdminUser)
+
+	if operator.Role == common.RoleRootUser || operator.GetUserType() == model.UserTypeRoot || operator.GetUserType() == model.UserTypeAdmin {
+		if userType != "" {
+			query = query.Where("users.user_type = ? OR (COALESCE(users.user_type, '') = '' AND ? = ? AND users.role < ?)", userType, userType, model.UserTypeEndUser, common.RoleAdminUser)
+			countQuery = countQuery.Where("user_type = ? OR (COALESCE(user_type, '') = '' AND ? = ? AND role < ?)", userType, userType, model.UserTypeEndUser, common.RoleAdminUser)
+		}
+	} else {
+		query = ApplyManagedEndUserScope(query, operator, ResourcePermissionManagement)
+		countQuery = ApplyManagedEndUserScope(countQuery, operator, ResourcePermissionManagement)
+		if userType != "" && userType != model.UserTypeEndUser {
+			query = query.Where("1 = 0")
+			countQuery = countQuery.Where("1 = 0")
+		}
 	}
 
 	if err := countQuery.Count(&total).Error; err != nil {
@@ -119,8 +130,8 @@ func normalizePermissionTargetUserType(userType string, role int) string {
 	}
 }
 
-func GetUserPermissionDetail(userId int) (*UserPermissionDetail, error) {
-	user, err := model.GetUserById(userId, false)
+func GetUserPermissionDetail(userId int, operatorUserId int, operatorRole int) (*UserPermissionDetail, error) {
+	user, err := getPermissionManagementTargetUser(userId, operatorUserId, operatorRole)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +179,10 @@ func GetUserPermissionDetail(userId int) (*UserPermissionDetail, error) {
 	}, nil
 }
 
-func UpdateUserPermissionOverrides(userId int, req UserPermissionOverrideUpdateRequest) error {
+func UpdateUserPermissionOverrides(userId int, req UserPermissionOverrideUpdateRequest, operatorUserId int, operatorRole int) error {
+	if _, err := getPermissionManagementTargetUser(userId, operatorUserId, operatorRole); err != nil {
+		return err
+	}
 	now := common.GetTimestamp()
 	tx := model.DB.Begin()
 	if tx.Error != nil {
@@ -300,4 +314,15 @@ func defaultDataScopeForUserType(userType string) string {
 	default:
 		return model.ScopeTypeSelf
 	}
+}
+
+func getPermissionManagementTargetUser(userId int, operatorUserId int, operatorRole int) (*model.User, error) {
+	operator, err := ResolveOperatorUser(operatorUserId, operatorRole)
+	if err != nil {
+		return nil, err
+	}
+	if operator.Role == common.RoleRootUser || operator.GetUserType() == model.UserTypeRoot || operator.GetUserType() == model.UserTypeAdmin {
+		return model.GetUserById(userId, false)
+	}
+	return GetManagedEndUserForResource(userId, operatorUserId, operatorRole, ResourcePermissionManagement)
 }

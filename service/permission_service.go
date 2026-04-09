@@ -89,8 +89,8 @@ func ListPermissionUsers(pageInfo *common.PageInfo, keyword string, userType str
 	return items, total, nil
 }
 
-func UpdateUserPermissionBinding(userId int, profileId int, operatorUserId int, operatorUserType string, ip string) (*model.UserPermissionBinding, error) {
-	user, err := model.GetUserById(userId, true)
+func UpdateUserPermissionBinding(userId int, profileId int, operatorUserId int, operatorRole int, operatorUserType string, ip string) (*model.UserPermissionBinding, error) {
+	user, err := getPermissionManagementTargetUser(userId, operatorUserId, operatorRole)
 	if err != nil {
 		return nil, err
 	}

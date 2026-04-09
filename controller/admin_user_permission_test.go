@@ -2,6 +2,7 @@ package controller
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 
@@ -10,6 +11,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func newAdminPermissionContextWithOperator(t *testing.T, method string, target string, body any, operatorId int, role int) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	ctx, recorder := newAdminPermissionContext(t, method, target, body)
+	ctx.Set("id", operatorId)
+	ctx.Set("role", role)
+	return ctx, recorder
+}
 
 func TestListUserPermissionTargets(t *testing.T) {
 	db := setupAdminPermissionTestDB(t)
@@ -242,4 +251,112 @@ func TestUpdateUserPermissionOverridesPersistsOverrides(t *testing.T) {
 	require.Len(t, dataScopeRows, 1)
 	require.Equal(t, model.ScopeTypeAssigned, dataScopeRows[0].ScopeType)
 	require.JSONEq(t, `[101,202]`, dataScopeRows[0].ScopeValueJSON)
+}
+
+func TestAgentUserPermissionTargetsOnlyReturnManagedEndUsers(t *testing.T) {
+	db := setupAdminPermissionTestDB(t)
+
+	agent := model.User{
+		Username:    "agent_permission_operator",
+		Password:    "hashed-password",
+		DisplayName: "Agent Permission Operator",
+		AffCode:     "agent_perm_operator",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAgent,
+		Group:       "default",
+	}
+	require.NoError(t, db.Create(&agent).Error)
+	grantPermissionActions(t, db, agent.Id, model.UserTypeAgent, permissionGrant{Resource: "permission_management", Action: "read"})
+
+	ownedUser := model.User{
+		Username:      "agent_owned_end_user",
+		Password:      "hashed-password",
+		DisplayName:   "Owned End User",
+		AffCode:       "agent_owned_end_user",
+		Role:          common.RoleCommonUser,
+		Status:        common.UserStatusEnabled,
+		UserType:      model.UserTypeEndUser,
+		Group:         "default",
+		ParentAgentId: agent.Id,
+	}
+	require.NoError(t, db.Create(&ownedUser).Error)
+
+	adminUser := model.User{
+		Username:    "agent_visible_admin_should_not_happen",
+		Password:    "hashed-password",
+		DisplayName: "Admin Should Not Show",
+		AffCode:     "agent_admin_hidden",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAdmin,
+		Group:       "default",
+	}
+	require.NoError(t, db.Create(&adminUser).Error)
+
+	rootUser := model.User{
+		Username:    "agent_visible_root_should_not_happen",
+		Password:    "hashed-password",
+		DisplayName: "Root Should Not Show",
+		AffCode:     "agent_root_hidden",
+		Role:        common.RoleRootUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeRoot,
+		Group:       "default",
+	}
+	require.NoError(t, db.Create(&rootUser).Error)
+
+	ctx, recorder := newAdminPermissionContextWithOperator(t, http.MethodGet, "/api/admin/user-permissions/users?p=1&page_size=10", nil, agent.Id, agent.Role)
+	ctx.Request.URL.RawQuery = "p=1&page_size=10"
+	GetUserPermissionTargets(ctx)
+
+	var response adminPermissionPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, 1, response.Data.Total)
+
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+	require.Len(t, items, 1)
+	firstItem, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, ownedUser.Username, firstItem["username"])
+	require.Equal(t, model.UserTypeEndUser, firstItem["user_type"])
+}
+
+func TestAgentCannotReadUnmanagedUserPermissionDetail(t *testing.T) {
+	db := setupAdminPermissionTestDB(t)
+
+	agent := model.User{
+		Username:    "agent_permission_detail_operator",
+		Password:    "hashed-password",
+		DisplayName: "Agent Permission Detail Operator",
+		AffCode:     "agent_perm_detail",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAgent,
+		Group:       "default",
+	}
+	require.NoError(t, db.Create(&agent).Error)
+	grantPermissionActions(t, db, agent.Id, model.UserTypeAgent, permissionGrant{Resource: "permission_management", Action: "read"})
+
+	adminUser := model.User{
+		Username:    "detail_admin_not_visible",
+		Password:    "hashed-password",
+		DisplayName: "Detail Admin",
+		AffCode:     "detail_admin_hidden",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAdmin,
+		Group:       "default",
+	}
+	require.NoError(t, db.Create(&adminUser).Error)
+
+	ctx, recorder := newAdminPermissionContextWithOperator(t, http.MethodGet, "/api/admin/user-permissions/users/"+strconv.Itoa(adminUser.Id), nil, agent.Id, agent.Role)
+	ctx.Params = append(ctx.Params, gin.Param{Key: "id", Value: strconv.Itoa(adminUser.Id)})
+	GetUserPermissionDetail(ctx)
+
+	var response adminPermissionAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
 }

@@ -34,7 +34,36 @@ import { renderGroup, renderNumber, renderQuota } from '../../../helpers';
 /**
  * Render user role
  */
-const renderRole = (role, t) => {
+const renderRole = (role, userType, t) => {
+  switch (userType) {
+    case 'agent':
+      return (
+        <Tag color='purple' shape='circle'>
+          {t('代理商')}
+        </Tag>
+      );
+    case 'admin':
+      return (
+        <Tag color='yellow' shape='circle'>
+          {t('管理员')}
+        </Tag>
+      );
+    case 'root':
+      return (
+        <Tag color='orange' shape='circle'>
+          {t('超级管理员')}
+        </Tag>
+      );
+    case 'end_user':
+      return (
+        <Tag color='blue' shape='circle'>
+          {t('普通用户')}
+        </Tag>
+      );
+    default:
+      break;
+  }
+
   switch (role) {
     case 1:
       return (
@@ -342,7 +371,7 @@ export const getUsersColumns = ({
       title: t('角色'),
       dataIndex: 'role',
       render: (text, record, index) => {
-        return <div>{renderRole(text, t)}</div>;
+        return <div>{renderRole(text, record.user_type, t)}</div>;
       },
     },
     {

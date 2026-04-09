@@ -14,7 +14,7 @@ func GetUserPermissionTargets(c *gin.Context) {
 		return
 	}
 	pageInfo := common.GetPageQuery(c)
-	items, total, err := service.ListUserPermissionTargets(pageInfo, c.Query("keyword"), c.Query("user_type"))
+	items, total, err := service.ListUserPermissionTargets(pageInfo, c.Query("keyword"), c.Query("user_type"), c.GetInt("id"), c.GetInt("role"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -33,7 +33,7 @@ func GetUserPermissionDetail(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	data, err := service.GetUserPermissionDetail(id)
+	data, err := service.GetUserPermissionDetail(id, c.GetInt("id"), c.GetInt("role"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -59,7 +59,7 @@ func UpdateUserPermissionTemplate(c *gin.Context) {
 		common.ApiError(c, errors.New("invalid request body"))
 		return
 	}
-	binding, err := service.UpdateUserPermissionBinding(id, req.ProfileId, c.GetInt("id"), service.ResolveOperatorUserType(c.GetInt("id"), c.GetInt("role")), c.ClientIP())
+	binding, err := service.UpdateUserPermissionBinding(id, req.ProfileId, c.GetInt("id"), c.GetInt("role"), service.ResolveOperatorUserType(c.GetInt("id"), c.GetInt("role")), c.ClientIP())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -81,7 +81,7 @@ func UpdateUserPermissionOverrides(c *gin.Context) {
 		common.ApiError(c, errors.New("invalid request body"))
 		return
 	}
-	if err := service.UpdateUserPermissionOverrides(id, req); err != nil {
+	if err := service.UpdateUserPermissionOverrides(id, req, c.GetInt("id"), c.GetInt("role")); err != nil {
 		common.ApiError(c, err)
 		return
 	}

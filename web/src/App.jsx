@@ -57,7 +57,7 @@ const User = lazy(() => import('./pages/User'));
 const AdminManagers = lazy(() => import('./pages/AdminManagersPageV2'));
 const AdminAgents = lazy(() => import('./pages/AdminAgentsPageV2'));
 const AdminPermissionTemplates = lazy(() => import('./pages/AdminPermissionTemplatesPageV2'));
-const AdminUserPermissions = lazy(() => import('./pages/AdminUserPermissionsPageV3'));
+const AdminUserPermissions = lazy(() => import('./pages/AdminUserPermissionsPage'));
 const AdminQuotaLedger = lazy(() => import('./pages/AdminQuotaLedgerPageV2'));
 
 function DynamicOAuth2Callback() {
@@ -170,9 +170,9 @@ function App() {
         <Route
           path='/console/user'
           element={
-            <AdminRoute>
+            <PrivateRoute>
               <Suspense fallback={<Loading />}><User /></Suspense>
-            </AdminRoute>
+            </PrivateRoute>
           }
         />
         <Route
