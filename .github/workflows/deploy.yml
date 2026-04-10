@@ -66,8 +66,9 @@ jobs:
           command_timeout: 30m
           script: |
             cd /root/new-api
-            docker-compose pull new-api
-            docker-compose up -d
+            docker compose pull new-api
+            docker compose up -d
+            docker image prune -f
             echo "Production deployed"
 
   deploy_test:
