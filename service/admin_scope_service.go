@@ -109,6 +109,14 @@ func resolveDataScopeForResource(operator *model.User, resourceKey string) (stri
 		return item.ScopeType, parseDataScopeValue(item.ScopeValueJSON), nil
 	}
 
+	_, _, _, templateDataScopes, err := getActivePermissionProfileState(operator.Id)
+	if err != nil {
+		return "", nil, err
+	}
+	if scope, ok := templateDataScopes[resourceKey]; ok && scope.ScopeType != "" {
+		return scope.ScopeType, scope.ScopeValue, nil
+	}
+
 	return defaultDataScopeForUserType(operator.GetUserType()), nil, nil
 }
 

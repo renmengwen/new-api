@@ -2,10 +2,16 @@ package service
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"gorm.io/gorm"
+)
+
+const (
+	permissionTemplateMenuResourcePrefix = "__menu__."
+	permissionTemplateScopeActionKey     = "__scope__"
 )
 
 type PermissionTemplateItemInput struct {
@@ -14,17 +20,33 @@ type PermissionTemplateItemInput struct {
 	Allowed     bool   `json:"allowed"`
 }
 
+type PermissionTemplateMenuItemInput struct {
+	SectionKey string `json:"section_key"`
+	ModuleKey  string `json:"module_key"`
+	Allowed    bool   `json:"allowed"`
+}
+
+type PermissionTemplateDataScopeItemInput struct {
+	ResourceKey string `json:"resource_key"`
+	ScopeType   string `json:"scope_type"`
+	ScopeValue  []int  `json:"scope_value"`
+}
+
 type PermissionTemplateUpsertRequest struct {
-	ProfileName string                        `json:"profile_name"`
-	ProfileType string                        `json:"profile_type"`
-	Description string                        `json:"description"`
-	Status      int                           `json:"status"`
-	Items       []PermissionTemplateItemInput `json:"items"`
+	ProfileName    string                                 `json:"profile_name"`
+	ProfileType    string                                 `json:"profile_type"`
+	Description    string                                 `json:"description"`
+	Status         int                                    `json:"status"`
+	Items          []PermissionTemplateItemInput          `json:"items"`
+	MenuItems      []PermissionTemplateMenuItemInput      `json:"menu_items"`
+	DataScopeItems []PermissionTemplateDataScopeItemInput `json:"data_scope_items"`
 }
 
 type PermissionTemplateDetail struct {
-	Profile model.PermissionProfile      `json:"profile"`
-	Items   []model.PermissionProfileItem `json:"items"`
+	Profile        model.PermissionProfile                `json:"profile"`
+	Items          []model.PermissionProfileItem          `json:"items"`
+	MenuItems      []PermissionTemplateMenuItemInput      `json:"menu_items"`
+	DataScopeItems []PermissionTemplateDataScopeItemInput `json:"data_scope_items"`
 }
 
 func ListPermissionTemplates(pageInfo *common.PageInfo, profileType string) ([]model.PermissionProfile, int64, error) {
@@ -41,10 +63,13 @@ func GetPermissionTemplateDetail(profileId int) (*PermissionTemplateDetail, erro
 	if err := model.DB.Where("profile_id = ?", profileId).Order("id asc").Find(&items).Error; err != nil {
 		return nil, err
 	}
+	actionItems, menuItems, dataScopeItems := splitPermissionTemplateItems(items)
 
 	return &PermissionTemplateDetail{
-		Profile: profile,
-		Items:   items,
+		Profile:        profile,
+		Items:          actionItems,
+		MenuItems:      menuItems,
+		DataScopeItems: dataScopeItems,
 	}, nil
 }
 
@@ -77,7 +102,7 @@ func CreatePermissionTemplate(req PermissionTemplateUpsertRequest) (*PermissionT
 		return nil, err
 	}
 
-	if err := replacePermissionTemplateItemsTx(tx, profile.Id, req.Items, now); err != nil {
+	if err := replacePermissionTemplateItemsTx(tx, profile.Id, req, now); err != nil {
 		tx.Rollback()
 		return nil, err
 	}
@@ -120,7 +145,7 @@ func UpdatePermissionTemplate(profileId int, req PermissionTemplateUpsertRequest
 		return nil, err
 	}
 
-	if err := replacePermissionTemplateItemsTx(tx, profile.Id, req.Items, now); err != nil {
+	if err := replacePermissionTemplateItemsTx(tx, profile.Id, req, now); err != nil {
 		tx.Rollback()
 		return nil, err
 	}
@@ -145,6 +170,16 @@ func validatePermissionTemplateRequest(req PermissionTemplateUpsertRequest) erro
 			return errors.New("permission items must include resource_key and action_key")
 		}
 	}
+	for _, item := range req.MenuItems {
+		if strings.TrimSpace(item.SectionKey) == "" || strings.TrimSpace(item.ModuleKey) == "" {
+			return errors.New("menu items must include section_key and module_key")
+		}
+	}
+	for _, item := range req.DataScopeItems {
+		if strings.TrimSpace(item.ResourceKey) == "" || strings.TrimSpace(item.ScopeType) == "" {
+			return errors.New("data scope items must include resource_key and scope_type")
+		}
+	}
 	return nil
 }
 
@@ -155,23 +190,87 @@ func normalizeTemplateStatus(status int) int {
 	return model.CommonStatusEnabled
 }
 
-func replacePermissionTemplateItemsTx(tx *gorm.DB, profileId int, items []PermissionTemplateItemInput, now int64) error {
+func replacePermissionTemplateItemsTx(tx *gorm.DB, profileId int, req PermissionTemplateUpsertRequest, now int64) error {
 	if err := tx.Where("profile_id = ?", profileId).Delete(&model.PermissionProfileItem{}).Error; err != nil {
 		return err
 	}
-	if len(items) == 0 {
+	if len(req.Items) == 0 && len(req.MenuItems) == 0 && len(req.DataScopeItems) == 0 {
 		return nil
 	}
 
-	createItems := make([]model.PermissionProfileItem, 0, len(items))
-	for _, item := range items {
+	createItems := make([]model.PermissionProfileItem, 0, len(req.Items)+len(req.MenuItems)+len(req.DataScopeItems))
+	for _, item := range req.Items {
 		createItems = append(createItems, model.PermissionProfileItem{
 			ProfileId:   profileId,
 			ResourceKey: item.ResourceKey,
 			ActionKey:   item.ActionKey,
 			Allowed:     item.Allowed,
+			ScopeType:   model.ScopeTypeAll,
 			CreatedAtTs: now,
 		})
 	}
+	for _, item := range req.MenuItems {
+		if !item.Allowed {
+			continue
+		}
+		createItems = append(createItems, model.PermissionProfileItem{
+			ProfileId:   profileId,
+			ResourceKey: permissionTemplateMenuResourcePrefix + item.SectionKey,
+			ActionKey:   item.ModuleKey,
+			Allowed:     true,
+			ScopeType:   model.ScopeTypeAll,
+			CreatedAtTs: now,
+		})
+	}
+	for _, item := range req.DataScopeItems {
+		scopeValueJSON := ""
+		if len(item.ScopeValue) > 0 {
+			data, err := common.Marshal(item.ScopeValue)
+			if err != nil {
+				return err
+			}
+			scopeValueJSON = string(data)
+		}
+		createItems = append(createItems, model.PermissionProfileItem{
+			ProfileId:      profileId,
+			ResourceKey:    item.ResourceKey,
+			ActionKey:      permissionTemplateScopeActionKey,
+			Allowed:        true,
+			ScopeType:      item.ScopeType,
+			ExtraScopeJSON: scopeValueJSON,
+			CreatedAtTs:    now,
+		})
+	}
 	return tx.Create(&createItems).Error
+}
+
+func splitPermissionTemplateItems(items []model.PermissionProfileItem) ([]model.PermissionProfileItem, []PermissionTemplateMenuItemInput, []PermissionTemplateDataScopeItemInput) {
+	actionItems := make([]model.PermissionProfileItem, 0, len(items))
+	menuItems := make([]PermissionTemplateMenuItemInput, 0)
+	dataScopeItems := make([]PermissionTemplateDataScopeItemInput, 0)
+
+	for _, item := range items {
+		switch {
+		case strings.HasPrefix(item.ResourceKey, permissionTemplateMenuResourcePrefix):
+			menuItems = append(menuItems, PermissionTemplateMenuItemInput{
+				SectionKey: strings.TrimPrefix(item.ResourceKey, permissionTemplateMenuResourcePrefix),
+				ModuleKey:  item.ActionKey,
+				Allowed:    item.Allowed,
+			})
+		case item.ActionKey == permissionTemplateScopeActionKey:
+			dataScopeItem := PermissionTemplateDataScopeItemInput{
+				ResourceKey: item.ResourceKey,
+				ScopeType:   item.ScopeType,
+				ScopeValue:  []int{},
+			}
+			if item.ExtraScopeJSON != "" {
+				_ = common.UnmarshalJsonStr(item.ExtraScopeJSON, &dataScopeItem.ScopeValue)
+			}
+			dataScopeItems = append(dataScopeItems, dataScopeItem)
+		default:
+			actionItems = append(actionItems, item)
+		}
+	}
+
+	return actionItems, menuItems, dataScopeItems
 }

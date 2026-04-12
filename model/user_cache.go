@@ -197,6 +197,10 @@ func updateUserQuotaCache(userId int, quota int) error {
 	return common.RedisHSetField(getUserCacheKey(userId), "Quota", fmt.Sprintf("%d", quota))
 }
 
+func InvalidateUserCache(userId int) error {
+	return invalidateUserCache(userId)
+}
+
 func updateUserGroupCache(userId int, group string) error {
 	if !common.RedisEnabled {
 		return nil

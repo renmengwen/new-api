@@ -206,8 +206,109 @@ func TestGetSelfReturnsCompleteSidebarPermissionsForAgentTemplate(t *testing.T) 
 
 	adminSection, ok := sidebar["admin"].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, true, adminSection["enabled"])
-	require.Equal(t, true, adminSection["user"])
+	require.Equal(t, false, adminSection["enabled"])
+	require.Equal(t, false, adminSection["user"])
+}
+
+func TestGetSelfAppliesTemplateMenuVisibilityDefaults(t *testing.T) {
+	db := setupGetSelfTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.PermissionProfile{},
+		&model.PermissionProfileItem{},
+		&model.UserPermissionBinding{},
+	))
+
+	sidebarConfigBytes, err := common.Marshal(map[string]any{
+		"chat": map[string]any{
+			"enabled":    true,
+			"playground": true,
+			"chat":       true,
+		},
+		"console": map[string]any{
+			"enabled":    true,
+			"detail":     true,
+			"token":      true,
+			"log":        true,
+			"midjourney": true,
+			"task":       true,
+		},
+		"personal": map[string]any{
+			"enabled":  true,
+			"topup":    true,
+			"personal": true,
+		},
+		"admin": map[string]any{
+			"enabled":      true,
+			"user":         true,
+			"quota-ledger": false,
+		},
+	})
+	require.NoError(t, err)
+
+	user := model.User{
+		Username:    "agent-template-menu-demo",
+		Password:    "hashed-password",
+		DisplayName: "Agent Template Menu Demo",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		UserType:    model.UserTypeAgent,
+		Setting:     string(sidebarConfigBytes),
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	profile := model.PermissionProfile{
+		ProfileName: "Agent Template Menu",
+		ProfileType: model.UserTypeAgent,
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+		UpdatedAtTs: common.GetTimestamp(),
+	}
+	require.NoError(t, db.Create(&profile).Error)
+	require.NoError(t, db.Create(&model.PermissionProfileItem{
+		ProfileId:   profile.Id,
+		ResourceKey: "user_management",
+		ActionKey:   "read",
+		Allowed:     true,
+		ScopeType:   model.ScopeTypeAll,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	require.NoError(t, db.Create(&model.PermissionProfileItem{
+		ProfileId:   profile.Id,
+		ResourceKey: "__menu__.admin",
+		ActionKey:   "quota-ledger",
+		Allowed:     true,
+		ScopeType:   model.ScopeTypeAll,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	require.NoError(t, db.Create(&model.UserPermissionBinding{
+		UserId:        user.Id,
+		ProfileId:     profile.Id,
+		Status:        model.CommonStatusEnabled,
+		EffectiveFrom: common.GetTimestamp(),
+		CreatedAtTs:   common.GetTimestamp(),
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+	ctx.Set("id", user.Id)
+	ctx.Set("role", user.Role)
+
+	GetSelf(ctx)
+
+	var response getSelfResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+
+	permissions, ok := response.Data["permissions"].(map[string]any)
+	require.True(t, ok)
+	sidebar, ok := permissions["sidebar_modules"].(map[string]any)
+	require.True(t, ok)
+	adminSection, ok := sidebar["admin"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, adminSection["quota-ledger"])
+	require.Equal(t, false, adminSection["user"])
 }
 
 func TestGetSelfTreatsLegacyRootUserTypeAsRoot(t *testing.T) {

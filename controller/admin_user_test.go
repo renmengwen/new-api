@@ -50,7 +50,10 @@ func setupAdminUserTestDB(t *testing.T) *gorm.DB {
 		&model.UserPermissionBinding{},
 		&model.UserDataScopeOverride{},
 		&model.AgentUserRelation{},
+		&model.AgentQuotaPolicy{},
 		&model.QuotaAccount{},
+		&model.QuotaTransferOrder{},
+		&model.QuotaLedger{},
 		&model.AdminAuditLog{},
 	))
 
@@ -269,6 +272,69 @@ func TestGetAdminUsersForAgentAllowsAllScopeOverride(t *testing.T) {
 	require.Len(t, items, 2)
 }
 
+func TestGetAdminUsersForAgentAppliesTemplateAssignedScope(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	agent := seedManagedUser(t, db, "agent_template_scope_operator", model.UserTypeAgent, common.RoleAdminUser, 0, 0)
+	allowed := seedManagedUser(t, db, "allowed_template_scope_user", model.UserTypeEndUser, common.RoleCommonUser, 300, agent.Id)
+	_ = seedManagedUser(t, db, "blocked_template_scope_user", model.UserTypeEndUser, common.RoleCommonUser, 500, agent.Id)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   allowed.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+
+	profile := model.PermissionProfile{
+		ProfileName: "Agent Assigned Scope Template",
+		ProfileType: model.UserTypeAgent,
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+		UpdatedAtTs: common.GetTimestamp(),
+	}
+	require.NoError(t, db.Create(&profile).Error)
+	require.NoError(t, db.Create(&model.PermissionProfileItem{
+		ProfileId:   profile.Id,
+		ResourceKey: service.ResourceUserManagement,
+		ActionKey:   service.ActionRead,
+		Allowed:     true,
+		ScopeType:   model.ScopeTypeAll,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	require.NoError(t, db.Create(&model.PermissionProfileItem{
+		ProfileId:      profile.Id,
+		ResourceKey:    service.ResourceUserManagement,
+		ActionKey:      "__scope__",
+		Allowed:        true,
+		ScopeType:      model.ScopeTypeAssigned,
+		ExtraScopeJSON: "[" + strconv.Itoa(allowed.Id) + "]",
+		CreatedAtTs:    common.GetTimestamp(),
+	}).Error)
+	require.NoError(t, db.Create(&model.UserPermissionBinding{
+		UserId:        agent.Id,
+		ProfileId:     profile.Id,
+		Status:        model.CommonStatusEnabled,
+		EffectiveFrom: common.GetTimestamp(),
+		CreatedAtTs:   common.GetTimestamp(),
+	}).Error)
+
+	ctx, recorder := newAdminUserContext(t, http.MethodGet, "/api/admin/users?p=1&page_size=10", agent.Id, common.RoleAdminUser)
+	GetAdminUsers(ctx)
+
+	var response adminUserPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, 1, response.Data.Total)
+
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+	require.Len(t, items, 1)
+	firstItem, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(allowed.Id), firstItem["id"])
+}
+
 func TestGetAdminUserReturnsQuotaSummary(t *testing.T) {
 	db := setupAdminUserTestDB(t)
 	user := seedManagedUser(t, db, "admin_user_detail", model.UserTypeEndUser, common.RoleCommonUser, 900, 0)
@@ -410,4 +476,123 @@ func TestGetAdminUsersRequiresActionPermissionForAdmin(t *testing.T) {
 	var response adminUserPageResponse
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.False(t, response.Success)
+}
+
+func TestUpdateAdminUserForAgentQuotaDecreaseReturnsBalanceAndCreatesLedger(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	agent := seedManagedUser(t, db, "agent_quota_op", model.UserTypeAgent, common.RoleCommonUser, 200, 0)
+	target := seedManagedUser(t, db, "managed_quota_tgt", model.UserTypeEndUser, common.RoleCommonUser, 140, agent.Id)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   target.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	require.NoError(t, db.Create(&model.AgentQuotaPolicy{
+		AgentUserId:           agent.Id,
+		AllowRechargeUser:     true,
+		AllowReclaimQuota:     true,
+		MaxSingleAdjustAmount: 0,
+		Status:                model.CommonStatusEnabled,
+		UpdatedAtTs:           common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, model.UserTypeAgent,
+		permissionGrant{Resource: "user_management", Action: "update"},
+		permissionGrant{Resource: "quota_management", Action: "adjust"},
+	)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodPut, "/api/admin/users/"+strconv.Itoa(target.Id), map[string]any{
+		"username":     target.Username,
+		"display_name": "after-quota-update",
+		"password":     "",
+		"group":        "vip",
+		"remark":       "quota-adjusted",
+		"email":        "",
+		"quota":        80,
+	}, agent.Id, common.RoleCommonUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(target.Id)}}
+	UpdateAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	agentAccount, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, agent.Id)
+	require.NoError(t, err)
+	targetAccount, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, target.Id)
+	require.NoError(t, err)
+	require.Equal(t, 260, agentAccount.Balance)
+	require.Equal(t, 80, targetAccount.Balance)
+
+	var reloaded model.User
+	require.NoError(t, db.First(&reloaded, target.Id).Error)
+	require.Equal(t, "after-quota-update", reloaded.DisplayName)
+	require.Equal(t, "vip", reloaded.Group)
+	require.Equal(t, "quota-adjusted", reloaded.Remark)
+	require.Equal(t, 80, reloaded.Quota)
+
+	var order model.QuotaTransferOrder
+	require.NoError(t, db.Where("transfer_type = ?", model.TransferTypeAgentReclaim).First(&order).Error)
+
+	var ledgers []model.QuotaLedger
+	require.NoError(t, db.Where("transfer_order_id = ?", order.Id).Order("account_id asc").Find(&ledgers).Error)
+	require.Len(t, ledgers, 2)
+}
+
+func TestUpdateAdminUserForAgentQuotaIncreaseConsumesAgentBalanceAndCreatesLedger(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	agent := seedManagedUser(t, db, "agent_quota_inc", model.UserTypeAgent, common.RoleCommonUser, 200, 0)
+	target := seedManagedUser(t, db, "managed_quota_inc", model.UserTypeEndUser, common.RoleCommonUser, 140, agent.Id)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   target.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	require.NoError(t, db.Create(&model.AgentQuotaPolicy{
+		AgentUserId:           agent.Id,
+		AllowRechargeUser:     true,
+		AllowReclaimQuota:     true,
+		MaxSingleAdjustAmount: 0,
+		Status:                model.CommonStatusEnabled,
+		UpdatedAtTs:           common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, model.UserTypeAgent,
+		permissionGrant{Resource: "user_management", Action: "update"},
+		permissionGrant{Resource: "quota_management", Action: "adjust"},
+	)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodPut, "/api/admin/users/"+strconv.Itoa(target.Id), map[string]any{
+		"username":     target.Username,
+		"display_name": target.DisplayName,
+		"password":     "",
+		"group":        target.Group,
+		"remark":       target.Remark,
+		"email":        "",
+		"quota":        210,
+	}, agent.Id, common.RoleCommonUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(target.Id)}}
+	UpdateAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	agentAccount, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, agent.Id)
+	require.NoError(t, err)
+	targetAccount, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, target.Id)
+	require.NoError(t, err)
+	require.Equal(t, 130, agentAccount.Balance)
+	require.Equal(t, 210, targetAccount.Balance)
+
+	var order model.QuotaTransferOrder
+	require.NoError(t, db.Where("transfer_type = ?", model.TransferTypeAgentRecharge).First(&order).Error)
+
+	var ledgers []model.QuotaLedger
+	require.NoError(t, db.Where("transfer_order_id = ?", order.Id).Order("account_id asc").Find(&ledgers).Error)
+	require.Len(t, ledgers, 2)
 }

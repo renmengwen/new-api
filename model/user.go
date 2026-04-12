@@ -397,17 +397,29 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		return errors.New("邀请额度不足！")
 	}
 
-	// 更新用户额度
+	// 更新邀请额度，并将转出的额度写入主账本
 	user.AffQuota -= quota
+	if err := tx.Model(&User{}).Where("id = ?", user.Id).Update("aff_quota", user.AffQuota).Error; err != nil {
+		return err
+	}
+	if err := applyUserQuotaLedgerTx(tx, userQuotaLedgerInput{
+		UserId:     user.Id,
+		Delta:      quota,
+		EntryType:  LedgerEntryCommission,
+		SourceType: "aff_quota_transfer",
+		SourceId:   user.Id,
+		Reason:     "aff_quota_transfer",
+	}); err != nil {
+		return err
+	}
 	user.Quota += quota
 
-	// 保存用户状态
-	if err := tx.Save(user).Error; err != nil {
+	// 提交事务
+	if err := tx.Commit().Error; err != nil {
 		return err
 	}
 
-	// 提交事务
-	return tx.Commit().Error
+	return updateUserCache(*user)
 }
 
 func (user *User) Insert(inviterId int) error {
@@ -437,6 +449,18 @@ func (user *User) Insert(inviterId int) error {
 	if _, err = InitQuotaAccount(QuotaOwnerTypeUser, user.Id, user.Quota); err != nil {
 		return err
 	}
+	if common.QuotaForNewUser > 0 {
+		if err = appendUserQuotaLedgerSnapshot(userQuotaLedgerInput{
+			UserId:     user.Id,
+			Delta:      common.QuotaForNewUser,
+			EntryType:  LedgerEntryReward,
+			SourceType: "user_register",
+			SourceId:   user.Id,
+			Reason:     "user_register",
+		}, 0, user.Quota); err != nil {
+			return err
+		}
+	}
 
 	// 用户创建成功后，根据角色初始化边栏配置
 	// 需要重新获取用户以确保有正确的ID和Role
@@ -458,7 +482,17 @@ func (user *User) Insert(inviterId int) error {
 	}
 	if inviterId != 0 {
 		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
+			if err = applyUserQuotaLedger(userQuotaLedgerInput{
+				UserId:     user.Id,
+				Delta:      common.QuotaForInvitee,
+				EntryType:  LedgerEntryReward,
+				SourceType: "invitee_register",
+				SourceId:   user.Id,
+				Reason:     "invitee_register",
+			}); err != nil {
+				return err
+			}
+			user.Quota += common.QuotaForInvitee
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
 		if common.QuotaForInviter > 0 {
@@ -519,11 +553,27 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	}
 
 	if common.QuotaForNewUser > 0 {
+		_ = appendUserQuotaLedgerSnapshot(userQuotaLedgerInput{
+			UserId:     user.Id,
+			Delta:      common.QuotaForNewUser,
+			EntryType:  LedgerEntryReward,
+			SourceType: "user_register",
+			SourceId:   user.Id,
+			Reason:     "user_register",
+		}, 0, common.QuotaForNewUser)
 		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
 	if inviterId != 0 {
 		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
+			_ = applyUserQuotaLedger(userQuotaLedgerInput{
+				UserId:     user.Id,
+				Delta:      common.QuotaForInvitee,
+				EntryType:  LedgerEntryReward,
+				SourceType: "invitee_register",
+				SourceId:   user.Id,
+				Reason:     "invitee_register",
+			})
+			user.Quota += common.QuotaForInvitee
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
 		if common.QuotaForInviter > 0 {

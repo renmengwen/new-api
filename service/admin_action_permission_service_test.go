@@ -128,6 +128,47 @@ func TestBuildUserPermissionsMergesMenuOverrides(t *testing.T) {
 	require.Equal(t, false, adminSection["channel"])
 }
 
+func TestBuildUserPermissionsKeepsBaseSidebarWhenTemplateHasNoMenuItems(t *testing.T) {
+	db := setupAdminPermissionServiceTestDB(t)
+
+	user := model.User{
+		Username: "permission_template_inherit_menu_admin",
+		Password: "hashed-password",
+		Role:     common.RoleAdminUser,
+		Status:   common.UserStatusEnabled,
+		UserType: model.UserTypeAdmin,
+		Group:    "default",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	profile := model.PermissionProfile{
+		ProfileName: "Admin No Menu Items",
+		ProfileType: model.UserTypeAdmin,
+		Status:      model.CommonStatusEnabled,
+	}
+	require.NoError(t, db.Create(&profile).Error)
+	require.NoError(t, db.Create(&model.PermissionProfileItem{
+		ProfileId:   profile.Id,
+		ResourceKey: ResourceUserManagement,
+		ActionKey:   ActionRead,
+		Allowed:     true,
+	}).Error)
+	require.NoError(t, db.Create(&model.UserPermissionBinding{
+		UserId:    user.Id,
+		ProfileId: profile.Id,
+		Status:    model.CommonStatusEnabled,
+	}).Error)
+
+	permissions := BuildUserPermissions(user.Id, user.Role)
+	sidebar, ok := permissions["sidebar_modules"].(map[string]any)
+	require.True(t, ok)
+
+	adminSection, ok := sidebar["admin"].(map[string]any)
+	require.True(t, ok)
+	require.NotEqual(t, false, adminSection["enabled"])
+	require.Equal(t, false, adminSection["setting"])
+}
+
 func TestRequirePermissionActionRespectsDenyOverride(t *testing.T) {
 	db := setupAdminPermissionServiceTestDB(t)
 

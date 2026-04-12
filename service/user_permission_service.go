@@ -71,7 +71,7 @@ func ListUserPermissionTargets(pageInfo *common.PageInfo, keyword string, userTy
 
 	query := model.DB.Model(&model.User{}).
 		Select(
-			"users.id, users.username, users.display_name, users.role, users.user_type, users.status, " +
+			"users.id, users.username, users.display_name, users.role, users.user_type, users.status, "+
 				"permission_profiles.id as profile_id, permission_profiles.profile_name, permission_profiles.profile_type",
 		).
 		Joins("LEFT JOIN user_permission_bindings ON user_permission_bindings.user_id = users.id AND user_permission_bindings.status = ?", model.CommonStatusEnabled).
@@ -298,6 +298,14 @@ func buildEffectiveDataScopes(user *model.User, overrides []model.UserDataScopeO
 	scopeMap := map[string]string{
 		ResourceUserManagement:  defaultDataScopeForUserType(user.GetUserType()),
 		ResourceQuotaManagement: defaultDataScopeForUserType(user.GetUserType()),
+	}
+	_, _, _, templateDataScopes, err := getActivePermissionProfileState(user.Id)
+	if err == nil {
+		for resourceKey, scope := range templateDataScopes {
+			if scope.ScopeType != "" {
+				scopeMap[resourceKey] = scope.ScopeType
+			}
+		}
 	}
 	for _, item := range overrides {
 		scopeMap[item.ResourceKey] = item.ScopeType

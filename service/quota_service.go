@@ -49,6 +49,30 @@ type quotaApplyResult struct {
 	AfterAudit      map[string]any
 }
 
+type quotaLedgerEntryInput struct {
+	UserId           int
+	Delta            int
+	EntryType        string
+	SourceType       string
+	SourceId         int
+	OperatorUserId   int
+	OperatorUserType string
+	Reason           string
+	Remark           string
+}
+
+type UserQuotaLedgerEntryInput struct {
+	UserId           int
+	Delta            int
+	EntryType        string
+	SourceType       string
+	SourceId         int
+	OperatorUserId   int
+	OperatorUserType string
+	Reason           string
+	Remark           string
+}
+
 func GetUserQuotaSummary(userId int) (map[string]any, error) {
 	user, err := model.GetUserById(userId, false)
 	if err != nil {
@@ -509,6 +533,129 @@ func reconcileQuotaAccountWithUserQuotaTx(tx *gorm.DB, account *model.QuotaAccou
 		return err
 	}
 	account.Balance = user.Quota
+	return nil
+}
+
+func applyQuotaLedgerEntry(input quotaLedgerEntryInput) error {
+	if input.UserId == 0 || input.Delta == 0 {
+		return nil
+	}
+
+	tx := model.DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	now := common.GetTimestamp()
+	if err := applyQuotaLedgerEntryTx(tx, input, now); err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+
+	if err := model.InvalidateUserCache(input.UserId); err != nil {
+		common.SysLog("failed to invalidate user quota cache: " + err.Error())
+	}
+
+	return nil
+}
+
+func ApplyUserQuotaLedgerEntry(input UserQuotaLedgerEntryInput) error {
+	return applyQuotaLedgerEntry(quotaLedgerEntryInput{
+		UserId:           input.UserId,
+		Delta:            input.Delta,
+		EntryType:        input.EntryType,
+		SourceType:       input.SourceType,
+		SourceId:         input.SourceId,
+		OperatorUserId:   input.OperatorUserId,
+		OperatorUserType: input.OperatorUserType,
+		Reason:           input.Reason,
+		Remark:           input.Remark,
+	})
+}
+
+func applyQuotaLedgerEntryTx(tx *gorm.DB, input quotaLedgerEntryInput, now int64) error {
+	user, err := getUserByIdWithDB(tx, input.UserId)
+	if err != nil {
+		return err
+	}
+
+	account, err := ensureUserQuotaAccountWithDB(tx, input.UserId)
+	if err != nil {
+		return err
+	}
+
+	if err := reconcileQuotaAccountWithUserQuotaTx(tx, account, user, AdjustUserQuotaRequest{
+		OperatorUserId:   input.OperatorUserId,
+		OperatorUserType: input.OperatorUserType,
+		Reason:           input.Reason,
+		Remark:           input.Remark,
+	}, now); err != nil {
+		return err
+	}
+
+	if input.Delta < 0 && account.Balance < -input.Delta {
+		return errors.New("insufficient quota balance")
+	}
+
+	before := account.Balance
+	after := before + input.Delta
+	ledger := &model.QuotaLedger{
+		BizNo:            fmt.Sprintf("ql_%d_%d", now, common.GetRandomInt(1000000)),
+		AccountId:        account.Id,
+		TransferOrderId:  0,
+		EntryType:        input.EntryType,
+		Direction:        model.LedgerDirectionIn,
+		Amount:           absInt(input.Delta),
+		BalanceBefore:    before,
+		BalanceAfter:     after,
+		SourceType:       input.SourceType,
+		SourceId:         input.SourceId,
+		OperatorUserId:   input.OperatorUserId,
+		OperatorUserType: input.OperatorUserType,
+		Reason:           input.Reason,
+		Remark:           input.Remark,
+		CreatedAtTs:      now,
+	}
+	if input.Delta < 0 {
+		ledger.Direction = model.LedgerDirectionOut
+	}
+	if err := tx.Create(ledger).Error; err != nil {
+		return err
+	}
+
+	accountUpdates := map[string]any{
+		"balance":    after,
+		"version":    gorm.Expr("version + 1"),
+		"updated_at": now,
+	}
+	switch input.EntryType {
+	case model.LedgerEntryConsume:
+		accountUpdates["total_consumed"] = gorm.Expr("total_consumed + ?", absInt(input.Delta))
+	case model.LedgerEntryRefund, model.LedgerEntryRecharge, model.LedgerEntryReward, model.LedgerEntryCommission:
+		accountUpdates["total_recharged"] = gorm.Expr("total_recharged + ?", absInt(input.Delta))
+	case model.LedgerEntryAdjust:
+		if input.Delta > 0 {
+			accountUpdates["total_adjusted_in"] = gorm.Expr("total_adjusted_in + ?", input.Delta)
+		} else {
+			accountUpdates["total_adjusted_out"] = gorm.Expr("total_adjusted_out + ?", -input.Delta)
+		}
+	}
+	if err := tx.Model(&model.QuotaAccount{}).Where("id = ?", account.Id).Updates(accountUpdates).Error; err != nil {
+		return err
+	}
+	if err := tx.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", after).Error; err != nil {
+		return err
+	}
+
 	return nil
 }
 

@@ -206,24 +206,24 @@ func GetAdminUserDetail(targetUserId int, operatorUserId int, operatorRole int) 
 	}
 
 	return map[string]any{
-		"id":              user.Id,
-		"username":        user.Username,
-		"display_name":    user.DisplayName,
-		"status":          user.Status,
-		"user_type":       user.GetUserType(),
-		"parent_agent_id": user.ParentAgentId,
-		"group":           user.Group,
-		"phone":           user.Phone,
-		"email":           user.Email,
-		"quota":           user.Quota,
-		"used_quota":      user.UsedQuota,
-		"request_count":   user.RequestCount,
-		"inviter_id":      user.InviterId,
-		"aff_count":       user.AffCount,
+		"id":                user.Id,
+		"username":          user.Username,
+		"display_name":      user.DisplayName,
+		"status":            user.Status,
+		"user_type":         user.GetUserType(),
+		"parent_agent_id":   user.ParentAgentId,
+		"group":             user.Group,
+		"phone":             user.Phone,
+		"email":             user.Email,
+		"quota":             user.Quota,
+		"used_quota":        user.UsedQuota,
+		"request_count":     user.RequestCount,
+		"inviter_id":        user.InviterId,
+		"aff_count":         user.AffCount,
 		"aff_history_quota": user.AffHistoryQuota,
-		"remark":          user.Remark,
-		"last_active_at":  user.LastActiveAt,
-		"quota_summary":   quotaSummary,
+		"remark":            user.Remark,
+		"last_active_at":    user.LastActiveAt,
+		"quota_summary":     quotaSummary,
 	}, nil
 }
 
@@ -243,6 +243,9 @@ func UpdateAdminUserWithOperator(targetUserId int, req UpdateAdminUserRequest, o
 	nextGroup := firstNonEmpty(strings.TrimSpace(req.Group), user.Group, "default")
 	nextRemark := strings.TrimSpace(req.Remark)
 	nextEmail := strings.TrimSpace(req.Email)
+	originalQuota := user.Quota
+	targetQuota := req.Quota
+	quotaChanged := targetQuota != originalQuota
 
 	beforeJSON, _ := common.Marshal(map[string]any{
 		"username":     user.Username,
@@ -266,7 +269,7 @@ func UpdateAdminUserWithOperator(targetUserId int, req UpdateAdminUserRequest, o
 	user.Group = nextGroup
 	user.Remark = nextRemark
 	user.Email = nextEmail
-	user.Quota = req.Quota
+	user.Quota = targetQuota
 
 	updatePassword := strings.TrimSpace(req.Password) != ""
 	if updatePassword {
@@ -276,6 +279,7 @@ func UpdateAdminUserWithOperator(targetUserId int, req UpdateAdminUserRequest, o
 	if err := common.Validate.Struct(user); err != nil {
 		return err
 	}
+	user.Quota = originalQuota
 
 	tx := model.DB.Begin()
 	if tx.Error != nil {
@@ -300,7 +304,6 @@ func UpdateAdminUserWithOperator(targetUserId int, req UpdateAdminUserRequest, o
 		"username":     user.Username,
 		"display_name": user.DisplayName,
 		"group":        user.Group,
-		"quota":        user.Quota,
 		"remark":       user.Remark,
 		"email":        user.Email,
 	}
@@ -311,6 +314,26 @@ func UpdateAdminUserWithOperator(targetUserId int, req UpdateAdminUserRequest, o
 	if err := tx.Model(&model.User{}).Where("id = ?", user.Id).Updates(updates).Error; err != nil {
 		tx.Rollback()
 		return err
+	}
+
+	now := common.GetTimestamp()
+	var quotaResult *quotaApplyResult
+	if quotaChanged {
+		quotaResult, err = applyQuotaAdjustmentTx(tx, operator, user, AdjustUserQuotaRequest{
+			OperatorUserId:   operator.Id,
+			OperatorRole:     operator.Role,
+			OperatorUserType: operator.GetUserType(),
+			TargetUserId:     user.Id,
+			Delta:            targetQuota - originalQuota,
+			Reason:           "managed_user_update",
+			Remark:           nextRemark,
+			IP:               ip,
+		}, "admin_user_update", user.Id, now)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		user.Quota = targetQuota
 	}
 
 	if err := CreateAdminAuditLogTx(tx, AuditLogInput{
@@ -327,6 +350,26 @@ func UpdateAdminUserWithOperator(targetUserId int, req UpdateAdminUserRequest, o
 	}); err != nil {
 		tx.Rollback()
 		return err
+	}
+
+	if quotaChanged && quotaResult != nil {
+		quotaBeforeJSON, _ := common.Marshal(quotaResult.BeforeAudit)
+		quotaAfterJSON, _ := common.Marshal(quotaResult.AfterAudit)
+		if err := CreateAdminAuditLogTx(tx, AuditLogInput{
+			OperatorUserId:   operator.Id,
+			OperatorUserType: operator.GetUserType(),
+			ActionModule:     "quota",
+			ActionType:       "adjust",
+			ActionDesc:       "update managed user quota",
+			TargetType:       "user",
+			TargetId:         user.Id,
+			BeforeJSON:       string(quotaBeforeJSON),
+			AfterJSON:        string(quotaAfterJSON),
+			IP:               ip,
+		}); err != nil {
+			tx.Rollback()
+			return err
+		}
 	}
 
 	return tx.Commit().Error

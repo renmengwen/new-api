@@ -100,9 +100,15 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 			return errors.New("签到失败，请稍后重试")
 		}
 
-		// 步骤2: 在事务中增加用户额度
-		if err := tx.Model(&User{}).Where("id = ?", userId).
-			Update("quota", gorm.Expr("quota + ?", quotaAwarded)).Error; err != nil {
+		// 步骤2: 在事务中增加用户额度并写入账本
+		if err := applyUserQuotaLedgerTx(tx, userQuotaLedgerInput{
+			UserId:     userId,
+			Delta:      quotaAwarded,
+			EntryType:  LedgerEntryReward,
+			SourceType: "checkin_reward",
+			SourceId:   checkin.Id,
+			Reason:     "checkin_reward",
+		}); err != nil {
 			return errors.New("签到失败：更新额度出错")
 		}
 
@@ -129,9 +135,15 @@ func userCheckinWithoutTransaction(checkin *Checkin, userId int, quotaAwarded in
 		return nil, errors.New("签到失败，请稍后重试")
 	}
 
-	// 步骤2: 增加用户额度
-	// 使用 db=true 强制直接写入数据库，不使用批量更新
-	if err := IncreaseUserQuota(userId, quotaAwarded, true); err != nil {
+	// 步骤2: 增加用户额度并写入账本
+	if err := applyUserQuotaLedger(userQuotaLedgerInput{
+		UserId:     userId,
+		Delta:      quotaAwarded,
+		EntryType:  LedgerEntryReward,
+		SourceType: "checkin_reward",
+		SourceId:   checkin.Id,
+		Reason:     "checkin_reward",
+	}); err != nil {
 		// 如果增加额度失败，需要回滚签到记录
 		DB.Delete(checkin)
 		return nil, errors.New("签到失败：更新额度出错")

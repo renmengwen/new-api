@@ -18,7 +18,10 @@ import { API, createCardProPagination, showError, showSuccess, timestamp2string 
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
 import {
+  ADMIN_DATA_SCOPE_RESOURCES,
+  ADMIN_MENU_OPTIONS,
   ADMIN_PERMISSION_RESOURCES,
+  DATA_SCOPE_OPTIONS,
   PERMISSION_PROFILE_TYPE_OPTIONS,
 } from '../AdminConsole/permissionCatalogUiClean';
 
@@ -30,6 +33,8 @@ const emptyTemplateForm = {
   description: '',
   status: 1,
   selectedActions: {},
+  selectedMenus: {},
+  dataScopes: {},
 };
 
 const sectionStyle = {
@@ -63,6 +68,48 @@ const buildSelectedActions = (items = []) => {
       nextState[item.resource_key] = {};
     }
     nextState[item.resource_key][item.action_key] = item.allowed === true;
+  });
+  return nextState;
+};
+
+const buildTemplateMenuPayload = (selectedMenus = {}) =>
+  Object.entries(selectedMenus)
+    .filter(([, checked]) => checked === true)
+    .map(([key]) => {
+      const [section_key, module_key] = key.split('.');
+      return { section_key, module_key, allowed: true };
+    });
+
+const buildSelectedMenus = (items = []) => {
+  const nextState = {};
+  items.forEach((item) => {
+    nextState[`${item.section_key}.${item.module_key}`] = item.allowed === true;
+  });
+  return nextState;
+};
+
+const buildTemplateDataScopePayload = (dataScopes = {}) =>
+  Object.entries(dataScopes)
+    .filter(([, value]) => value?.scopeType && value.scopeType !== 'inherit')
+    .map(([resource_key, value]) => ({
+      resource_key,
+      scope_type: value.scopeType,
+      scope_value:
+        value.scopeType === 'assigned'
+          ? String(value.scopeValue || '')
+              .split(',')
+              .map((item) => Number(item.trim()))
+              .filter((item) => Number.isInteger(item) && item > 0)
+          : [],
+    }));
+
+const buildTemplateDataScopes = (items = []) => {
+  const nextState = {};
+  items.forEach((item) => {
+    nextState[item.resource_key] = {
+      scopeType: item.scope_type || 'inherit',
+      scopeValue: Array.isArray(item.scope_value) ? item.scope_value.join(',') : '',
+    };
   });
   return nextState;
 };
@@ -165,6 +212,8 @@ const AdminPermissionTemplatesPageV2 = () => {
         description: data.profile?.description || '',
         status: data.profile?.status ?? 1,
         selectedActions: buildSelectedActions(data.items || []),
+        selectedMenus: buildSelectedMenus(data.menu_items || []),
+        dataScopes: buildTemplateDataScopes(data.data_scope_items || []),
       });
     } catch (error) {
       showError(error);
@@ -186,6 +235,30 @@ const AdminPermissionTemplatesPageV2 = () => {
     }));
   };
 
+  const handleMenuToggle = (sectionKey, moduleKey, checked) => {
+    setFormState((prev) => ({
+      ...prev,
+      selectedMenus: {
+        ...prev.selectedMenus,
+        [`${sectionKey}.${moduleKey}`]: checked,
+      },
+    }));
+  };
+
+  const handleDataScopeChange = (resourceKey, field, value) => {
+    setFormState((prev) => ({
+      ...prev,
+      dataScopes: {
+        ...prev.dataScopes,
+        [resourceKey]: {
+          scopeType: prev.dataScopes[resourceKey]?.scopeType || 'inherit',
+          scopeValue: prev.dataScopes[resourceKey]?.scopeValue || '',
+          [field]: value,
+        },
+      },
+    }));
+  };
+
   const handleSubmit = async () => {
     if (!formState.profile_name.trim()) {
       showError(t('请输入模板名称'));
@@ -200,6 +273,8 @@ const AdminPermissionTemplatesPageV2 = () => {
         description: formState.description.trim(),
         status: formState.status,
         items: buildTemplateItemsPayload(formState.selectedActions),
+        menu_items: buildTemplateMenuPayload(formState.selectedMenus),
+        data_scope_items: buildTemplateDataScopePayload(formState.dataScopes),
       };
 
       const res = editingTemplate
@@ -378,6 +453,58 @@ const AdminPermissionTemplatesPageV2 = () => {
                   </Space>
                 </div>
               ))}
+            </div>
+          </div>
+          <div style={sectionStyle}>
+            <div className='mb-3 flex flex-col gap-1'>
+              <Text strong>{t('菜单可见性')}</Text>
+              <Text type='tertiary'>{t('勾选模板默认可见的后台菜单，未勾选菜单默认隐藏。')}</Text>
+            </div>
+            <Space wrap spacing={16}>
+              {ADMIN_MENU_OPTIONS.map((item) => (
+                <Checkbox
+                  key={`${item.sectionKey}.${item.moduleKey}`}
+                  checked={Boolean(formState.selectedMenus[`${item.sectionKey}.${item.moduleKey}`])}
+                  onChange={(event) => handleMenuToggle(item.sectionKey, item.moduleKey, event.target.checked)}
+                >
+                  {t(item.label)}
+                </Checkbox>
+              ))}
+            </Space>
+          </div>
+          <div style={sectionStyle}>
+            <div className='mb-3 flex flex-col gap-1'>
+              <Text strong>{t('默认数据范围')}</Text>
+              <Text type='tertiary'>{t('为模板预设用户管理与额度管理的数据范围，绑定后可再做用户级覆盖。')}</Text>
+            </div>
+            <div className='flex flex-col gap-3'>
+              {ADMIN_DATA_SCOPE_RESOURCES.map((resource) => {
+                const currentValue = formState.dataScopes[resource.resourceKey] || {
+                  scopeType: 'inherit',
+                  scopeValue: '',
+                };
+                return (
+                  <div
+                    key={resource.resourceKey}
+                    className='grid gap-3 rounded-xl border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-3 md:grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)]'
+                  >
+                    <div className='flex items-center'>
+                      <Text strong>{t(resource.label)}</Text>
+                    </div>
+                    <Select
+                      value={currentValue.scopeType}
+                      optionList={DATA_SCOPE_OPTIONS}
+                      onChange={(value) => handleDataScopeChange(resource.resourceKey, 'scopeType', value)}
+                    />
+                    <Input
+                      placeholder={t('指定用户 ID，多个用逗号分隔')}
+                      value={currentValue.scopeValue}
+                      disabled={currentValue.scopeType !== 'assigned'}
+                      onChange={(value) => handleDataScopeChange(resource.resourceKey, 'scopeValue', value)}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         </Space>

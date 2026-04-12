@@ -40,6 +40,28 @@ var adminActionCatalog = map[string][]string{
 	ResourceAuditManagement:      {ActionRead},
 }
 
+var adminSidebarModuleCatalog = map[string][]string{
+	"admin": {
+		"user",
+		"admin-users",
+		"agents",
+		"permission-templates",
+		"user-permissions",
+		"quota-ledger",
+		"channel",
+		"subscription",
+		"models",
+		"deployment",
+		"redemption",
+		"setting",
+	},
+}
+
+type permissionProfileDataScope struct {
+	ScopeType  string
+	ScopeValue []int
+}
+
 func RequirePermissionAction(operatorUserId int, operatorRole int, resourceKey string, actionKey string) error {
 	operator, err := ResolveOperatorUser(operatorUserId, operatorRole)
 	if err != nil {
@@ -104,33 +126,49 @@ func BuildUserPermissions(userId int, userRole int) map[string]any {
 	return permissions
 }
 
-func getActivePermissionActionMap(userId int) (*model.PermissionProfile, map[string]bool, error) {
+func getActivePermissionProfileState(userId int) (*model.PermissionProfile, map[string]bool, map[string]map[string]bool, map[string]permissionProfileDataScope, error) {
 	var binding model.UserPermissionBinding
 	err := model.DB.Where("user_id = ? AND status = ?", userId, model.CommonStatusEnabled).
 		Order("id desc").
 		First(&binding).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, map[string]bool{}, nil
+		return nil, map[string]bool{}, map[string]map[string]bool{}, map[string]permissionProfileDataScope{}, nil
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	var profile model.PermissionProfile
 	if err := model.DB.First(&profile, binding.ProfileId).Error; err != nil {
-		return nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	var items []model.PermissionProfileItem
-	if err := model.DB.Where("profile_id = ? AND allowed = ?", profile.Id, true).Find(&items).Error; err != nil {
-		return nil, nil, err
+	if err := model.DB.Where("profile_id = ?", profile.Id).Find(&items).Error; err != nil {
+		return nil, nil, nil, nil, err
 	}
 
 	actionMap := make(map[string]bool, len(items))
+	menuMap := make(map[string]map[string]bool)
+	dataScopeMap := make(map[string]permissionProfileDataScope)
 	for _, item := range items {
-		actionMap[permissionActionKey(item.ResourceKey, item.ActionKey)] = true
+		switch {
+		case strings.HasPrefix(item.ResourceKey, permissionTemplateMenuResourcePrefix):
+			sectionKey := strings.TrimPrefix(item.ResourceKey, permissionTemplateMenuResourcePrefix)
+			if menuMap[sectionKey] == nil {
+				menuMap[sectionKey] = map[string]bool{}
+			}
+			menuMap[sectionKey][item.ActionKey] = item.Allowed
+		case item.ActionKey == permissionTemplateScopeActionKey:
+			dataScopeMap[item.ResourceKey] = permissionProfileDataScope{
+				ScopeType:  item.ScopeType,
+				ScopeValue: parseDataScopeValue(item.ExtraScopeJSON),
+			}
+		case item.Allowed:
+			actionMap[permissionActionKey(item.ResourceKey, item.ActionKey)] = true
+		}
 	}
-	return &profile, actionMap, nil
+	return &profile, actionMap, menuMap, dataScopeMap, nil
 }
 
 func getEffectivePermissionState(userId int) (*model.PermissionProfile, map[string]bool, map[string]any, error) {
@@ -141,10 +179,11 @@ func getEffectivePermissionState(userId int) (*model.PermissionProfile, map[stri
 
 	sidebarModules := buildSidebarModulesBase(user)
 
-	profile, actionMap, err := getActivePermissionActionMap(userId)
+	profile, actionMap, templateMenuMap, _, err := getActivePermissionProfileState(userId)
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	sidebarModules = mergeTemplateMenuModules(sidebarModules, profile, templateMenuMap)
 
 	actionOverrides, err := loadUserPermissionOverrides(userId)
 	if err != nil {
@@ -156,6 +195,32 @@ func getEffectivePermissionState(userId int) (*model.PermissionProfile, map[stri
 	}
 
 	return profile, mergeActionOverrides(actionMap, actionOverrides), mergeMenuOverrides(sidebarModules, menuOverrides), nil
+}
+
+func mergeTemplateMenuModules(sidebarModules map[string]any, profile *model.PermissionProfile, templateMenus map[string]map[string]bool) map[string]any {
+	merged := cloneSidebarModules(sidebarModules)
+	if profile == nil {
+		return merged
+	}
+
+	for sectionKey, knownModules := range adminSidebarModuleCatalog {
+		if len(templateMenus[sectionKey]) == 0 {
+			continue
+		}
+		section := ensureSidebarSection(merged, sectionKey)
+		section["enabled"] = false
+		for _, moduleKey := range knownModules {
+			section[moduleKey] = false
+		}
+		for moduleKey, allowed := range templateMenus[sectionKey] {
+			section[moduleKey] = allowed
+			if allowed {
+				section["enabled"] = true
+			}
+		}
+	}
+
+	return merged
 }
 
 func buildSidebarModulesBase(user *model.User) map[string]any {

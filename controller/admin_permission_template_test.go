@@ -49,6 +49,59 @@ func TestCreatePermissionTemplate(t *testing.T) {
 	require.Equal(t, "user_management", items[0].ResourceKey)
 }
 
+func TestCreatePermissionTemplatePersistsMenuAndDataScopeItems(t *testing.T) {
+	db := setupAdminPermissionTestDB(t)
+
+	ctx, recorder := newAdminPermissionContext(t, http.MethodPost, "/api/admin/permission-templates", map[string]any{
+		"profile_name": "Agent Console Template",
+		"profile_type": model.UserTypeAgent,
+		"description":  "agent template with menu and scope defaults",
+		"status":       model.CommonStatusEnabled,
+		"items": []map[string]any{
+			{
+				"resource_key": "user_management",
+				"action_key":   "read",
+				"allowed":      true,
+			},
+		},
+		"menu_items": []map[string]any{
+			{
+				"section_key": "admin",
+				"module_key":  "quota-ledger",
+				"allowed":     true,
+			},
+		},
+		"data_scope_items": []map[string]any{
+			{
+				"resource_key": "user_management",
+				"scope_type":   model.ScopeTypeAssigned,
+				"scope_value":  []int{101, 202},
+			},
+		},
+	})
+
+	CreatePermissionTemplate(ctx)
+
+	var response adminPermissionAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+
+	menuItems, ok := response.Data["menu_items"].([]any)
+	require.True(t, ok)
+	require.Len(t, menuItems, 1)
+
+	dataScopeItems, ok := response.Data["data_scope_items"].([]any)
+	require.True(t, ok)
+	require.Len(t, dataScopeItems, 1)
+
+	var profile model.PermissionProfile
+	require.NoError(t, db.Where("profile_name = ?", "Agent Console Template").First(&profile).Error)
+
+	var items []model.PermissionProfileItem
+	require.NoError(t, db.Where("profile_id = ?", profile.Id).Order("id asc").Find(&items).Error)
+	require.Len(t, items, 3)
+}
+
 func TestUpdatePermissionTemplate(t *testing.T) {
 	db := setupAdminPermissionTestDB(t)
 
