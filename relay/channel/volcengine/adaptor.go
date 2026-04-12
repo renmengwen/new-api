@@ -326,6 +326,11 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
+	normalizedInput, err := normalizeResponsesInputForVolcEngine(request.Input)
+	if err != nil {
+		return nil, err
+	}
+	request.Input = normalizedInput
 	return request, nil
 }
 
