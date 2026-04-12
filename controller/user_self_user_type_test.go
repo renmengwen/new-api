@@ -122,6 +122,94 @@ func TestGetSelfIncludesActionPermissions(t *testing.T) {
 	require.Equal(t, true, actions["user_management.read"])
 }
 
+func TestGetSelfReturnsCompleteSidebarPermissionsForAgentTemplate(t *testing.T) {
+	db := setupGetSelfTestDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.PermissionProfile{},
+		&model.PermissionProfileItem{},
+		&model.UserPermissionBinding{},
+	))
+
+	sidebarConfigBytes, err := common.Marshal(map[string]any{
+		"chat": map[string]any{
+			"enabled":    true,
+			"playground": true,
+			"chat":       true,
+		},
+		"console": map[string]any{
+			"enabled":    true,
+			"detail":     true,
+			"token":      true,
+			"log":        true,
+			"midjourney": true,
+			"task":       true,
+		},
+		"personal": map[string]any{
+			"enabled":  true,
+			"topup":    true,
+			"personal": true,
+		},
+		"admin": map[string]any{
+			"enabled": true,
+			"user":    true,
+		},
+	})
+	require.NoError(t, err)
+
+	user := model.User{
+		Username:    "agent-sidebar-demo",
+		Password:    "hashed-password",
+		DisplayName: "Agent Sidebar Demo",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		UserType:    model.UserTypeAgent,
+		Setting:     string(sidebarConfigBytes),
+	}
+	require.NoError(t, db.Create(&user).Error)
+	grantPermissionActions(t, db, user.Id, model.UserTypeAgent,
+		permissionGrant{Resource: "quota_management", Action: "adjust"},
+		permissionGrant{Resource: "user_management", Action: "read"},
+	)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+	ctx.Set("id", user.Id)
+	ctx.Set("role", user.Role)
+
+	GetSelf(ctx)
+
+	var response getSelfResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+
+	permissions, ok := response.Data["permissions"].(map[string]any)
+	require.True(t, ok)
+	sidebar, ok := permissions["sidebar_modules"].(map[string]any)
+	require.True(t, ok)
+
+	chatSection, ok := sidebar["chat"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, chatSection["enabled"])
+	require.Equal(t, true, chatSection["chat"])
+
+	consoleSection, ok := sidebar["console"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, consoleSection["enabled"])
+	require.Equal(t, true, consoleSection["token"])
+
+	personalSection, ok := sidebar["personal"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, personalSection["enabled"])
+	require.Equal(t, true, personalSection["personal"])
+
+	adminSection, ok := sidebar["admin"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, adminSection["enabled"])
+	require.Equal(t, true, adminSection["user"])
+}
+
 func TestGetSelfTreatsLegacyRootUserTypeAsRoot(t *testing.T) {
 	db := setupGetSelfTestDB(t)
 	require.NoError(t, db.AutoMigrate(

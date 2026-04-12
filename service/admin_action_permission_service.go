@@ -139,11 +139,7 @@ func getEffectivePermissionState(userId int) (*model.PermissionProfile, map[stri
 		return nil, nil, nil, err
 	}
 
-	baseSidebar := buildLegacySidebarPermissions(user.Role)
-	sidebarModules, _ := baseSidebar["sidebar_modules"].(map[string]any)
-	if sidebarModules == nil {
-		sidebarModules = map[string]any{}
-	}
+	sidebarModules := buildSidebarModulesBase(user)
 
 	profile, actionMap, err := getActivePermissionActionMap(userId)
 	if err != nil {
@@ -160,6 +156,46 @@ func getEffectivePermissionState(userId int) (*model.PermissionProfile, map[stri
 	}
 
 	return profile, mergeActionOverrides(actionMap, actionOverrides), mergeMenuOverrides(sidebarModules, menuOverrides), nil
+}
+
+func buildSidebarModulesBase(user *model.User) map[string]any {
+	if user == nil {
+		return map[string]any{}
+	}
+
+	userSetting := user.GetSetting()
+	if sidebarModules := parseSidebarModules(userSetting.SidebarModules); len(sidebarModules) > 0 {
+		return sidebarModules
+	}
+
+	if user.GetUserType() == model.UserTypeAgent {
+		if sidebarModules := parseSidebarModules(buildAgentSidebarModules()); len(sidebarModules) > 0 {
+			return sidebarModules
+		}
+	}
+
+	baseSidebar := buildLegacySidebarPermissions(user.Role)
+	sidebarModules, _ := baseSidebar["sidebar_modules"].(map[string]any)
+	if sidebarModules == nil {
+		return map[string]any{}
+	}
+	return cloneSidebarModules(sidebarModules)
+}
+
+func parseSidebarModules(raw string) map[string]any {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	var sidebarModules map[string]any
+	if err := common.Unmarshal([]byte(raw), &sidebarModules); err != nil {
+		return nil
+	}
+	if len(sidebarModules) == 0 {
+		return nil
+	}
+	return sidebarModules
 }
 
 func permissionActionKey(resourceKey string, actionKey string) string {
