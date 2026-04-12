@@ -42,6 +42,14 @@ type testResult struct {
 	newAPIError *types.NewAPIError
 }
 
+func resolveChannelTestModelName(channel *model.Channel, modelName string) string {
+	resolvedModel, _, err := helper.ResolveMappedModelName(strings.TrimSpace(modelName), channel.GetModelMapping())
+	if err != nil || strings.TrimSpace(resolvedModel) == "" {
+		return strings.TrimSpace(modelName)
+	}
+	return resolvedModel
+}
+
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
 	normalized := strings.TrimSpace(endpointType)
 	if normalized != "" {
@@ -49,6 +57,9 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	}
 	if strings.HasSuffix(modelName, ratio_setting.CompactModelSuffix) {
 		return string(constant.EndpointTypeOpenAIResponseCompact)
+	}
+	if channel != nil && channel.Type == constant.ChannelTypeVolcEngine && common.IsVolcEngineResponsesModel(modelName) {
+		return string(constant.EndpointTypeOpenAIResponse)
 	}
 	if channel != nil && channel.Type == constant.ChannelTypeCodex {
 		return string(constant.EndpointTypeOpenAIResponse)
@@ -91,7 +102,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 	}
 
-	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
+	resolvedTestModel := resolveChannelTestModelName(channel, testModel)
+
+	endpointType = normalizeChannelTestEndpoint(channel, resolvedTestModel, endpointType)
 
 	requestPath := "/v1/chat/completions"
 
@@ -598,8 +611,15 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 	return message
 }
 
+func buildChannelTestResponsesInput(model string, channel *model.Channel) json.RawMessage {
+	if channel != nil && channel.Type == constant.ChannelTypeVolcEngine && common.IsVolcEngineResponsesModel(resolveChannelTestModelName(channel, model)) {
+		return json.RawMessage(`[{"role":"user","content":[{"type":"input_text","text":"hi"}]}]`)
+	}
+	return json.RawMessage(`[{"role":"user","content":"hi"}]`)
+}
+
 func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
-	testResponsesInput := json.RawMessage(`[{"role":"user","content":"hi"}]`)
+	testResponsesInput := buildChannelTestResponsesInput(model, channel)
 
 	// 根据端点类型构建不同的测试请求
 	if endpointType != "" {
@@ -630,7 +650,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 			// 返回 OpenAIResponsesRequest
 			return &dto.OpenAIResponsesRequest{
 				Model:  model,
-				Input:  json.RawMessage(`[{"role":"user","content":"hi"}]`),
+				Input:  testResponsesInput,
 				Stream: lo.ToPtr(isStream),
 			}
 		case constant.EndpointTypeOpenAIResponseCompact:
@@ -693,10 +713,10 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	}
 
 	// Responses-only models (e.g. codex series)
-	if strings.Contains(strings.ToLower(model), "codex") {
+	if strings.Contains(strings.ToLower(model), "codex") || (channel != nil && channel.Type == constant.ChannelTypeVolcEngine && common.IsVolcEngineResponsesModel(model)) {
 		return &dto.OpenAIResponsesRequest{
 			Model:  model,
-			Input:  json.RawMessage(`[{"role":"user","content":"hi"}]`),
+			Input:  testResponsesInput,
 			Stream: lo.ToPtr(isStream),
 		}
 	}
