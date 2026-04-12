@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
@@ -42,6 +43,77 @@ func GetAdminUser(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, data)
+}
+
+func CreateAdminUser(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceUserManagement, service.ActionCreate) {
+		return
+	}
+
+	var req service.CreateAdminUserRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	user, err := service.CreateAdminUserWithOperator(req, c.GetInt("id"), c.GetInt("role"), c.ClientIP())
+	if err != nil {
+		apiUserInputError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, gin.H{
+		"id":              user.Id,
+		"username":        user.Username,
+		"display_name":    user.DisplayName,
+		"user_type":       user.GetUserType(),
+		"status":          user.Status,
+		"parent_agent_id": user.ParentAgentId,
+	})
+}
+
+func UpdateAdminUser(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceUserManagement, service.ActionUpdate) {
+		return
+	}
+
+	userId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	var req service.UpdateAdminUserRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	if err := service.UpdateAdminUserWithOperator(userId, req, c.GetInt("id"), c.GetInt("role"), c.ClientIP()); err != nil {
+		apiUserInputError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, gin.H{"id": userId})
+}
+
+func DeleteAdminUser(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceUserManagement, service.ActionDelete) {
+		return
+	}
+
+	userId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	if err := service.DeleteAdminUserWithOperator(userId, c.GetInt("id"), c.GetInt("role"), c.ClientIP()); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, gin.H{"id": userId})
 }
 
 func EnableAdminUser(c *gin.Context) {

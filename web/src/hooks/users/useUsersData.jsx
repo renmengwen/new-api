@@ -1,4 +1,4 @@
-/*
+﻿/*
 Copyright (C) 2025 QuantumNous
 
 This program is free software: you can redistribute it and/or modify
@@ -22,10 +22,13 @@ import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+import { normalizeUserPageData, toGroupOptions } from './useUsersData.helpers';
+import { isUserDeleted } from '../../components/table/users/statusHelpers';
 
-export const useUsersData = () => {
+export const useUsersData = (mode = 'legacy') => {
   const { t } = useTranslation();
   const [compactMode, setCompactMode] = useTableCompactMode('users');
+  const isManagedMode = mode === 'managed';
 
   // State management
   const [users, setUsers] = useState([]);
@@ -63,6 +66,10 @@ export const useUsersData = () => {
 
   // Set user format with key field
   const setUserFormat = (users) => {
+    if (!Array.isArray(users)) {
+      setUsers([]);
+      return;
+    }
     for (let i = 0; i < users.length; i++) {
       users[i].key = users[i].id;
     }
@@ -72,13 +79,16 @@ export const useUsersData = () => {
   // Load users data
   const loadUsers = async (startIdx, pageSize) => {
     setLoading(true);
-    const res = await API.get(`/api/user/?p=${startIdx}&page_size=${pageSize}`);
+    const endpoint = isManagedMode
+      ? `/api/admin/users?p=${startIdx}&page_size=${pageSize}`
+      : `/api/user/?p=${startIdx}&page_size=${pageSize}`;
+    const res = await API.get(endpoint);
     const { success, message, data } = res.data;
     if (success) {
-      const newPageData = data.items;
-      setActivePage(data.page);
-      setUserCount(data.total);
-      setUserFormat(newPageData);
+      const normalizedPageData = normalizeUserPageData(data, startIdx);
+      setActivePage(normalizedPageData.page);
+      setUserCount(normalizedPageData.total);
+      setUserFormat(normalizedPageData.items);
     } else {
       showError(message);
     }
@@ -105,15 +115,16 @@ export const useUsersData = () => {
       return;
     }
     setSearching(true);
-    const res = await API.get(
-      `/api/user/search?keyword=${searchKeyword}&group=${searchGroup}&p=${startIdx}&page_size=${pageSize}`,
-    );
+    const endpoint = isManagedMode
+      ? `/api/admin/users?keyword=${encodeURIComponent(searchKeyword)}&p=${startIdx}&page_size=${pageSize}`
+      : `/api/user/search?keyword=${encodeURIComponent(searchKeyword)}&group=${encodeURIComponent(searchGroup)}&p=${startIdx}&page_size=${pageSize}`;
+    const res = await API.get(endpoint);
     const { success, message, data } = res.data;
     if (success) {
-      const newPageData = data.items;
-      setActivePage(data.page);
-      setUserCount(data.total);
-      setUserFormat(newPageData);
+      const normalizedPageData = normalizeUserPageData(data, startIdx);
+      setActivePage(normalizedPageData.page);
+      setUserCount(normalizedPageData.total);
+      setUserFormat(normalizedPageData.items);
     } else {
       showError(message);
     }
@@ -121,9 +132,42 @@ export const useUsersData = () => {
   };
 
   // Manage user operations (promote, demote, enable, disable, delete)
-  const manageUser = async (userId, action, record) => {
+  const manageUser = async (userId, action) => {
     // Trigger loading state to force table re-render
     setLoading(true);
+
+    if (isManagedMode) {
+      let managedRes;
+      if (action === 'enable' || action === 'disable') {
+        managedRes = await API.post(`/api/admin/users/${userId}/${action}`);
+      } else if (action === 'delete') {
+        managedRes = await API.delete(`/api/admin/users/${userId}`);
+      } else {
+        showError(t('当前模式暂不支持此操作'));
+        setLoading(false);
+        return;
+      }
+
+      const { success, message, data } = managedRes.data;
+      if (success) {
+        showSuccess(t('操作已完成'));
+        if (action === 'delete') {
+          setUsers((prev) => prev.filter((u) => u.id !== userId));
+          setUserCount((count) => Math.max(count - 1, 0));
+        } else {
+          setUsers((prev) =>
+            prev.map((u) =>
+              u.id === userId ? { ...u, status: data?.status ?? u.status } : u,
+            ),
+          );
+        }
+      } else {
+        showError(message);
+      }
+
+      setLoading(false);
+      return;
+    }
 
     const res = await API.post('/api/user/manage', {
       id: userId,
@@ -132,7 +176,7 @@ export const useUsersData = () => {
 
     const { success, message } = res.data;
     if (success) {
-      showSuccess(t('操作成功完成！'));
+      showSuccess(t('操作已完成'));
       const user = res.data.data;
 
       // Create a new array and new object to ensure React detects changes
@@ -158,16 +202,20 @@ export const useUsersData = () => {
     if (!user) {
       return;
     }
+    if (isManagedMode) {
+      showError(t('当前模式暂不支持此操作'));
+      return;
+    }
     try {
       const res = await API.delete(`/api/user/${user.id}/reset_passkey`);
       const { success, message } = res.data;
       if (success) {
         showSuccess(t('Passkey 已重置'));
       } else {
-        showError(message || t('操作失败，请重试'));
+        showError(message || t('鎿嶄綔澶辫触锛岃閲嶈瘯'));
       }
     } catch (error) {
-      showError(t('操作失败，请重试'));
+      showError(t('鎿嶄綔澶辫触锛岃閲嶈瘯'));
     }
   };
 
@@ -175,16 +223,20 @@ export const useUsersData = () => {
     if (!user) {
       return;
     }
+    if (isManagedMode) {
+      showError(t('当前模式暂不支持此操作'));
+      return;
+    }
     try {
       const res = await API.delete(`/api/user/${user.id}/2fa`);
       const { success, message } = res.data;
       if (success) {
-        showSuccess(t('二步验证已重置'));
+        showSuccess(t('2FA 已重置'));
       } else {
-        showError(message || t('操作失败，请重试'));
+        showError(message || t('鎿嶄綔澶辫触锛岃閲嶈瘯'));
       }
     } catch (error) {
-      showError(t('操作失败，请重试'));
+      showError(t('鎿嶄綔澶辫触锛岃閲嶈瘯'));
     }
   };
 
@@ -213,7 +265,7 @@ export const useUsersData = () => {
 
   // Handle table row styling for disabled/deleted users
   const handleRow = (record, index) => {
-    if (record.DeletedAt !== null || record.status !== 1) {
+    if (isUserDeleted(record) || record.status !== 1) {
       return {
         style: {
           background: 'var(--semi-color-disabled-border)',
@@ -241,12 +293,7 @@ export const useUsersData = () => {
       if (res === undefined) {
         return;
       }
-      setGroupOptions(
-        res.data.data.map((group) => ({
-          label: group,
-          value: group,
-        })),
-      );
+      setGroupOptions(toGroupOptions(res.data));
     } catch (error) {
       showError(error.message);
     }
@@ -264,15 +311,44 @@ export const useUsersData = () => {
     });
   };
 
+  const createUser = async (values) => {
+    const endpoint = isManagedMode ? '/api/admin/users' : '/api/user/';
+    const res = await API.post(endpoint, values);
+    return res.data;
+  };
+
+  const loadUserDetail = async (userId) => {
+    const endpoint = isManagedMode
+      ? `/api/admin/users/${userId}`
+      : `/api/user/${userId}`;
+    const res = await API.get(endpoint);
+    return res.data;
+  };
+
+  const updateUser = async (userId, values) => {
+    if (isManagedMode) {
+      const res = await API.put(`/api/admin/users/${userId}`, values);
+      return res.data;
+    }
+    const payload = userId ? { ...values, id: parseInt(userId) } : values;
+    const endpoint = userId ? '/api/user/' : '/api/user/self';
+    const res = await API.put(endpoint, payload);
+    return res.data;
+  };
+
   // Initialize data on component mount
   useEffect(() => {
-    loadUsers(0, pageSize)
+    loadUsers(1, pageSize)
       .then()
       .catch((reason) => {
         showError(reason);
       });
-    fetchGroups().then();
-  }, []);
+    if (!isManagedMode) {
+      fetchGroups().then();
+    } else {
+      setGroupOptions([]);
+    }
+  }, [mode]);
 
   return {
     // Data state
@@ -314,8 +390,14 @@ export const useUsersData = () => {
     closeAddUser,
     closeEditUser,
     getFormValues,
+    createUser,
+    loadUserDetail,
+    updateUser,
+    mode,
+    isManagedMode,
 
     // Translation
     t,
   };
 };
+

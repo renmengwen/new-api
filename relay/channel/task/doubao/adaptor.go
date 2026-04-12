@@ -26,14 +26,24 @@ import (
 // ============================
 
 type ContentItem struct {
-	Type     string          `json:"type"`                // "text", "image_url" or "video"
+	Type     string          `json:"type"`                // "text", "image_url", "video_url", "audio_url"
 	Text     string          `json:"text,omitempty"`      // for text type
 	ImageURL *ImageURL       `json:"image_url,omitempty"` // for image_url type
-	Video    *VideoReference `json:"video,omitempty"`     // for video (sample) type
-	Role     string          `json:"role,omitempty"`      // reference_image / first_frame / last_frame
+	VideoURL *VideoURL       `json:"video_url,omitempty"` // for video_url type (Seedance 2.0)
+	AudioURL *AudioURL       `json:"audio_url,omitempty"` // for audio_url type (Seedance 2.0)
+	Video    *VideoReference `json:"video,omitempty"`     // for video (sample) type (旧版兼容)
+	Role     string          `json:"role,omitempty"`      // reference_image / first_frame / last_frame / reference_video / reference_audio
 }
 
 type ImageURL struct {
+	URL string `json:"url"`
+}
+
+type VideoURL struct {
+	URL string `json:"url"`
+}
+
+type AudioURL struct {
 	URL string `json:"url"`
 }
 
@@ -234,6 +244,50 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 				ImageURL: &ImageURL{
 					URL: imgURL,
 				},
+			})
+		}
+	}
+
+	// Add video references from metadata (Seedance 2.0 支持)
+	if req.Metadata != nil {
+		if videos, ok := req.Metadata["videos"].([]interface{}); ok {
+			for _, v := range videos {
+				if videoURL, ok := v.(string); ok && videoURL != "" {
+					r.Content = append(r.Content, ContentItem{
+						Type:     "video_url",
+						VideoURL: &VideoURL{URL: videoURL},
+						Role:     "reference_video",
+					})
+				}
+			}
+		}
+		// 支持单视频字段
+		if videoURL, ok := req.Metadata["video_url"].(string); ok && videoURL != "" {
+			r.Content = append(r.Content, ContentItem{
+				Type:     "video_url",
+				VideoURL: &VideoURL{URL: videoURL},
+				Role:     "reference_video",
+			})
+		}
+
+		// Add audio references from metadata (Seedance 2.0 支持)
+		if audios, ok := req.Metadata["audios"].([]interface{}); ok {
+			for _, a := range audios {
+				if audioURL, ok := a.(string); ok && audioURL != "" {
+					r.Content = append(r.Content, ContentItem{
+						Type:     "audio_url",
+						AudioURL: &AudioURL{URL: audioURL},
+						Role:     "reference_audio",
+					})
+				}
+			}
+		}
+		// 支持单音频字段
+		if audioURL, ok := req.Metadata["audio_url"].(string); ok && audioURL != "" {
+			r.Content = append(r.Content, ContentItem{
+				Type:     "audio_url",
+				AudioURL: &AudioURL{URL: audioURL},
+				Role:     "reference_audio",
 			})
 		}
 	}

@@ -311,7 +311,10 @@ func SetApiRouter(router *gin.Engine) {
 		adminUserRoute.Use(middleware.AdminPlatformAuth())
 		{
 			adminUserRoute.GET("", controller.GetAdminUsers)
+			adminUserRoute.POST("", controller.CreateAdminUser)
 			adminUserRoute.GET("/:id", controller.GetAdminUser)
+			adminUserRoute.PUT("/:id", controller.UpdateAdminUser)
+			adminUserRoute.DELETE("/:id", controller.DeleteAdminUser)
 			adminUserRoute.POST("/:id/enable", controller.EnableAdminUser)
 			adminUserRoute.POST("/:id/disable", controller.DisableAdminUser)
 			adminUserRoute.GET("/:id/quota-summary", controller.GetUserQuotaSummary)

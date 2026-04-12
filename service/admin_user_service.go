@@ -5,17 +5,53 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"gorm.io/gorm"
 )
 
 type AdminUserListItem struct {
-	Id            int    `json:"id"`
-	Username      string `json:"username"`
-	DisplayName   string `json:"display_name"`
-	Status        int    `json:"status"`
-	UserType      string `json:"user_type"`
-	ParentAgentId int    `json:"parent_agent_id"`
-	Quota         int    `json:"quota"`
-	LastActiveAt  int64  `json:"last_active_at"`
+	Id                  int    `json:"id"`
+	Username            string `json:"username"`
+	DisplayName         string `json:"display_name"`
+	Status              int    `json:"status"`
+	UserType            string `json:"user_type"`
+	ParentAgentId       int    `json:"parent_agent_id"`
+	ParentAgentUsername string `json:"parent_agent_username"`
+	Group               string `json:"group"`
+	Quota               int    `json:"quota"`
+	UsedQuota           int    `json:"used_quota"`
+	RequestCount        int    `json:"request_count"`
+	InviterId           int    `json:"inviter_id"`
+	InviterUsername     string `json:"inviter_username"`
+	AffCount            int    `json:"aff_count"`
+	AffHistory          int    `json:"aff_history_quota"`
+	Remark              string `json:"remark"`
+	LastActiveAt        int64  `json:"last_active_at"`
+}
+
+type CreateAdminUserRequest struct {
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
+	Group       string `json:"group"`
+	Remark      string `json:"remark"`
+}
+
+type UpdateAdminUserRequest struct {
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
+	Group       string `json:"group"`
+	Remark      string `json:"remark"`
+	Quota       int    `json:"quota"`
+}
+
+func adminUserGroupSelectExpr() string {
+	if common.UsingPostgreSQL {
+		return `users."group" AS "group"`
+	}
+	return "users.`group` AS `group`"
 }
 
 func ListAdminUsers(pageInfo *common.PageInfo, keyword string, operatorUserId int, operatorRole int) ([]AdminUserListItem, int64, error) {
@@ -28,7 +64,14 @@ func ListAdminUsers(pageInfo *common.PageInfo, keyword string, operatorUserId in
 	var total int64
 
 	query := model.DB.Model(&model.User{}).
-		Select("users.id, users.username, users.display_name, users.status, users.user_type, users.parent_agent_id, users.quota, users.last_active_at")
+		Joins("LEFT JOIN users AS inviter_users ON inviter_users.id = users.inviter_id").
+		Joins("LEFT JOIN users AS parent_agents ON parent_agents.id = users.parent_agent_id").
+		Select(
+			"users.id, users.username, users.display_name, users.status, users.user_type, users.parent_agent_id, " +
+				adminUserGroupSelectExpr() +
+				", parent_agents.username AS parent_agent_username" +
+				", users.quota, users.used_quota, users.request_count, users.inviter_id, inviter_users.username AS inviter_username, users.aff_count, users.aff_history, users.remark, users.last_active_at",
+		)
 	query = ApplyManagedEndUserScope(query, operator)
 	if keyword != "" {
 		like := "%" + strings.TrimSpace(keyword) + "%"
@@ -49,6 +92,99 @@ func ListAdminUsers(pageInfo *common.PageInfo, keyword string, operatorUserId in
 		return nil, 0, err
 	}
 	return items, total, nil
+}
+
+func CreateAdminUserWithOperator(req CreateAdminUserRequest, operatorUserId int, operatorRole int, ip string) (*model.User, error) {
+	operator, err := ResolveOperatorUser(operatorUserId, operatorRole)
+	if err != nil {
+		return nil, err
+	}
+
+	user := &model.User{
+		Username:      strings.TrimSpace(req.Username),
+		Password:      req.Password,
+		DisplayName:   firstNonEmpty(strings.TrimSpace(req.DisplayName), strings.TrimSpace(req.Username)),
+		Role:          common.RoleCommonUser,
+		Status:        common.UserStatusEnabled,
+		UserType:      model.UserTypeEndUser,
+		ParentAgentId: 0,
+		Email:         strings.TrimSpace(req.Email),
+		Group:         firstNonEmpty(strings.TrimSpace(req.Group), "default"),
+		Remark:        strings.TrimSpace(req.Remark),
+	}
+
+	if operator.GetUserType() == model.UserTypeAgent {
+		user.ParentAgentId = operator.Id
+	}
+
+	if err := common.Validate.Struct(user); err != nil {
+		return nil, err
+	}
+
+	tx := model.DB.Begin()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if err := user.InsertWithTx(tx, 0); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	now := common.GetTimestamp()
+	if operator.GetUserType() == model.UserTypeAgent {
+		if err := tx.Model(&model.User{}).Where("id = ?", user.Id).Update("parent_agent_id", operator.Id).Error; err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		user.ParentAgentId = operator.Id
+
+		relation := &model.AgentUserRelation{
+			AgentUserId: operator.Id,
+			EndUserId:   user.Id,
+			BindSource:  "admin_create",
+			BindAt:      now,
+			Status:      model.CommonStatusEnabled,
+			CreatedAtTs: now,
+		}
+		if err := tx.Create(relation).Error; err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+	}
+
+	afterJSON, _ := common.Marshal(map[string]any{
+		"username":        user.Username,
+		"display_name":    user.DisplayName,
+		"user_type":       user.GetUserType(),
+		"parent_agent_id": user.ParentAgentId,
+	})
+	if err := CreateAdminAuditLogTx(tx, AuditLogInput{
+		OperatorUserId:   operator.Id,
+		OperatorUserType: operator.GetUserType(),
+		ActionModule:     ResourceUserManagement,
+		ActionType:       ActionCreate,
+		ActionDesc:       "create managed user",
+		TargetType:       "user",
+		TargetId:         user.Id,
+		AfterJSON:        string(afterJSON),
+		IP:               ip,
+	}); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return nil, err
+	}
+
+	user.FinalizeOAuthUserCreation(0)
+	return user, nil
 }
 
 func GetAdminUserDetail(targetUserId int, operatorUserId int, operatorRole int) (map[string]any, error) {
@@ -76,12 +212,124 @@ func GetAdminUserDetail(targetUserId int, operatorUserId int, operatorRole int) 
 		"status":          user.Status,
 		"user_type":       user.GetUserType(),
 		"parent_agent_id": user.ParentAgentId,
+		"group":           user.Group,
 		"phone":           user.Phone,
 		"email":           user.Email,
 		"quota":           user.Quota,
+		"used_quota":      user.UsedQuota,
+		"request_count":   user.RequestCount,
+		"inviter_id":      user.InviterId,
+		"aff_count":       user.AffCount,
+		"aff_history_quota": user.AffHistoryQuota,
+		"remark":          user.Remark,
 		"last_active_at":  user.LastActiveAt,
 		"quota_summary":   quotaSummary,
 	}, nil
+}
+
+func UpdateAdminUserWithOperator(targetUserId int, req UpdateAdminUserRequest, operatorUserId int, operatorRole int, ip string) error {
+	operator, err := ResolveOperatorUser(operatorUserId, operatorRole)
+	if err != nil {
+		return err
+	}
+
+	user, err := GetManagedEndUser(targetUserId, operator.Id, operator.Role)
+	if err != nil {
+		return err
+	}
+
+	nextUsername := firstNonEmpty(strings.TrimSpace(req.Username), user.Username)
+	nextDisplayName := firstNonEmpty(strings.TrimSpace(req.DisplayName), user.DisplayName, nextUsername)
+	nextGroup := firstNonEmpty(strings.TrimSpace(req.Group), user.Group, "default")
+	nextRemark := strings.TrimSpace(req.Remark)
+	nextEmail := strings.TrimSpace(req.Email)
+
+	beforeJSON, _ := common.Marshal(map[string]any{
+		"username":     user.Username,
+		"display_name": user.DisplayName,
+		"group":        user.Group,
+		"quota":        user.Quota,
+		"remark":       user.Remark,
+		"email":        user.Email,
+	})
+	afterJSON, _ := common.Marshal(map[string]any{
+		"username":     nextUsername,
+		"display_name": nextDisplayName,
+		"group":        nextGroup,
+		"quota":        req.Quota,
+		"remark":       nextRemark,
+		"email":        nextEmail,
+	})
+
+	user.Username = nextUsername
+	user.DisplayName = nextDisplayName
+	user.Group = nextGroup
+	user.Remark = nextRemark
+	user.Email = nextEmail
+	user.Quota = req.Quota
+
+	updatePassword := strings.TrimSpace(req.Password) != ""
+	if updatePassword {
+		user.Password = req.Password
+	}
+
+	if err := common.Validate.Struct(user); err != nil {
+		return err
+	}
+
+	tx := model.DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if updatePassword {
+		hashedPassword, err := common.Password2Hash(user.Password)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		user.Password = hashedPassword
+	}
+
+	updates := map[string]any{
+		"username":     user.Username,
+		"display_name": user.DisplayName,
+		"group":        user.Group,
+		"quota":        user.Quota,
+		"remark":       user.Remark,
+		"email":        user.Email,
+	}
+	if updatePassword {
+		updates["password"] = user.Password
+	}
+
+	if err := tx.Model(&model.User{}).Where("id = ?", user.Id).Updates(updates).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if err := CreateAdminAuditLogTx(tx, AuditLogInput{
+		OperatorUserId:   operator.Id,
+		OperatorUserType: operator.GetUserType(),
+		ActionModule:     ResourceUserManagement,
+		ActionType:       ActionUpdate,
+		ActionDesc:       "update managed user",
+		TargetType:       "user",
+		TargetId:         user.Id,
+		BeforeJSON:       string(beforeJSON),
+		AfterJSON:        string(afterJSON),
+		IP:               ip,
+	}); err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit().Error
 }
 
 func UpdateAdminUserStatus(targetUserId int, status int, operatorUserId int, operatorRole int, ip string) error {
@@ -140,4 +388,46 @@ func UpdateAdminUserStatus(targetUserId int, status int, operatorUserId int, ope
 	}
 
 	return tx.Commit().Error
+}
+
+func DeleteAdminUserWithOperator(targetUserId int, operatorUserId int, operatorRole int, ip string) error {
+	operator, err := ResolveOperatorUser(operatorUserId, operatorRole)
+	if err != nil {
+		return err
+	}
+
+	user, err := GetManagedEndUser(targetUserId, operator.Id, operator.Role)
+	if err != nil {
+		return err
+	}
+
+	beforeJSON, _ := common.Marshal(map[string]any{
+		"username":     user.Username,
+		"display_name": user.DisplayName,
+		"status":       user.Status,
+	})
+
+	if err := user.Delete(); err != nil {
+		return err
+	}
+
+	if err := CreateAdminAuditLog(AuditLogInput{
+		OperatorUserId:   operator.Id,
+		OperatorUserType: operator.GetUserType(),
+		ActionModule:     ResourceUserManagement,
+		ActionType:       ActionDelete,
+		ActionDesc:       "delete managed user",
+		TargetType:       "user",
+		TargetId:         user.Id,
+		BeforeJSON:       string(beforeJSON),
+		IP:               ip,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func IsManagedEndUserNotFound(err error) bool {
+	return err != nil && err == gorm.ErrRecordNotFound
 }

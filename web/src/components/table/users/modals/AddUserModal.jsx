@@ -53,8 +53,10 @@ const AddUserModal = (props) => {
 
   const submit = async (values) => {
     setLoading(true);
-    const res = await API.post(`/api/user/`, values);
-    const { success, message } = res.data;
+    const response = props.createUser
+      ? await props.createUser(values)
+      : (await API.post(`/api/user/`, values)).data;
+    const { success, message } = response;
     if (success) {
       showSuccess(t('用户账户创建成功！'));
       formApiRef.current?.setValues(getInitValues());

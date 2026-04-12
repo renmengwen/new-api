@@ -1,4 +1,4 @@
-export const ADMIN_PERMISSION_RESOURCES = [
+﻿export const ADMIN_PERMISSION_RESOURCES = [
   {
     resourceKey: 'permission_management',
     label: '权限管理',
@@ -22,7 +22,10 @@ export const ADMIN_PERMISSION_RESOURCES = [
     label: '用户管理',
     actions: [
       { actionKey: 'read', label: '查看' },
+      { actionKey: 'create', label: '新增' },
+      { actionKey: 'update', label: '编辑' },
       { actionKey: 'update_status', label: '启停' },
+      { actionKey: 'delete', label: '删除' },
     ],
   },
   {
@@ -45,16 +48,8 @@ export const ADMIN_PERMISSION_RESOURCES = [
 export const ADMIN_MENU_OPTIONS = [
   { sectionKey: 'admin', moduleKey: 'user', label: '用户管理' },
   { sectionKey: 'admin', moduleKey: 'agents', label: '代理商管理' },
-  {
-    sectionKey: 'admin',
-    moduleKey: 'permission-templates',
-    label: '权限模板管理',
-  },
-  {
-    sectionKey: 'admin',
-    moduleKey: 'user-permissions',
-    label: '用户权限管理',
-  },
+  { sectionKey: 'admin', moduleKey: 'permission-templates', label: '权限模板管理' },
+  { sectionKey: 'admin', moduleKey: 'user-permissions', label: '用户权限管理' },
   { sectionKey: 'admin', moduleKey: 'quota-ledger', label: '额度流水' },
   { sectionKey: 'admin', moduleKey: 'channel', label: '渠道管理' },
   { sectionKey: 'admin', moduleKey: 'subscription', label: '订阅管理' },

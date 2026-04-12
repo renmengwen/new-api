@@ -21,7 +21,6 @@ import React from 'react';
 import { Banner, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import UsersTable from '../../components/table/users';
-import ManagedUsersTabEnhanced from './ManagedUsersTabEnhanced';
 import { isAdmin, isRoot } from '../../helpers';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
 
@@ -67,10 +66,15 @@ const User = () => {
 
   return (
     <div className='mt-[60px] px-2'>
-      <ManagedUsersTabEnhanced
-        t={t}
-        canUpdateUserStatus={canUpdateUserStatus}
-        canAdjustQuota={canAdjustQuota}
+      <UsersTable
+        mode='managed'
+        capabilities={{
+          canCreateUser: hasActionPermission('user_management', 'create'),
+          canUpdateUser: hasActionPermission('user_management', 'update'),
+          canUpdateUserStatus: canUpdateUserStatus,
+          canDeleteUser: hasActionPermission('user_management', 'delete'),
+          canAdjustQuota: canAdjustQuota,
+        }}
       />
     </div>
   );

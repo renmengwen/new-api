@@ -593,11 +593,31 @@ func UpdateUser(c *gin.Context) {
 		updatedUser.Password = "" // rollback to what it should be
 	}
 	updatePassword := updatedUser.Password != ""
+	targetQuota := updatedUser.Quota
+	quotaChanged := originUser.Quota != targetQuota
+	if quotaChanged {
+		updatedUser.Quota = originUser.Quota
+	}
 	if err := updatedUser.Edit(updatePassword); err != nil {
 		apiUserInputError(c, err)
 		return
 	}
-	if originUser.Quota != updatedUser.Quota {
+	if quotaChanged {
+		_, err = service.AdjustUserQuotaForTarget(service.AdjustUserQuotaRequest{
+			OperatorUserId: c.GetInt("id"),
+			OperatorRole:   c.GetInt("role"),
+			TargetUserId:   originUser.Id,
+			Delta:          targetQuota - originUser.Quota,
+			Reason:         "legacy_user_update",
+			IP:             c.ClientIP(),
+		}, originUser)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		updatedUser.Quota = targetQuota
+	}
+	if quotaChanged {
 		model.RecordLog(originUser.Id, model.LogTypeManage, fmt.Sprintf("管理员将用户额度从 %s修改为 %s", logger.LogQuota(originUser.Quota), logger.LogQuota(updatedUser.Quota)))
 	}
 	c.JSON(http.StatusOK, gin.H{

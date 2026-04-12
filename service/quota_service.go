@@ -88,21 +88,28 @@ func AdjustUserQuota(req AdjustUserQuotaRequest) (map[string]any, error) {
 		return nil, err
 	}
 
-	account, err := ensureUserQuotaAccount(user.Id)
+	return adjustQuotaForResolvedUser(req, user)
+}
+
+func AdjustUserQuotaForTarget(req AdjustUserQuotaRequest, targetUser *model.User) (map[string]any, error) {
+	if targetUser == nil || targetUser.Id == 0 {
+		return nil, errors.New("target user is required")
+	}
+	if req.Delta == 0 {
+		return nil, errors.New("delta cannot be zero")
+	}
+
+	operator, err := ResolveOperatorUser(req.OperatorUserId, req.OperatorRole)
 	if err != nil {
 		return nil, err
 	}
+	req.OperatorUserType = operator.GetUserType()
+	req.TargetUserId = targetUser.Id
 
-	if req.Delta < 0 && account.Balance < -req.Delta {
-		return nil, errors.New("insufficient quota balance")
-	}
+	return adjustQuotaForResolvedUser(req, targetUser)
+}
 
-	before := account.Balance
-	after := before + req.Delta
-	now := common.GetTimestamp()
-	orderNo := fmt.Sprintf("qto_%d_%d", now, common.GetRandomInt(1000000))
-	bizNo := fmt.Sprintf("ql_%d_%d", now, common.GetRandomInt(1000000))
-
+func adjustQuotaForResolvedUser(req AdjustUserQuotaRequest, user *model.User) (map[string]any, error) {
 	tx := model.DB.Begin()
 	if tx.Error != nil {
 		return nil, tx.Error
@@ -112,6 +119,27 @@ func AdjustUserQuota(req AdjustUserQuotaRequest) (map[string]any, error) {
 			tx.Rollback()
 		}
 	}()
+
+	account, err := ensureUserQuotaAccountWithDB(tx, user.Id)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	now := common.GetTimestamp()
+	if err := reconcileQuotaAccountWithUserQuotaTx(tx, account, user, req, now); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if req.Delta < 0 && account.Balance < -req.Delta {
+		tx.Rollback()
+		return nil, errors.New("insufficient quota balance")
+	}
+
+	before := account.Balance
+	after := before + req.Delta
+	orderNo := fmt.Sprintf("qto_%d_%d", now, common.GetRandomInt(1000000))
+	bizNo := fmt.Sprintf("ql_%d_%d", now, common.GetRandomInt(1000000))
 
 	order := &model.QuotaTransferOrder{
 		OrderNo:          orderNo,
@@ -210,6 +238,75 @@ func AdjustUserQuota(req AdjustUserQuotaRequest) (map[string]any, error) {
 		"order_no":       orderNo,
 		"biz_no":         bizNo,
 	}, nil
+}
+
+func reconcileQuotaAccountWithUserQuotaTx(tx *gorm.DB, account *model.QuotaAccount, user *model.User, req AdjustUserQuotaRequest, now int64) error {
+	if account == nil || user == nil || account.Balance == user.Quota {
+		return nil
+	}
+
+	diff := user.Quota - account.Balance
+	order := &model.QuotaTransferOrder{
+		OrderNo:          fmt.Sprintf("qto_%d_%d", now, common.GetRandomInt(1000000)),
+		FromAccountId:    0,
+		ToAccountId:      account.Id,
+		TransferType:     model.TransferTypeAdminAdjust,
+		Amount:           absInt(diff),
+		Status:           model.CommonStatusEnabled,
+		OperatorUserId:   req.OperatorUserId,
+		OperatorUserType: req.OperatorUserType,
+		Reason:           "sync_with_user_quota",
+		Remark:           req.Remark,
+		CreatedAtTs:      now,
+		CompletedAt:      now,
+	}
+	if diff < 0 {
+		order.FromAccountId = account.Id
+		order.ToAccountId = 0
+	}
+	if err := tx.Create(order).Error; err != nil {
+		return err
+	}
+
+	ledger := &model.QuotaLedger{
+		BizNo:            fmt.Sprintf("ql_%d_%d", now, common.GetRandomInt(1000000)),
+		AccountId:        account.Id,
+		TransferOrderId:  order.Id,
+		EntryType:        model.LedgerEntryAdjust,
+		Direction:        model.LedgerDirectionIn,
+		Amount:           absInt(diff),
+		BalanceBefore:    account.Balance,
+		BalanceAfter:     user.Quota,
+		SourceType:       "quota_reconcile",
+		SourceId:         user.Id,
+		OperatorUserId:   req.OperatorUserId,
+		OperatorUserType: req.OperatorUserType,
+		Reason:           "sync_with_user_quota",
+		Remark:           req.Remark,
+		CreatedAtTs:      now,
+	}
+	if diff < 0 {
+		ledger.Direction = model.LedgerDirectionOut
+	}
+	if err := tx.Create(ledger).Error; err != nil {
+		return err
+	}
+
+	accountUpdates := map[string]any{
+		"balance":    user.Quota,
+		"version":    gorm.Expr("version + 1"),
+		"updated_at": now,
+	}
+	if diff > 0 {
+		accountUpdates["total_adjusted_in"] = gorm.Expr("total_adjusted_in + ?", diff)
+	} else {
+		accountUpdates["total_adjusted_out"] = gorm.Expr("total_adjusted_out + ?", -diff)
+	}
+	if err := tx.Model(&model.QuotaAccount{}).Where("id = ?", account.Id).Updates(accountUpdates).Error; err != nil {
+		return err
+	}
+	account.Balance = user.Quota
+	return nil
 }
 
 func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRole int, userId int, operatorUserId int, entryType string) ([]model.QuotaLedger, int64, error) {

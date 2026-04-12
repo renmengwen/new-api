@@ -27,6 +27,7 @@ import {
   renderQuotaWithPrompt,
   getCurrencyConfig,
 } from '../../../../helpers';
+import { toGroupOptions } from '../../../../hooks/users/useUsersData.helpers';
 import {
   quotaToDisplayAmount,
   displayAmountToQuota,
@@ -92,7 +93,7 @@ const EditUserModal = (props) => {
   const fetchGroups = async () => {
     try {
       let res = await API.get(`/api/group/`);
-      setGroupOptions(res.data.data.map((g) => ({ label: g, value: g })));
+      setGroupOptions(toGroupOptions(res.data));
     } catch (e) {
       showError(e.message);
     }
@@ -102,9 +103,12 @@ const EditUserModal = (props) => {
 
   const loadUser = async () => {
     setLoading(true);
-    const url = userId ? `/api/user/${userId}` : `/api/user/self`;
-    const res = await API.get(url);
-    const { success, message, data } = res.data;
+    const response = userId
+      ? props.loadUserDetail
+        ? await props.loadUserDetail(userId)
+        : (await API.get(`/api/user/${userId}`)).data
+      : (await API.get(`/api/user/self`)).data;
+    const { success, message, data } = response;
     if (success) {
       data.password = '';
       formApiRef.current?.setValues({ ...getInitValues(), ...data });
@@ -137,9 +141,12 @@ const EditUserModal = (props) => {
     if (userId) {
       payload.id = parseInt(userId);
     }
-    const url = userId ? `/api/user/` : `/api/user/self`;
-    const res = await API.put(url, payload);
-    const { success, message } = res.data;
+    const response = props.updateUser
+      ? await props.updateUser(userId, payload)
+      : (
+          await API.put(userId ? `/api/user/` : `/api/user/self`, payload)
+        ).data;
+    const { success, message } = response;
     if (success) {
       showSuccess(t('用户信息更新成功！'));
       props.refresh();
@@ -328,7 +335,7 @@ const EditUserModal = (props) => {
                 )}
 
                 {/* 绑定信息入口 */}
-                {userId && (
+                {userId && props.supportsBindingManagement !== false && (
                   <Card className='!rounded-2xl shadow-sm border-0'>
                     <div className='flex items-center justify-between gap-3'>
                       <div className='flex items-center min-w-0'>

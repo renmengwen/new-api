@@ -1,4 +1,4 @@
-export const ADMIN_PERMISSION_RESOURCES = [
+﻿export const ADMIN_PERMISSION_RESOURCES = [
   {
     resourceKey: 'permission_management',
     label: '权限管理',
@@ -22,7 +22,10 @@ export const ADMIN_PERMISSION_RESOURCES = [
     label: '用户管理',
     actions: [
       { actionKey: 'read', label: '查看' },
+      { actionKey: 'create', label: '新增' },
+      { actionKey: 'update', label: '编辑' },
       { actionKey: 'update_status', label: '启停' },
+      { actionKey: 'delete', label: '删除' },
     ],
   },
   {

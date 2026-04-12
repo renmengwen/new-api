@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -8,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -67,6 +70,26 @@ func newAdminUserContext(t *testing.T, method string, target string, operatorId 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(method, target, nil)
+	ctx.Set("id", operatorId)
+	ctx.Set("role", role)
+	return ctx, recorder
+}
+
+func newAdminUserJSONContext(t *testing.T, method string, target string, body any, operatorId int, role int) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	var req *http.Request
+	if body == nil {
+		req = httptest.NewRequest(method, target, nil)
+	} else {
+		payload, err := common.Marshal(body)
+		require.NoError(t, err)
+		req = httptest.NewRequest(method, target, io.NopCloser(bytes.NewReader(payload)))
+		req.Header.Set("Content-Type", "application/json")
+	}
+	ctx.Request = req
 	ctx.Set("id", operatorId)
 	ctx.Set("role", role)
 	return ctx, recorder
@@ -172,6 +195,43 @@ func TestGetAdminUsersForAgentFiltersOwnedUsers(t *testing.T) {
 	require.Equal(t, float64(owned.Id), firstItem["id"])
 }
 
+func TestGetAdminUsersIncludesInviteOwnerUsernames(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	agent := seedManagedUser(t, db, "agent_parent", model.UserTypeAgent, common.RoleAdminUser, 0, 0)
+	inviter := seedManagedUser(t, db, "direct_inviter", model.UserTypeEndUser, common.RoleCommonUser, 0, 0)
+	owned := seedManagedUser(t, db, "managed_end_user", model.UserTypeEndUser, common.RoleCommonUser, 300, agent.Id)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", owned.Id).Updates(map[string]any{
+		"parent_agent_id": agent.Id,
+		"inviter_id":      inviter.Id,
+	}).Error)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   owned.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, "agent",
+		permissionGrant{Resource: "user_management", Action: "read"},
+	)
+
+	ctx, recorder := newAdminUserContext(t, http.MethodGet, "/api/admin/users?p=1&page_size=10", agent.Id, common.RoleAdminUser)
+	GetAdminUsers(ctx)
+
+	var response adminUserPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, 1, response.Data.Total)
+
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+	firstItem, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "direct_inviter", firstItem["inviter_username"])
+	require.Equal(t, "agent_parent", firstItem["parent_agent_username"])
+}
+
 func TestGetAdminUsersForAgentAllowsAllScopeOverride(t *testing.T) {
 	db := setupAdminUserTestDB(t)
 	agent := seedManagedUser(t, db, "agent_scope_all_operator", model.UserTypeAgent, common.RoleAdminUser, 0, 0)
@@ -245,6 +305,98 @@ func TestUpdateAdminUserStatusWritesAudit(t *testing.T) {
 
 	var audit model.AdminAuditLog
 	require.NoError(t, db.Where("action_module = ? AND action_type = ? AND target_type = ? AND target_id = ?", "user_management", "disable", "user", user.Id).First(&audit).Error)
+}
+
+func TestCreateAdminUserForAgentForcesEndUserAndCreatesBinding(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	agent := seedManagedUser(t, db, "agent_create_operator", model.UserTypeAgent, common.RoleAdminUser, 0, 0)
+	grantPermissionActions(t, db, agent.Id, model.UserTypeAgent,
+		permissionGrant{Resource: service.ResourceUserManagement, Action: service.ActionCreate},
+	)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodPost, "/api/admin/users", map[string]any{
+		"username":     "agent_created_user",
+		"password":     "12345678",
+		"display_name": "Agent Created User",
+		"remark":       "created by agent",
+		"role":         common.RoleAdminUser,
+		"user_type":    model.UserTypeAdmin,
+	}, agent.Id, common.RoleAdminUser)
+
+	CreateAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+
+	var user model.User
+	require.NoError(t, db.Where("username = ?", "agent_created_user").First(&user).Error)
+	require.Equal(t, common.RoleCommonUser, user.Role)
+	require.Equal(t, model.UserTypeEndUser, user.GetUserType())
+	require.Equal(t, agent.Id, user.ParentAgentId)
+
+	var relation model.AgentUserRelation
+	require.NoError(t, db.Where("agent_user_id = ? AND end_user_id = ? AND status = ?", agent.Id, user.Id, model.CommonStatusEnabled).First(&relation).Error)
+
+	var audit model.AdminAuditLog
+	require.NoError(t, db.Where("action_module = ? AND action_type = ? AND target_type = ? AND target_id = ?", service.ResourceUserManagement, service.ActionCreate, "user", user.Id).First(&audit).Error)
+}
+
+func TestUpdateAdminUserForAgentRejectsUserOutsideManagedScope(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	agent := seedManagedUser(t, db, "agent_update_operator", model.UserTypeAgent, common.RoleAdminUser, 0, 0)
+	target := seedManagedUser(t, db, "unmanaged_update_target", model.UserTypeEndUser, common.RoleCommonUser, 120, 0)
+	grantPermissionActions(t, db, agent.Id, model.UserTypeAgent,
+		permissionGrant{Resource: service.ResourceUserManagement, Action: service.ActionUpdate},
+	)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodPut, "/api/admin/users/"+strconv.Itoa(target.Id), map[string]any{
+		"display_name": "Should Fail",
+		"remark":       "forbidden",
+	}, agent.Id, common.RoleAdminUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(target.Id)}}
+
+	UpdateAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+
+	var reloaded model.User
+	require.NoError(t, db.First(&reloaded, target.Id).Error)
+	require.Equal(t, target.DisplayName, reloaded.DisplayName)
+}
+
+func TestDeleteAdminUserForAgentDeletesManagedUser(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	agent := seedManagedUser(t, db, "agent_delete_operator", model.UserTypeAgent, common.RoleAdminUser, 0, 0)
+	target := seedManagedUser(t, db, "managed_delete_target", model.UserTypeEndUser, common.RoleCommonUser, 120, agent.Id)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   target.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, model.UserTypeAgent,
+		permissionGrant{Resource: service.ResourceUserManagement, Action: service.ActionDelete},
+	)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodDelete, "/api/admin/users/"+strconv.Itoa(target.Id), nil, agent.Id, common.RoleAdminUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(target.Id)}}
+
+	DeleteAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+
+	var deleted model.User
+	require.Error(t, db.First(&deleted, target.Id).Error)
+
+	var audit model.AdminAuditLog
+	require.NoError(t, db.Where("action_module = ? AND action_type = ? AND target_type = ? AND target_id = ?", service.ResourceUserManagement, service.ActionDelete, "user", target.Id).First(&audit).Error)
 }
 
 func TestGetAdminUsersRequiresActionPermissionForAdmin(t *testing.T) {

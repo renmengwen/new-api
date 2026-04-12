@@ -29,9 +29,35 @@ import { useUsersData } from '../../../hooks/users/useUsersData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
 
-const UsersPage = () => {
-  const usersData = useUsersData();
+const UsersPage = ({ mode = 'legacy', capabilities = {} }) => {
+  const usersData = useUsersData(mode);
   const isMobile = useIsMobile();
+  const isManagedMode = mode === 'managed';
+  const effectiveCapabilities = isManagedMode
+    ? {
+        canCreateUser: capabilities.canCreateUser === true,
+        canUpdateUser: capabilities.canUpdateUser === true,
+        canUpdateUserStatus: capabilities.canUpdateUserStatus === true,
+        canDeleteUser: capabilities.canDeleteUser === true,
+        canPromoteUser: false,
+        canDemoteUser: false,
+        canResetPasskey: false,
+        canResetTwoFA: false,
+        canManageSubscriptions: false,
+        canManageBindings: false,
+      }
+    : {
+        canCreateUser: true,
+        canUpdateUser: true,
+        canUpdateUserStatus: true,
+        canDeleteUser: true,
+        canPromoteUser: true,
+        canDemoteUser: true,
+        canResetPasskey: true,
+        canResetTwoFA: true,
+        canManageSubscriptions: true,
+        canManageBindings: true,
+      };
 
   const {
     // Modal state
@@ -68,6 +94,7 @@ const UsersPage = () => {
         refresh={refresh}
         visible={showAddUser}
         handleClose={closeAddUser}
+        createUser={usersData.createUser}
       />
 
       <EditUserModal
@@ -75,6 +102,9 @@ const UsersPage = () => {
         visible={showEditUser}
         handleClose={closeEditUser}
         editingUser={editingUser}
+        loadUserDetail={usersData.loadUserDetail}
+        updateUser={usersData.updateUser}
+        supportsBindingManagement={effectiveCapabilities.canManageBindings}
       />
 
       <CardPro
@@ -88,7 +118,11 @@ const UsersPage = () => {
         }
         actionsArea={
           <div className='flex flex-col md:flex-row justify-between items-center gap-2 w-full'>
-            <UsersActions setShowAddUser={setShowAddUser} t={t} />
+            <UsersActions
+              setShowAddUser={setShowAddUser}
+              canCreateUser={effectiveCapabilities.canCreateUser}
+              t={t}
+            />
 
             <UsersFilters
               formInitValues={formInitValues}
@@ -100,6 +134,7 @@ const UsersPage = () => {
               groupOptions={groupOptions}
               loading={loading}
               searching={searching}
+              showGroupFilter={!isManagedMode}
               t={t}
             />
           </div>
@@ -115,7 +150,7 @@ const UsersPage = () => {
         })}
         t={usersData.t}
       >
-        <UsersTable {...usersData} />
+        <UsersTable {...usersData} capabilities={effectiveCapabilities} />
       </CardPro>
     </>
   );
