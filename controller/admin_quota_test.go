@@ -50,6 +50,7 @@ func setupAdminQuotaTestDB(t *testing.T) *gorm.DB {
 		&model.UserPermissionBinding{},
 		&model.UserDataScopeOverride{},
 		&model.AgentUserRelation{},
+		&model.AgentQuotaPolicy{},
 		&model.QuotaAccount{},
 		&model.QuotaTransferOrder{},
 		&model.QuotaLedger{},
@@ -288,12 +289,20 @@ func TestAdjustUserQuotaBatchReturnsPartialSuccessDetails(t *testing.T) {
 
 func TestAgentCannotReadOrAdjustUnownedUserQuota(t *testing.T) {
 	db := setupAdminQuotaTestDB(t)
-	agent := seedQuotaUser(t, db, "quota_agent_operator", 0)
+	agent := seedQuotaUser(t, db, "quota_agent_operator", 200)
 	agent.Role = common.RoleAdminUser
 	agent.UserType = model.UserTypeAgent
 	require.NoError(t, db.Model(&model.User{}).Where("id = ?", agent.Id).Updates(map[string]any{
 		"role":      agent.Role,
 		"user_type": agent.UserType,
+	}).Error)
+	require.NoError(t, db.Create(&model.AgentQuotaPolicy{
+		AgentUserId:           agent.Id,
+		AllowRechargeUser:     true,
+		AllowReclaimQuota:     true,
+		MaxSingleAdjustAmount: 0,
+		Status:                model.CommonStatusEnabled,
+		UpdatedAtTs:           common.GetTimestamp(),
 	}).Error)
 
 	ownedUser := seedQuotaUser(t, db, "quota_owned_user", 400)
@@ -341,6 +350,246 @@ func TestAgentCannotReadOrAdjustUnownedUserQuota(t *testing.T) {
 	var ownedAdjustResponse adminQuotaAPIResponse
 	require.NoError(t, common.Unmarshal(ownedAdjustRecorder.Body.Bytes(), &ownedAdjustResponse))
 	require.True(t, ownedAdjustResponse.Success)
+}
+
+func TestAgentAdjustUserQuotaRejectsWhenRechargeExceedsAgentBalance(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	agent := seedQuotaUser(t, db, "agent_balance_guard", 80)
+	agent.Role = common.RoleAdminUser
+	agent.UserType = model.UserTypeAgent
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", agent.Id).Updates(map[string]any{
+		"role":      agent.Role,
+		"user_type": agent.UserType,
+	}).Error)
+	require.NoError(t, db.Create(&model.AgentQuotaPolicy{
+		AgentUserId:           agent.Id,
+		AllowRechargeUser:     true,
+		AllowReclaimQuota:     true,
+		MaxSingleAdjustAmount: 0,
+		Status:                model.CommonStatusEnabled,
+		UpdatedAtTs:           common.GetTimestamp(),
+	}).Error)
+
+	target := seedQuotaUser(t, db, "agent_balance_guard_target", 20)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", target.Id).Update("parent_agent_id", agent.Id).Error)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   target.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, "agent",
+		permissionGrant{Resource: "quota_management", Action: "adjust"},
+	)
+
+	ctx, recorder := newAdminQuotaContextWithOperator(t, http.MethodPost, "/api/admin/quota/adjust", map[string]any{
+		"target_user_id": target.Id,
+		"delta":          100,
+		"reason":         "agent_adjust",
+	}, agent.Id, common.RoleAdminUser)
+	AdjustUserQuota(ctx)
+
+	var response adminQuotaAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+	require.Contains(t, response.Message, "insufficient agent quota balance")
+}
+
+func TestAgentAdjustUserQuotaTransfersBalanceAndCreatesDualLedger(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	agent := seedQuotaUser(t, db, "agent_transfer_operator", 500)
+	agent.Role = common.RoleAdminUser
+	agent.UserType = model.UserTypeAgent
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", agent.Id).Updates(map[string]any{
+		"role":      agent.Role,
+		"user_type": agent.UserType,
+	}).Error)
+	require.NoError(t, db.Create(&model.AgentQuotaPolicy{
+		AgentUserId:           agent.Id,
+		AllowRechargeUser:     true,
+		AllowReclaimQuota:     true,
+		MaxSingleAdjustAmount: 0,
+		Status:                model.CommonStatusEnabled,
+		UpdatedAtTs:           common.GetTimestamp(),
+	}).Error)
+
+	target := seedQuotaUser(t, db, "agent_transfer_target", 100)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", target.Id).Update("parent_agent_id", agent.Id).Error)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   target.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, "agent",
+		permissionGrant{Resource: "quota_management", Action: "adjust"},
+	)
+
+	ctx, recorder := newAdminQuotaContextWithOperator(t, http.MethodPost, "/api/admin/quota/adjust", map[string]any{
+		"target_user_id": target.Id,
+		"delta":          120,
+		"reason":         "agent_adjust",
+	}, agent.Id, common.RoleAdminUser)
+	AdjustUserQuota(ctx)
+
+	var response adminQuotaAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+
+	agentAccount, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, agent.Id)
+	require.NoError(t, err)
+	targetAccount, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, target.Id)
+	require.NoError(t, err)
+	require.Equal(t, 380, agentAccount.Balance)
+	require.Equal(t, 220, targetAccount.Balance)
+
+	var order model.QuotaTransferOrder
+	require.NoError(t, db.Where("transfer_type = ?", model.TransferTypeAgentRecharge).First(&order).Error)
+
+	var ledgers []model.QuotaLedger
+	require.NoError(t, db.Where("transfer_order_id = ?", order.Id).Order("account_id asc").Find(&ledgers).Error)
+	require.Len(t, ledgers, 2)
+	require.Equal(t, model.LedgerDirectionOut, ledgers[0].Direction)
+	require.Equal(t, agentAccount.Id, ledgers[0].AccountId)
+	require.Equal(t, 500, ledgers[0].BalanceBefore)
+	require.Equal(t, 380, ledgers[0].BalanceAfter)
+	require.Equal(t, model.LedgerDirectionIn, ledgers[1].Direction)
+	require.Equal(t, targetAccount.Id, ledgers[1].AccountId)
+	require.Equal(t, 100, ledgers[1].BalanceBefore)
+	require.Equal(t, 220, ledgers[1].BalanceAfter)
+}
+
+func TestAgentReclaimQuotaReturnsBalanceAndCreatesDualLedger(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	agent := seedQuotaUser(t, db, "agent_reclaim_operator", 200)
+	agent.Role = common.RoleAdminUser
+	agent.UserType = model.UserTypeAgent
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", agent.Id).Updates(map[string]any{
+		"role":      agent.Role,
+		"user_type": agent.UserType,
+	}).Error)
+	require.NoError(t, db.Create(&model.AgentQuotaPolicy{
+		AgentUserId:           agent.Id,
+		AllowRechargeUser:     true,
+		AllowReclaimQuota:     true,
+		MaxSingleAdjustAmount: 0,
+		Status:                model.CommonStatusEnabled,
+		UpdatedAtTs:           common.GetTimestamp(),
+	}).Error)
+
+	target := seedQuotaUser(t, db, "agent_reclaim_target", 140)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", target.Id).Update("parent_agent_id", agent.Id).Error)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   target.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, "agent",
+		permissionGrant{Resource: "quota_management", Action: "adjust"},
+	)
+
+	ctx, recorder := newAdminQuotaContextWithOperator(t, http.MethodPost, "/api/admin/quota/adjust", map[string]any{
+		"target_user_id": target.Id,
+		"delta":          -60,
+		"reason":         "agent_reclaim",
+	}, agent.Id, common.RoleAdminUser)
+	AdjustUserQuota(ctx)
+
+	var response adminQuotaAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+
+	agentAccount, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, agent.Id)
+	require.NoError(t, err)
+	targetAccount, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, target.Id)
+	require.NoError(t, err)
+	require.Equal(t, 260, agentAccount.Balance)
+	require.Equal(t, 80, targetAccount.Balance)
+
+	var order model.QuotaTransferOrder
+	require.NoError(t, db.Where("transfer_type = ?", model.TransferTypeAgentReclaim).First(&order).Error)
+
+	var ledgers []model.QuotaLedger
+	require.NoError(t, db.Where("transfer_order_id = ?", order.Id).Order("account_id asc").Find(&ledgers).Error)
+	require.Len(t, ledgers, 2)
+	require.Equal(t, model.LedgerDirectionIn, ledgers[0].Direction)
+	require.Equal(t, agentAccount.Id, ledgers[0].AccountId)
+	require.Equal(t, 200, ledgers[0].BalanceBefore)
+	require.Equal(t, 260, ledgers[0].BalanceAfter)
+	require.Equal(t, model.LedgerDirectionOut, ledgers[1].Direction)
+	require.Equal(t, targetAccount.Id, ledgers[1].AccountId)
+	require.Equal(t, 140, ledgers[1].BalanceBefore)
+	require.Equal(t, 80, ledgers[1].BalanceAfter)
+}
+
+func TestAgentAdjustUserQuotaBatchTransfersQuotaWithPartialFailures(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	agent := seedQuotaUser(t, db, "agent_batch_operator", 150)
+	agent.Role = common.RoleAdminUser
+	agent.UserType = model.UserTypeAgent
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", agent.Id).Updates(map[string]any{
+		"role":      agent.Role,
+		"user_type": agent.UserType,
+	}).Error)
+	require.NoError(t, db.Create(&model.AgentQuotaPolicy{
+		AgentUserId:           agent.Id,
+		AllowRechargeUser:     true,
+		AllowReclaimQuota:     true,
+		MaxSingleAdjustAmount: 0,
+		Status:                model.CommonStatusEnabled,
+		UpdatedAtTs:           common.GetTimestamp(),
+	}).Error)
+
+	userA := seedQuotaUser(t, db, "agent_batch_target_a", 20)
+	userB := seedQuotaUser(t, db, "agent_batch_target_b", 30)
+	for _, target := range []model.User{userA, userB} {
+		require.NoError(t, db.Model(&model.User{}).Where("id = ?", target.Id).Update("parent_agent_id", agent.Id).Error)
+		require.NoError(t, db.Create(&model.AgentUserRelation{
+			AgentUserId: agent.Id,
+			EndUserId:   target.Id,
+			BindSource:  "manual",
+			BindAt:      common.GetTimestamp(),
+			Status:      model.CommonStatusEnabled,
+			CreatedAtTs: common.GetTimestamp(),
+		}).Error)
+	}
+	grantPermissionActions(t, db, agent.Id, "agent",
+		permissionGrant{Resource: "quota_management", Action: "adjust_batch"},
+	)
+
+	ctx, recorder := newAdminQuotaContextWithOperator(t, http.MethodPost, "/api/admin/quota/adjust/batch", map[string]any{
+		"target_user_ids": []int{userA.Id, userB.Id},
+		"delta":           100,
+		"reason":          "agent_batch_adjust",
+	}, agent.Id, common.RoleAdminUser)
+	AdjustUserQuotaBatch(ctx)
+
+	var response adminQuotaAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, float64(1), response.Data["success_count"])
+	require.Equal(t, float64(1), response.Data["failed_count"])
+
+	agentAccount, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, agent.Id)
+	require.NoError(t, err)
+	accountA, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, userA.Id)
+	require.NoError(t, err)
+	accountB, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, userB.Id)
+	require.NoError(t, err)
+	require.Equal(t, 50, agentAccount.Balance)
+	require.Equal(t, 120, accountA.Balance)
+	require.Equal(t, 30, accountB.Balance)
+
+	var ledgers []model.QuotaLedger
+	require.NoError(t, db.Order("id asc").Find(&ledgers).Error)
+	require.Len(t, ledgers, 2)
 }
 
 func TestAgentQuotaScopeOverrideAllAllowsUnownedUserQuota(t *testing.T) {
@@ -443,6 +692,69 @@ func TestAgentQuotaLedgerOnlyReturnsOwnedUsers(t *testing.T) {
 	firstItem, ok := items[0].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, float64(ownedAccount.Id), firstItem["account_id"])
+}
+
+func TestAgentQuotaLedgerIncludesOwnAccountEntries(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	agent := seedQuotaUser(t, db, "ledger_agent_self", 300)
+	agent.Role = common.RoleAdminUser
+	agent.UserType = model.UserTypeAgent
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", agent.Id).Updates(map[string]any{
+		"role":      agent.Role,
+		"user_type": agent.UserType,
+	}).Error)
+
+	ownedUser := seedQuotaUser(t, db, "ledger_agent_self_owned", 100)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", ownedUser.Id).Update("parent_agent_id", agent.Id).Error)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   ownedUser.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, "agent",
+		permissionGrant{Resource: "quota_management", Action: "ledger_read"},
+	)
+
+	agentAccount, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, agent.Id)
+	require.NoError(t, err)
+	ownedAccount, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, ownedUser.Id)
+	require.NoError(t, err)
+
+	require.NoError(t, db.Create(&model.QuotaLedger{
+		BizNo:            "agent_self_ledger_1",
+		AccountId:        agentAccount.Id,
+		EntryType:        model.LedgerEntryAdjust,
+		Direction:        model.LedgerDirectionOut,
+		Amount:           50,
+		BalanceBefore:    300,
+		BalanceAfter:     250,
+		OperatorUserId:   agent.Id,
+		OperatorUserType: model.UserTypeAgent,
+		CreatedAtTs:      common.GetTimestamp(),
+	}).Error)
+	require.NoError(t, db.Create(&model.QuotaLedger{
+		BizNo:            "agent_owned_ledger_1",
+		AccountId:        ownedAccount.Id,
+		EntryType:        model.LedgerEntryAdjust,
+		Direction:        model.LedgerDirectionIn,
+		Amount:           50,
+		BalanceBefore:    100,
+		BalanceAfter:     150,
+		OperatorUserId:   agent.Id,
+		OperatorUserType: model.UserTypeAgent,
+		CreatedAtTs:      common.GetTimestamp(),
+	}).Error)
+
+	listCtx, recorder := newAdminQuotaContextWithOperator(t, http.MethodGet, "/api/admin/quota/ledger?p=1&page_size=10", nil, agent.Id, common.RoleAdminUser)
+	GetQuotaLedger(listCtx)
+
+	var response adminQuotaPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, 2, response.Data.Total)
 }
 
 func TestAdjustUserQuotaRequiresActionPermissionForAdmin(t *testing.T) {

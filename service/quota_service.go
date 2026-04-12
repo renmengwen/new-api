@@ -37,6 +37,18 @@ type QuotaBatchFailureItem struct {
 	ErrorMessage string `json:"error_message"`
 }
 
+type quotaApplyResult struct {
+	TargetUserId    int
+	TargetAccountId int
+	TargetBefore    int
+	TargetAfter     int
+	OrderNo         string
+	BizNo           string
+	TargetLedgerId  int
+	BeforeAudit     map[string]any
+	AfterAudit      map[string]any
+}
+
 func GetUserQuotaSummary(userId int) (map[string]any, error) {
 	user, err := model.GetUserById(userId, false)
 	if err != nil {
@@ -88,7 +100,7 @@ func AdjustUserQuota(req AdjustUserQuotaRequest) (map[string]any, error) {
 		return nil, err
 	}
 
-	return adjustQuotaForResolvedUser(req, user)
+	return adjustQuotaForResolvedUser(req, operator, user, "admin_quota_adjust", user.Id)
 }
 
 func AdjustUserQuotaForTarget(req AdjustUserQuotaRequest, targetUser *model.User) (map[string]any, error) {
@@ -106,10 +118,10 @@ func AdjustUserQuotaForTarget(req AdjustUserQuotaRequest, targetUser *model.User
 	req.OperatorUserType = operator.GetUserType()
 	req.TargetUserId = targetUser.Id
 
-	return adjustQuotaForResolvedUser(req, targetUser)
+	return adjustQuotaForResolvedUser(req, operator, targetUser, "admin_quota_adjust", targetUser.Id)
 }
 
-func adjustQuotaForResolvedUser(req AdjustUserQuotaRequest, user *model.User) (map[string]any, error) {
+func adjustQuotaForResolvedUser(req AdjustUserQuotaRequest, operator *model.User, user *model.User, sourceType string, sourceId int) (map[string]any, error) {
 	tx := model.DB.Begin()
 	if tx.Error != nil {
 		return nil, tx.Error
@@ -120,19 +132,61 @@ func adjustQuotaForResolvedUser(req AdjustUserQuotaRequest, user *model.User) (m
 		}
 	}()
 
-	account, err := ensureUserQuotaAccountWithDB(tx, user.Id)
+	now := common.GetTimestamp()
+	result, err := applyQuotaAdjustmentTx(tx, operator, user, req, sourceType, sourceId, now)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
 	}
 
-	now := common.GetTimestamp()
-	if err := reconcileQuotaAccountWithUserQuotaTx(tx, account, user, req, now); err != nil {
+	beforeJSON, _ := common.Marshal(result.BeforeAudit)
+	afterJSON, _ := common.Marshal(result.AfterAudit)
+	auditErr := CreateAdminAuditLogTx(tx, AuditLogInput{
+		OperatorUserId:   req.OperatorUserId,
+		OperatorUserType: req.OperatorUserType,
+		ActionModule:     "quota",
+		ActionType:       "adjust",
+		ActionDesc:       req.Reason,
+		TargetType:       "user",
+		TargetId:         result.TargetUserId,
+		BeforeJSON:       string(beforeJSON),
+		AfterJSON:        string(afterJSON),
+		IP:               req.IP,
+	})
+	if auditErr != nil {
 		tx.Rollback()
+		return nil, auditErr
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"target_user_id": result.TargetUserId,
+		"balance_before": result.TargetBefore,
+		"balance_after":  result.TargetAfter,
+		"order_no":       result.OrderNo,
+		"biz_no":         result.BizNo,
+	}, nil
+}
+
+func applyQuotaAdjustmentTx(tx *gorm.DB, operator *model.User, targetUser *model.User, req AdjustUserQuotaRequest, sourceType string, sourceId int, now int64) (*quotaApplyResult, error) {
+	if operator != nil && operator.GetUserType() == model.UserTypeAgent {
+		return applyAgentQuotaTransferTx(tx, operator, targetUser, req, sourceType, sourceId, now)
+	}
+	return applyAdminQuotaAdjustmentTx(tx, targetUser, req, sourceType, sourceId, now)
+}
+
+func applyAdminQuotaAdjustmentTx(tx *gorm.DB, user *model.User, req AdjustUserQuotaRequest, sourceType string, sourceId int, now int64) (*quotaApplyResult, error) {
+	account, err := ensureUserQuotaAccountWithDB(tx, user.Id)
+	if err != nil {
+		return nil, err
+	}
+	if err := reconcileQuotaAccountWithUserQuotaTx(tx, account, user, req, now); err != nil {
 		return nil, err
 	}
 	if req.Delta < 0 && account.Balance < -req.Delta {
-		tx.Rollback()
 		return nil, errors.New("insufficient quota balance")
 	}
 
@@ -160,7 +214,6 @@ func adjustQuotaForResolvedUser(req AdjustUserQuotaRequest, user *model.User) (m
 		order.ToAccountId = 0
 	}
 	if err := tx.Create(order).Error; err != nil {
-		tx.Rollback()
 		return nil, err
 	}
 
@@ -173,8 +226,8 @@ func adjustQuotaForResolvedUser(req AdjustUserQuotaRequest, user *model.User) (m
 		Amount:           absInt(req.Delta),
 		BalanceBefore:    before,
 		BalanceAfter:     after,
-		SourceType:       "admin_quota_adjust",
-		SourceId:         user.Id,
+		SourceType:       sourceType,
+		SourceId:         sourceId,
 		OperatorUserId:   req.OperatorUserId,
 		OperatorUserType: req.OperatorUserType,
 		Reason:           req.Reason,
@@ -185,7 +238,6 @@ func adjustQuotaForResolvedUser(req AdjustUserQuotaRequest, user *model.User) (m
 		ledger.Direction = model.LedgerDirectionOut
 	}
 	if err := tx.Create(ledger).Error; err != nil {
-		tx.Rollback()
 		return nil, err
 	}
 
@@ -200,43 +252,194 @@ func adjustQuotaForResolvedUser(req AdjustUserQuotaRequest, user *model.User) (m
 		accountUpdates["total_adjusted_out"] = gorm.Expr("total_adjusted_out + ?", -req.Delta)
 	}
 	if err := tx.Model(&model.QuotaAccount{}).Where("id = ?", account.Id).Updates(accountUpdates).Error; err != nil {
-		tx.Rollback()
 		return nil, err
 	}
 	if err := tx.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", after).Error; err != nil {
-		tx.Rollback()
 		return nil, err
 	}
 
-	beforeJSON, _ := common.Marshal(map[string]any{"quota": before})
-	afterJSON, _ := common.Marshal(map[string]any{"quota": after, "delta": req.Delta})
-	auditErr := CreateAdminAuditLogTx(tx, AuditLogInput{
+	return &quotaApplyResult{
+		TargetUserId:    user.Id,
+		TargetAccountId: account.Id,
+		TargetBefore:    before,
+		TargetAfter:     after,
+		OrderNo:         orderNo,
+		BizNo:           bizNo,
+		TargetLedgerId:  ledger.Id,
+		BeforeAudit:     map[string]any{"quota": before},
+		AfterAudit:      map[string]any{"quota": after, "delta": req.Delta},
+	}, nil
+}
+
+func applyAgentQuotaTransferTx(tx *gorm.DB, operator *model.User, targetUser *model.User, req AdjustUserQuotaRequest, sourceType string, sourceId int, now int64) (*quotaApplyResult, error) {
+	agentUser, err := getUserByIdWithDB(tx, operator.Id)
+	if err != nil {
+		return nil, err
+	}
+	agentAccount, err := ensureUserQuotaAccountWithDB(tx, agentUser.Id)
+	if err != nil {
+		return nil, err
+	}
+	targetAccount, err := ensureUserQuotaAccountWithDB(tx, targetUser.Id)
+	if err != nil {
+		return nil, err
+	}
+	if err := reconcileQuotaAccountWithUserQuotaTx(tx, agentAccount, agentUser, req, now); err != nil {
+		return nil, err
+	}
+	if err := reconcileQuotaAccountWithUserQuotaTx(tx, targetAccount, targetUser, req, now); err != nil {
+		return nil, err
+	}
+
+	policy, err := getAgentQuotaPolicyWithDB(tx, agentUser.Id)
+	if err != nil {
+		return nil, err
+	}
+	if policy.MaxSingleAdjustAmount > 0 && absInt(req.Delta) > policy.MaxSingleAdjustAmount {
+		return nil, errors.New("exceeds agent max single adjust amount")
+	}
+
+	amount := absInt(req.Delta)
+	targetBefore := targetAccount.Balance
+	agentBefore := agentAccount.Balance
+	targetAfter := targetBefore
+	agentAfter := agentBefore
+	transferType := model.TransferTypeAgentRecharge
+
+	fromAccount := agentAccount
+	toAccount := targetAccount
+	fromUserId := agentUser.Id
+	toUserId := targetUser.Id
+
+	if req.Delta > 0 {
+		if !policy.AllowRechargeUser {
+			return nil, errors.New("agent recharge user is disabled")
+		}
+		if agentAccount.Balance < amount {
+			return nil, errors.New("insufficient agent quota balance")
+		}
+		agentAfter -= amount
+		targetAfter += amount
+	} else {
+		if !policy.AllowReclaimQuota {
+			return nil, errors.New("agent reclaim quota is disabled")
+		}
+		if targetAccount.Balance < amount {
+			return nil, errors.New("insufficient quota balance")
+		}
+		transferType = model.TransferTypeAgentReclaim
+		fromAccount = targetAccount
+		toAccount = agentAccount
+		fromUserId = targetUser.Id
+		toUserId = agentUser.Id
+		targetAfter -= amount
+		agentAfter += amount
+	}
+
+	orderNo := fmt.Sprintf("qto_%d_%d", now, common.GetRandomInt(1000000))
+	order := &model.QuotaTransferOrder{
+		OrderNo:          orderNo,
+		FromAccountId:    fromAccount.Id,
+		ToAccountId:      toAccount.Id,
+		TransferType:     transferType,
+		Amount:           amount,
+		Status:           model.CommonStatusEnabled,
 		OperatorUserId:   req.OperatorUserId,
 		OperatorUserType: req.OperatorUserType,
-		ActionModule:     "quota",
-		ActionType:       "adjust",
-		ActionDesc:       req.Reason,
-		TargetType:       "user",
-		TargetId:         user.Id,
-		BeforeJSON:       string(beforeJSON),
-		AfterJSON:        string(afterJSON),
-		IP:               req.IP,
-	})
-	if auditErr != nil {
-		tx.Rollback()
-		return nil, auditErr
+		Reason:           req.Reason,
+		Remark:           req.Remark,
+		CreatedAtTs:      now,
+		CompletedAt:      now,
 	}
-
-	if err := tx.Commit().Error; err != nil {
+	if err := tx.Create(order).Error; err != nil {
 		return nil, err
 	}
 
-	return map[string]any{
-		"target_user_id": user.Id,
-		"balance_before": before,
-		"balance_after":  after,
-		"order_no":       orderNo,
-		"biz_no":         bizNo,
+	fromBefore := fromAccount.Balance
+	fromAfter := fromBefore - amount
+	fromBizNo := fmt.Sprintf("ql_%d_%d", now, common.GetRandomInt(1000000))
+	fromLedger := &model.QuotaLedger{
+		BizNo:            fromBizNo,
+		AccountId:        fromAccount.Id,
+		TransferOrderId:  order.Id,
+		EntryType:        model.LedgerEntryAdjust,
+		Direction:        model.LedgerDirectionOut,
+		Amount:           amount,
+		BalanceBefore:    fromBefore,
+		BalanceAfter:     fromAfter,
+		SourceType:       sourceType,
+		SourceId:         sourceId,
+		OperatorUserId:   req.OperatorUserId,
+		OperatorUserType: req.OperatorUserType,
+		Reason:           req.Reason,
+		Remark:           req.Remark,
+		CreatedAtTs:      now,
+	}
+	if err := tx.Create(fromLedger).Error; err != nil {
+		return nil, err
+	}
+
+	toBefore := toAccount.Balance
+	toAfter := toBefore + amount
+	toBizNo := fmt.Sprintf("ql_%d_%d", now, common.GetRandomInt(1000000))
+	toLedger := &model.QuotaLedger{
+		BizNo:            toBizNo,
+		AccountId:        toAccount.Id,
+		TransferOrderId:  order.Id,
+		EntryType:        model.LedgerEntryAdjust,
+		Direction:        model.LedgerDirectionIn,
+		Amount:           amount,
+		BalanceBefore:    toBefore,
+		BalanceAfter:     toAfter,
+		SourceType:       sourceType,
+		SourceId:         sourceId,
+		OperatorUserId:   req.OperatorUserId,
+		OperatorUserType: req.OperatorUserType,
+		Reason:           req.Reason,
+		Remark:           req.Remark,
+		CreatedAtTs:      now,
+	}
+	if err := tx.Create(toLedger).Error; err != nil {
+		return nil, err
+	}
+
+	if err := updateQuotaAccountBalanceTx(tx, fromAccount.Id, fromAfter, -amount, now); err != nil {
+		return nil, err
+	}
+	if err := updateQuotaAccountBalanceTx(tx, toAccount.Id, toAfter, amount, now); err != nil {
+		return nil, err
+	}
+	if err := tx.Model(&model.User{}).Where("id = ?", fromUserId).Update("quota", fromAfter).Error; err != nil {
+		return nil, err
+	}
+	if err := tx.Model(&model.User{}).Where("id = ?", toUserId).Update("quota", toAfter).Error; err != nil {
+		return nil, err
+	}
+
+	targetLedgerId := toLedger.Id
+	targetBizNo := toBizNo
+	if req.Delta < 0 {
+		targetLedgerId = fromLedger.Id
+		targetBizNo = fromBizNo
+	}
+
+	return &quotaApplyResult{
+		TargetUserId:    targetUser.Id,
+		TargetAccountId: targetAccount.Id,
+		TargetBefore:    targetBefore,
+		TargetAfter:     targetAfter,
+		OrderNo:         orderNo,
+		BizNo:           targetBizNo,
+		TargetLedgerId:  targetLedgerId,
+		BeforeAudit: map[string]any{
+			"quota":       targetBefore,
+			"agent_quota": agentBefore,
+		},
+		AfterAudit: map[string]any{
+			"quota":       targetAfter,
+			"agent_quota": agentAfter,
+			"delta":       req.Delta,
+		},
 	}, nil
 }
 
@@ -309,6 +512,35 @@ func reconcileQuotaAccountWithUserQuotaTx(tx *gorm.DB, account *model.QuotaAccou
 	return nil
 }
 
+func getAgentQuotaPolicyWithDB(db *gorm.DB, agentUserId int) (*model.AgentQuotaPolicy, error) {
+	policy := &model.AgentQuotaPolicy{}
+	err := db.Where("agent_user_id = ?", agentUserId).First(policy).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return &model.AgentQuotaPolicy{
+			AgentUserId:           agentUserId,
+			AllowRechargeUser:     true,
+			AllowReclaimQuota:     true,
+			MaxSingleAdjustAmount: 0,
+			Status:                model.CommonStatusEnabled,
+		}, nil
+	}
+	return policy, err
+}
+
+func updateQuotaAccountBalanceTx(tx *gorm.DB, accountId int, balance int, delta int, now int64) error {
+	updates := map[string]any{
+		"balance":    balance,
+		"version":    gorm.Expr("version + 1"),
+		"updated_at": now,
+	}
+	if delta > 0 {
+		updates["total_adjusted_in"] = gorm.Expr("total_adjusted_in + ?", delta)
+	} else if delta < 0 {
+		updates["total_adjusted_out"] = gorm.Expr("total_adjusted_out + ?", -delta)
+	}
+	return tx.Model(&model.QuotaAccount{}).Where("id = ?", accountId).Updates(updates).Error
+}
+
 func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRole int, userId int, operatorUserId int, entryType string) ([]model.QuotaLedger, int64, error) {
 	query := model.DB.Model(&model.QuotaLedger{})
 
@@ -326,19 +558,31 @@ func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRo
 			Select("id").
 			Where("owner_type = ?", model.QuotaOwnerTypeUser).
 			Where("owner_id IN (?)", managedUserSubQuery)
-		query = query.Where("account_id IN (?)", managedAccountSubQuery)
+		ownAccountSubQuery := model.DB.Model(&model.QuotaAccount{}).
+			Select("id").
+			Where("owner_type = ?", model.QuotaOwnerTypeUser).
+			Where("owner_id = ?", operator.Id)
+		query = query.Where("(account_id IN (?) OR account_id IN (?))", managedAccountSubQuery, ownAccountSubQuery)
 	}
 
 	if userId > 0 {
-		managedUser, err := GetManagedEndUserForResource(userId, requesterUserId, requesterRole, ResourceQuotaManagement)
-		if err != nil {
-			return nil, 0, err
+		if operator.GetUserType() == model.UserTypeAgent && userId == operator.Id {
+			account, err := ensureUserQuotaAccount(operator.Id)
+			if err != nil {
+				return nil, 0, err
+			}
+			query = query.Where("account_id = ?", account.Id)
+		} else {
+			managedUser, err := GetManagedEndUserForResource(userId, requesterUserId, requesterRole, ResourceQuotaManagement)
+			if err != nil {
+				return nil, 0, err
+			}
+			account, err := ensureUserQuotaAccount(managedUser.Id)
+			if err != nil {
+				return nil, 0, err
+			}
+			query = query.Where("account_id = ?", account.Id)
 		}
-		account, err := ensureUserQuotaAccount(managedUser.Id)
-		if err != nil {
-			return nil, 0, err
-		}
-		query = query.Where("account_id = ?", account.Id)
 	}
 	if operatorUserId > 0 {
 		query = query.Where("operator_user_id = ?", operatorUserId)
@@ -408,7 +652,7 @@ func AdjustUserQuotaBatch(req AdjustUserQuotaBatchRequest) (map[string]any, erro
 			continue
 		}
 
-		if err := applyBatchQuotaAdjustmentItem(batch.Id, user, req, now); err != nil {
+		if err := applyBatchQuotaAdjustmentItem(batch.Id, operator, user, req, now); err != nil {
 			failedItems = append(failedItems, QuotaBatchFailureItem{
 				TargetUserId: user.Id,
 				Username:     user.Username,
@@ -460,7 +704,7 @@ func AdjustUserQuotaBatch(req AdjustUserQuotaBatchRequest) (map[string]any, erro
 	}, nil
 }
 
-func applyBatchQuotaAdjustmentItem(batchId int, user *model.User, req AdjustUserQuotaBatchRequest, now int64) error {
+func applyBatchQuotaAdjustmentItem(batchId int, operator *model.User, user *model.User, req AdjustUserQuotaBatchRequest, now int64) error {
 	tx := model.DB.Begin()
 	if tx.Error != nil {
 		return tx.Error
@@ -471,81 +715,17 @@ func applyBatchQuotaAdjustmentItem(batchId int, user *model.User, req AdjustUser
 		}
 	}()
 
-	account, err := ensureUserQuotaAccountWithDB(tx, user.Id)
+	result, err := applyQuotaAdjustmentTx(tx, operator, user, AdjustUserQuotaRequest{
+		OperatorUserId:   req.OperatorUserId,
+		OperatorRole:     req.OperatorRole,
+		OperatorUserType: req.OperatorUserType,
+		TargetUserId:     user.Id,
+		Delta:            req.Delta,
+		Reason:           req.Reason,
+		Remark:           req.Remark,
+		IP:               req.IP,
+	}, "admin_quota_adjust_batch", batchId, now)
 	if err != nil {
-		tx.Rollback()
-		return err
-	}
-	if req.Delta < 0 && account.Balance < -req.Delta {
-		tx.Rollback()
-		return errors.New("insufficient quota balance")
-	}
-
-	before := account.Balance
-	after := before + req.Delta
-	order := &model.QuotaTransferOrder{
-		OrderNo:          fmt.Sprintf("qto_%d_%d", common.GetTimestamp(), common.GetRandomInt(1000000)),
-		FromAccountId:    0,
-		ToAccountId:      account.Id,
-		TransferType:     model.TransferTypeAdminAdjust,
-		Amount:           absInt(req.Delta),
-		Status:           model.CommonStatusEnabled,
-		OperatorUserId:   req.OperatorUserId,
-		OperatorUserType: req.OperatorUserType,
-		Reason:           req.Reason,
-		Remark:           req.Remark,
-		CreatedAtTs:      now,
-		CompletedAt:      now,
-	}
-	if req.Delta < 0 {
-		order.FromAccountId = account.Id
-		order.ToAccountId = 0
-	}
-	if err := tx.Create(order).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	ledger := &model.QuotaLedger{
-		BizNo:            fmt.Sprintf("ql_%d_%d", common.GetTimestamp(), common.GetRandomInt(1000000)),
-		AccountId:        account.Id,
-		TransferOrderId:  order.Id,
-		EntryType:        model.LedgerEntryAdjust,
-		Direction:        model.LedgerDirectionIn,
-		Amount:           absInt(req.Delta),
-		BalanceBefore:    before,
-		BalanceAfter:     after,
-		SourceType:       "admin_quota_adjust_batch",
-		SourceId:         batchId,
-		OperatorUserId:   req.OperatorUserId,
-		OperatorUserType: req.OperatorUserType,
-		Reason:           req.Reason,
-		Remark:           req.Remark,
-		CreatedAtTs:      now,
-	}
-	if req.Delta < 0 {
-		ledger.Direction = model.LedgerDirectionOut
-	}
-	if err := tx.Create(ledger).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	accountUpdates := map[string]any{
-		"balance":    after,
-		"version":    gorm.Expr("version + 1"),
-		"updated_at": now,
-	}
-	if req.Delta > 0 {
-		accountUpdates["total_adjusted_in"] = gorm.Expr("total_adjusted_in + ?", req.Delta)
-	} else {
-		accountUpdates["total_adjusted_out"] = gorm.Expr("total_adjusted_out + ?", -req.Delta)
-	}
-	if err := tx.Model(&model.QuotaAccount{}).Where("id = ?", account.Id).Updates(accountUpdates).Error; err != nil {
-		tx.Rollback()
-		return err
-	}
-	if err := tx.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", after).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
@@ -553,8 +733,8 @@ func applyBatchQuotaAdjustmentItem(batchId int, user *model.User, req AdjustUser
 	item := &model.QuotaAdjustmentBatchItem{
 		BatchId:        batchId,
 		TargetUserId:   user.Id,
-		QuotaAccountId: account.Id,
-		QuotaLedgerId:  ledger.Id,
+		QuotaAccountId: result.TargetAccountId,
+		QuotaLedgerId:  result.TargetLedgerId,
 		Status:         model.CommonStatusEnabled,
 		CreatedAtTs:    now,
 	}
