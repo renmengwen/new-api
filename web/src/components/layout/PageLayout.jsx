@@ -34,6 +34,10 @@ import {
   showError,
   setStatusData,
 } from '../../helpers';
+import {
+  applyDocumentBranding,
+  resolveBrandingState,
+} from '../../helpers/branding';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useLocation } from 'react-router-dom';
@@ -92,6 +96,14 @@ const PageLayout = () => {
       if (success) {
         statusDispatch({ type: 'set', payload: data });
         setStatusData(data);
+        applyDocumentBranding(
+          document,
+          resolveBrandingState({
+            storedSystemName: getSystemName(),
+            storedLogo: getLogo(),
+            statusData: data,
+          }),
+        );
       } else {
         showError('Unable to connect to server');
       }
@@ -103,17 +115,13 @@ const PageLayout = () => {
   useEffect(() => {
     loadUser();
     loadStatus().catch(console.error);
-    let systemName = getSystemName();
-    if (systemName) {
-      document.title = systemName;
-    }
-    let logo = getLogo();
-    if (logo) {
-      let linkElement = document.querySelector("link[rel~='icon']");
-      if (linkElement) {
-        linkElement.href = logo;
-      }
-    }
+    applyDocumentBranding(
+      document,
+      resolveBrandingState({
+        storedSystemName: getSystemName(),
+        storedLogo: getLogo(),
+      }),
+    );
   }, []);
 
   useEffect(() => {

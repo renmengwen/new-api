@@ -27,6 +27,7 @@ import {
 } from '../constants/playground.constants';
 import { TABLE_COMPACT_MODES_KEY } from '../constants';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
+import { appendAssetVersion } from './branding';
 
 const HTMLToastContent = ({ htmlContent }) => {
   return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
@@ -61,8 +62,10 @@ export function getSystemName() {
 
 export function getLogo() {
   let logo = localStorage.getItem('logo');
-  if (!logo) return '/logo.png';
-  return logo;
+  if (!logo || logo === 'undefined' || logo === 'null') {
+    return appendAssetVersion('/logo.png');
+  }
+  return appendAssetVersion(logo);
 }
 
 export function getUserIdFromLocalStorage() {
