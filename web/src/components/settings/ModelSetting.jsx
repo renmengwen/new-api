@@ -27,6 +27,7 @@ import SettingClaudeModel from '../../pages/Setting/Model/SettingClaudeModel';
 import SettingGlobalModel from '../../pages/Setting/Model/SettingGlobalModel';
 import SettingGrokModel from '../../pages/Setting/Model/SettingGrokModel';
 import SettingsChannelAffinity from '../../pages/Setting/Operation/SettingsChannelAffinity';
+import { DEFAULT_GLOBAL_SETTING_INPUTS } from '../../pages/Setting/Model/globalModelDefaults';
 
 const ModelSetting = () => {
   const { t } = useTranslation();
@@ -39,11 +40,7 @@ const ModelSetting = () => {
     'claude.thinking_adapter_enabled': true,
     'claude.default_max_tokens': '',
     'claude.thinking_adapter_budget_tokens_percentage': 0.8,
-    'global.pass_through_request_enabled': false,
-    'global.thinking_model_blacklist': '[]',
-    'global.chat_completions_to_responses_policy': '{}',
-    'general_setting.ping_interval_enabled': false,
-    'general_setting.ping_interval_seconds': 60,
+    ...DEFAULT_GLOBAL_SETTING_INPUTS,
     'gemini.thinking_adapter_enabled': false,
     'gemini.thinking_adapter_budget_tokens_percentage': 0.6,
     'grok.violation_deduction_enabled': true,
