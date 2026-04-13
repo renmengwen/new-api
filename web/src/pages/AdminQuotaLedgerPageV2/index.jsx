@@ -3,9 +3,14 @@ import { Banner, Button, Empty, Input, Select, Table, Tag, Typography } from '@d
 import { useTranslation } from 'react-i18next';
 import CardPro from '../../components/common/ui/CardPro';
 import { API, createCardProPagination, showError, timestamp2string } from '../../helpers';
+import {
+  QUOTA_LEDGER_ENTRY_TYPE_OPTIONS,
+  getQuotaAccountName,
+  getQuotaEntryTypeLabel,
+  getQuotaOperatorName,
+} from '../../helpers/quotaLedgerDisplay';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
-import { QUOTA_ENTRY_TYPE_OPTIONS } from '../AdminConsole/permissionCatalogUiClean';
 
 const { Text } = Typography;
 
@@ -91,10 +96,16 @@ const AdminQuotaLedgerPageV2 = () => {
         width: 96,
       },
       {
+        title: t('被操作账号'),
+        dataIndex: 'account_username',
+        width: 140,
+        render: (_, record) => getQuotaAccountName(record),
+      },
+      {
         title: t('类型'),
         dataIndex: 'entry_type',
         width: 110,
-        render: (value) => <Tag color='blue'>{value || '-'}</Tag>,
+        render: (value) => <Tag color='blue'>{getQuotaEntryTypeLabel(value)}</Tag>,
       },
       {
         title: t('方向'),
@@ -123,8 +134,9 @@ const AdminQuotaLedgerPageV2 = () => {
       },
       {
         title: t('操作人'),
-        dataIndex: 'operator_user_id',
-        width: 96,
+        dataIndex: 'operator_username',
+        width: 120,
+        render: (_, record) => getQuotaOperatorName(record),
       },
       {
         title: t('原因'),
@@ -186,7 +198,7 @@ const AdminQuotaLedgerPageV2 = () => {
             <Select
               value={entryType}
               onChange={setEntryType}
-              optionList={QUOTA_ENTRY_TYPE_OPTIONS}
+              optionList={QUOTA_LEDGER_ENTRY_TYPE_OPTIONS}
               style={{ width: isMobile ? '100%' : 220 }}
             />
             <Button size='small' type='tertiary' onClick={() => loadLedger(1, pageSize, userId, entryType)}>

@@ -73,6 +73,27 @@ type UserQuotaLedgerEntryInput struct {
 	Remark           string
 }
 
+type QuotaLedgerListItem struct {
+	Id               int    `json:"id"`
+	BizNo            string `json:"biz_no"`
+	AccountId        int    `json:"account_id"`
+	AccountUsername  string `json:"account_username"`
+	TransferOrderId  int    `json:"transfer_order_id"`
+	EntryType        string `json:"entry_type"`
+	Direction        string `json:"direction"`
+	Amount           int    `json:"amount"`
+	BalanceBefore    int    `json:"balance_before"`
+	BalanceAfter     int    `json:"balance_after"`
+	SourceType       string `json:"source_type"`
+	SourceId         int    `json:"source_id"`
+	OperatorUserId   int    `json:"operator_user_id"`
+	OperatorUsername string `json:"operator_username"`
+	OperatorUserType string `json:"operator_user_type"`
+	Reason           string `json:"reason"`
+	Remark           string `json:"remark"`
+	CreatedAtTs      int64  `json:"created_at"`
+}
+
 func GetUserQuotaSummary(userId int) (map[string]any, error) {
 	user, err := model.GetUserById(userId, false)
 	if err != nil {
@@ -688,8 +709,11 @@ func updateQuotaAccountBalanceTx(tx *gorm.DB, accountId int, balance int, delta 
 	return tx.Model(&model.QuotaAccount{}).Where("id = ?", accountId).Updates(updates).Error
 }
 
-func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRole int, userId int, operatorUserId int, entryType string) ([]model.QuotaLedger, int64, error) {
-	query := model.DB.Model(&model.QuotaLedger{})
+func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRole int, userId int, operatorUserId int, entryType string) ([]QuotaLedgerListItem, int64, error) {
+	query := model.DB.Model(&model.QuotaLedger{}).
+		Joins("LEFT JOIN quota_accounts ON quota_accounts.id = quota_ledgers.account_id").
+		Joins("LEFT JOIN users AS account_users ON quota_accounts.owner_type = ? AND account_users.id = quota_accounts.owner_id", model.QuotaOwnerTypeUser).
+		Joins("LEFT JOIN users AS operator_users ON operator_users.id = quota_ledgers.operator_user_id")
 
 	operator, err := ResolveOperatorUser(requesterUserId, requesterRole)
 	if err != nil {
@@ -718,7 +742,7 @@ func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRo
 			if err != nil {
 				return nil, 0, err
 			}
-			query = query.Where("account_id = ?", account.Id)
+			query = query.Where("quota_ledgers.account_id = ?", account.Id)
 		} else {
 			managedUser, err := GetManagedEndUserForResource(userId, requesterUserId, requesterRole, ResourceQuotaManagement)
 			if err != nil {
@@ -728,14 +752,14 @@ func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRo
 			if err != nil {
 				return nil, 0, err
 			}
-			query = query.Where("account_id = ?", account.Id)
+			query = query.Where("quota_ledgers.account_id = ?", account.Id)
 		}
 	}
 	if operatorUserId > 0 {
-		query = query.Where("operator_user_id = ?", operatorUserId)
+		query = query.Where("quota_ledgers.operator_user_id = ?", operatorUserId)
 	}
 	if entryType != "" {
-		query = query.Where("entry_type = ?", entryType)
+		query = query.Where("quota_ledgers.entry_type = ?", entryType)
 	}
 
 	var total int64
@@ -743,8 +767,19 @@ func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRo
 		return nil, 0, err
 	}
 
-	var items []model.QuotaLedger
-	if err := query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&items).Error; err != nil {
+	var items []QuotaLedgerListItem
+	if err := query.
+		Select(
+			"quota_ledgers.id, quota_ledgers.biz_no, quota_ledgers.account_id, account_users.username AS account_username, " +
+				"quota_ledgers.transfer_order_id, quota_ledgers.entry_type, quota_ledgers.direction, quota_ledgers.amount, " +
+				"quota_ledgers.balance_before, quota_ledgers.balance_after, quota_ledgers.source_type, quota_ledgers.source_id, " +
+				"quota_ledgers.operator_user_id, operator_users.username AS operator_username, quota_ledgers.operator_user_type, " +
+				"quota_ledgers.reason, quota_ledgers.remark, quota_ledgers.created_at",
+		).
+		Order("quota_ledgers.id desc").
+		Limit(pageInfo.GetPageSize()).
+		Offset(pageInfo.GetStartIdx()).
+		Scan(&items).Error; err != nil {
 		return nil, 0, err
 	}
 	return items, total, nil

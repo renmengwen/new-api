@@ -32,6 +32,10 @@ import {
   quotaToDisplayAmount,
   displayAmountToQuota,
 } from '../../../../helpers/quota';
+import {
+  applyQuotaDelta,
+  shouldDisableQuotaInput,
+} from './editUserModalHelpers';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import {
   Button,
@@ -159,9 +163,11 @@ const EditUserModal = (props) => {
 
   /* --------------------- quota helper -------------------- */
   const addLocalQuota = () => {
-    const current = parseInt(formApiRef.current?.getValue('quota') || 0);
-    const delta = parseInt(addQuotaLocal) || 0;
-    formApiRef.current?.setValue('quota', current + delta);
+    const current = formApiRef.current?.getValue('quota');
+    formApiRef.current?.setValue(
+      'quota',
+      applyQuotaDelta(current, addQuotaLocal),
+    );
   };
 
   /* --------------------------- UI --------------------------- */
@@ -319,6 +325,7 @@ const EditUserModal = (props) => {
                           extraText={renderQuotaWithPrompt(values.quota || 0)}
                           rules={[{ required: true, message: t('请输入额度') }]}
                           style={{ width: '100%' }}
+                          disabled={shouldDisableQuotaInput(isEdit)}
                         />
                       </Col>
 

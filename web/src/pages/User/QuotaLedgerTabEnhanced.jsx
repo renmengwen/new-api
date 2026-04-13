@@ -10,14 +10,12 @@ import {
   Tag,
 } from '@douyinfe/semi-ui';
 import { API, showError, timestamp2string } from '../../helpers';
-
-const entryTypeOptions = [
-  { label: 'adjust', value: 'adjust' },
-  { label: 'recharge', value: 'recharge' },
-  { label: 'reclaim', value: 'reclaim' },
-  { label: 'consume', value: 'consume' },
-  { label: 'refund', value: 'refund' },
-];
+import {
+  QUOTA_LEDGER_ENTRY_TYPE_OPTIONS,
+  getQuotaAccountName,
+  getQuotaEntryTypeLabel,
+  getQuotaOperatorName,
+} from '../../helpers/quotaLedgerDisplay';
 
 const getEmptyDescription = (t, userId, entryType) =>
   userId || entryType ? t('没有匹配的额度流水') : t('暂无额度流水');
@@ -63,6 +61,7 @@ const QuotaLedgerTabEnhanced = ({ t }) => {
       setItems((data.items || []).map((item) => ({ ...item, key: item.id })));
       setTotal(data.total || 0);
       setPage(data.page || nextPage);
+      setPageSize(data.page_size || nextPageSize);
       return true;
     } catch (error) {
       setItems([]);
@@ -84,9 +83,15 @@ const QuotaLedgerTabEnhanced = ({ t }) => {
       { title: t('流水号'), dataIndex: 'biz_no', width: 180 },
       { title: t('账户ID'), dataIndex: 'account_id', width: 100 },
       {
+        title: t('被操作账号'),
+        dataIndex: 'account_username',
+        width: 140,
+        render: (_, record) => getQuotaAccountName(record),
+      },
+      {
         title: t('类型'),
         dataIndex: 'entry_type',
-        render: (value) => <Tag color='blue'>{value}</Tag>,
+        render: (value) => <Tag color='blue'>{getQuotaEntryTypeLabel(value)}</Tag>,
       },
       {
         title: t('方向'),
@@ -98,7 +103,11 @@ const QuotaLedgerTabEnhanced = ({ t }) => {
       { title: t('金额'), dataIndex: 'amount' },
       { title: t('变动前'), dataIndex: 'balance_before' },
       { title: t('变动后'), dataIndex: 'balance_after' },
-      { title: t('操作人'), dataIndex: 'operator_user_id' },
+      {
+        title: t('操作人'),
+        dataIndex: 'operator_username',
+        render: (_, record) => getQuotaOperatorName(record),
+      },
       { title: t('原因'), dataIndex: 'reason', ellipsis: true },
       {
         title: t('时间'),
@@ -121,10 +130,7 @@ const QuotaLedgerTabEnhanced = ({ t }) => {
         <Select
           value={entryType}
           onChange={setEntryType}
-          optionList={[
-            { label: t('全部类型'), value: '' },
-            ...entryTypeOptions,
-          ]}
+          optionList={QUOTA_LEDGER_ENTRY_TYPE_OPTIONS}
           style={{ width: 220 }}
         />
         <Button onClick={() => loadLedger(1, pageSize, userId, entryType)}>

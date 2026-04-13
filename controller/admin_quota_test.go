@@ -198,6 +198,46 @@ func TestGetQuotaLedgerReturnsAdjustmentRecord(t *testing.T) {
 	require.Equal(t, 1, response.Data.Total)
 }
 
+func TestGetQuotaLedgerIncludesAccountAndOperatorUsernames(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	operator := seedQuotaUser(t, db, "quota_ledger_operator", 0)
+	operator.Role = common.RoleAdminUser
+	operator.UserType = model.UserTypeAdmin
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", operator.Id).Updates(map[string]any{
+		"role":      operator.Role,
+		"user_type": operator.UserType,
+	}).Error)
+	grantPermissionActions(t, db, operator.Id, "admin",
+		permissionGrant{Resource: "quota_management", Action: "adjust"},
+		permissionGrant{Resource: "quota_management", Action: "ledger_read"},
+	)
+
+	target := seedQuotaUser(t, db, "quota_ledger_target", 300)
+
+	ctx, _ := newAdminQuotaContextWithOperator(t, http.MethodPost, "/api/admin/quota/adjust", map[string]any{
+		"target_user_id": target.Id,
+		"delta":          50,
+		"reason":         "manual_adjust",
+	}, operator.Id, common.RoleAdminUser)
+	AdjustUserQuota(ctx)
+
+	listCtx, recorder := newAdminQuotaContextWithOperator(t, http.MethodGet, "/api/admin/quota/ledger?user_id="+strconv.Itoa(target.Id)+"&p=1&page_size=10", nil, operator.Id, common.RoleAdminUser)
+	GetQuotaLedger(listCtx)
+
+	var response adminQuotaPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+	require.Len(t, items, 1)
+
+	item, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, target.Username, item["account_username"])
+	require.Equal(t, operator.Username, item["operator_username"])
+}
+
 func TestAdjustUserQuotaBatchCreatesBatchItemsAndAudits(t *testing.T) {
 	db := setupAdminQuotaTestDB(t)
 	userA := seedQuotaUser(t, db, "quota_batch_user_a", 500)
