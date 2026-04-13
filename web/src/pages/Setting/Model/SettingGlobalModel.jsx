@@ -37,32 +37,14 @@ import {
   verifyJSON,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
-import { DEFAULT_GLOBAL_SETTING_INPUTS } from './globalModelDefaults';
+import {
+  CHAT_COMPLETIONS_TO_RESPONSES_POLICY_ALL_CHANNELS_EXAMPLE,
+  CHAT_COMPLETIONS_TO_RESPONSES_POLICY_TEMPLATE,
+  DEFAULT_GLOBAL_SETTING_INPUTS,
+} from './globalModelDefaults';
 
 const thinkingExample = JSON.stringify(
   ['moonshotai/kimi-k2-thinking', 'kimi-k2-thinking'],
-  null,
-  2,
-);
-
-const chatCompletionsToResponsesPolicyExample = JSON.stringify(
-  {
-    enabled: true,
-    all_channels: false,
-    channel_ids: [1, 2],
-    channel_types: [1],
-    model_patterns: ['^gpt-4o.*$', '^gpt-5.*$'],
-  },
-  null,
-  2,
-);
-
-const chatCompletionsToResponsesPolicyAllChannelsExample = JSON.stringify(
-  {
-    enabled: true,
-    all_channels: true,
-    model_patterns: ['^gpt-4o.*$', '^gpt-5.*$'],
-  },
   null,
   2,
 );
@@ -265,11 +247,11 @@ export default function SettingGlobalModel(props) {
                     placeholder={
                       t('例如（指定渠道）：') +
                       '\n' +
-                      chatCompletionsToResponsesPolicyExample +
+                      CHAT_COMPLETIONS_TO_RESPONSES_POLICY_TEMPLATE +
                       '\n\n' +
                       t('例如（全渠道）：') +
                       '\n' +
-                      chatCompletionsToResponsesPolicyAllChannelsExample
+                      CHAT_COMPLETIONS_TO_RESPONSES_POLICY_ALL_CHANNELS_EXAMPLE
                     }
                     rows={8}
                     rules={[
@@ -306,7 +288,7 @@ export default function SettingGlobalModel(props) {
                       size='small'
                       onClick={() =>
                         setChatCompletionsToResponsesPolicyValue(
-                          chatCompletionsToResponsesPolicyExample,
+                          CHAT_COMPLETIONS_TO_RESPONSES_POLICY_TEMPLATE,
                         )
                       }
                     >
@@ -317,7 +299,7 @@ export default function SettingGlobalModel(props) {
                       size='small'
                       onClick={() =>
                         setChatCompletionsToResponsesPolicyValue(
-                          chatCompletionsToResponsesPolicyAllChannelsExample,
+                          CHAT_COMPLETIONS_TO_RESPONSES_POLICY_ALL_CHANNELS_EXAMPLE,
                         )
                       }
                     >
