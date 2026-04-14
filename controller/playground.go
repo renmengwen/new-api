@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -44,13 +46,23 @@ func Playground(c *gin.Context) {
 		return
 	}
 	userCache.WriteContext(c)
+	usingGroup := resolvePlaygroundUsingGroup(c, relayInfo, userCache)
 
 	tempToken := &model.Token{
 		UserId: userId,
-		Name:   fmt.Sprintf("playground-%s", relayInfo.UsingGroup),
-		Group:  relayInfo.UsingGroup,
+		Name:   fmt.Sprintf("playground-%s", usingGroup),
+		Group:  usingGroup,
 	}
 	_ = middleware.SetupContextForToken(c, tempToken)
 
 	Relay(c, types.RelayFormatOpenAI)
+}
+
+func resolvePlaygroundUsingGroup(c *gin.Context, relayInfo *relaycommon.RelayInfo, userCache *model.UserBase) string {
+	usingGroup := relayInfo.UsingGroup
+	if usingGroup == "" && userCache != nil {
+		usingGroup = userCache.Group
+	}
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
+	return usingGroup
 }
