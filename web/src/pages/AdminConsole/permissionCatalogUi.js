@@ -26,6 +26,10 @@
       { actionKey: 'update', label: '编辑' },
       { actionKey: 'update_status', label: '启停' },
       { actionKey: 'delete', label: '删除' },
+      { actionKey: 'reset_passkey', label: '重置 Passkey' },
+      { actionKey: 'reset_2fa', label: '重置 2FA' },
+      { actionKey: 'manage_subscriptions', label: '订阅管理' },
+      { actionKey: 'manage_bindings', label: '管理绑定' },
     ],
   },
   {

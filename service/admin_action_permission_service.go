@@ -24,6 +24,10 @@ const (
 	ActionUpdate       = "update"
 	ActionUpdateStatus = "update_status"
 	ActionDelete       = "delete"
+	ActionResetPasskey = "reset_passkey"
+	ActionResetTwoFA   = "reset_2fa"
+	ActionManageSubs   = "manage_subscriptions"
+	ActionManageBinds  = "manage_bindings"
 	ActionBindProfile  = "bind_profile"
 	ActionReadSummary  = "read_summary"
 	ActionAdjust       = "adjust"
@@ -35,7 +39,17 @@ var adminActionCatalog = map[string][]string{
 	ResourcePermissionManagement: {ActionRead, ActionBindProfile},
 	ResourceAgentManagement:      {ActionRead, ActionCreate, ActionUpdate, ActionUpdateStatus},
 	ResourceAdminManagement:      {ActionRead, ActionCreate, ActionUpdate, ActionUpdateStatus},
-	ResourceUserManagement:       {ActionRead, ActionCreate, ActionUpdate, ActionUpdateStatus, ActionDelete},
+	ResourceUserManagement: {
+		ActionRead,
+		ActionCreate,
+		ActionUpdate,
+		ActionUpdateStatus,
+		ActionDelete,
+		ActionResetPasskey,
+		ActionResetTwoFA,
+		ActionManageSubs,
+		ActionManageBinds,
+	},
 	ResourceQuotaManagement:      {ActionReadSummary, ActionAdjust, ActionAdjustBatch, ActionLedgerRead},
 	ResourceAuditManagement:      {ActionRead},
 }

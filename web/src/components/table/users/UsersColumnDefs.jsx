@@ -218,8 +218,6 @@ const renderOperations = (
     capabilities,
     setEditingUser,
     setShowEditUser,
-    showPromoteModal,
-    showDemoteModal,
     showEnableDisableModal,
     showDeleteModal,
     showResetPasskeyModal,
@@ -294,24 +292,6 @@ const renderOperations = (
           {t('编辑')}
         </Button>
       )}
-      {capabilities.canPromoteUser && (
-        <Button
-          type='warning'
-          size='small'
-          onClick={() => showPromoteModal(record)}
-        >
-          {t('提升')}
-        </Button>
-      )}
-      {capabilities.canDemoteUser && (
-        <Button
-          type='secondary'
-          size='small'
-          onClick={() => showDemoteModal(record)}
-        >
-          {t('降级')}
-        </Button>
-      )}
       {moreMenu.length > 0 && (
         <Dropdown menu={moreMenu} trigger='click' position='bottomRight'>
           <Button type='tertiary' size='small' icon={<IconMore />} />
@@ -326,8 +306,6 @@ export const getUsersColumns = ({
   t,
   setEditingUser,
   setShowEditUser,
-  showPromoteModal,
-  showDemoteModal,
   showEnableDisableModal,
   showDeleteModal,
   showResetPasskeyModal,
@@ -384,8 +362,6 @@ export const getUsersColumns = ({
           capabilities,
           setEditingUser,
           setShowEditUser,
-          showPromoteModal,
-          showDemoteModal,
           showEnableDisableModal,
           showDeleteModal,
           showResetPasskeyModal,

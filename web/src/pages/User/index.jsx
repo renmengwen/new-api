@@ -73,6 +73,19 @@ const User = () => {
           canUpdateUser: hasActionPermission('user_management', 'update'),
           canUpdateUserStatus: canUpdateUserStatus,
           canDeleteUser: hasActionPermission('user_management', 'delete'),
+          canResetPasskey: hasActionPermission(
+            'user_management',
+            'reset_passkey',
+          ),
+          canResetTwoFA: hasActionPermission('user_management', 'reset_2fa'),
+          canManageSubscriptions: hasActionPermission(
+            'user_management',
+            'manage_subscriptions',
+          ),
+          canManageBindings: hasActionPermission(
+            'user_management',
+            'manage_bindings',
+          ),
           canAdjustQuota: canAdjustQuota,
         }}
       />
