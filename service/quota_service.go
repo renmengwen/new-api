@@ -91,7 +91,7 @@ type QuotaLedgerListItem struct {
 	OperatorUserType string `json:"operator_user_type"`
 	Reason           string `json:"reason"`
 	Remark           string `json:"remark"`
-	CreatedAtTs      int64  `json:"created_at"`
+	CreatedAtTs      int64  `json:"created_at" gorm:"column:created_at"`
 }
 
 func GetUserQuotaSummary(userId int) (map[string]any, error) {

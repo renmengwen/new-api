@@ -21,7 +21,6 @@ import React, { useState, useRef } from 'react';
 import { API, showError, showSuccess } from '../../../../helpers';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import {
-  Button,
   SideSheet,
   Space,
   Spin,
@@ -33,8 +32,9 @@ import {
   Row,
   Col,
 } from '@douyinfe/semi-ui';
-import { IconSave, IconClose, IconUserAdd } from '@douyinfe/semi-icons';
+import { IconUserAdd } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
+import ModalActionFooter from '../../../common/modals/ModalActionFooter';
 
 const { Text, Title } = Typography;
 
@@ -90,26 +90,13 @@ const AddUserModal = (props) => {
         visible={props.visible}
         width={isMobile ? '100%' : 600}
         footer={
-          <div className='flex justify-end bg-white'>
-            <Space>
-              <Button
-                theme='solid'
-                onClick={() => formApiRef.current?.submitForm()}
-                icon={<IconSave />}
-                loading={loading}
-              >
-                {t('提交')}
-              </Button>
-              <Button
-                theme='light'
-                type='primary'
-                onClick={handleCancel}
-                icon={<IconClose />}
-              >
-                {t('取消')}
-              </Button>
-            </Space>
-          </div>
+          <ModalActionFooter
+            onConfirm={() => formApiRef.current?.submitForm()}
+            onCancel={handleCancel}
+            confirmText={t('提交')}
+            cancelText={t('取消')}
+            confirmLoading={loading}
+          />
         }
         closeIcon={null}
         onCancel={() => handleCancel()}

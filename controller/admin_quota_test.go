@@ -196,6 +196,15 @@ func TestGetQuotaLedgerReturnsAdjustmentRecord(t *testing.T) {
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Success)
 	require.Equal(t, 1, response.Data.Total)
+
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+	require.Len(t, items, 1)
+
+	item, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "manual_adjust", item["reason"])
+	require.NotZero(t, item["created_at"])
 }
 
 func TestGetQuotaLedgerIncludesAccountAndOperatorUsernames(t *testing.T) {

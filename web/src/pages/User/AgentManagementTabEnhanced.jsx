@@ -11,6 +11,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { API, showError, showSuccess } from '../../helpers';
+import ModalActionFooter from '../../components/common/modals/ModalActionFooter';
 
 const { Text } = Typography;
 
@@ -281,8 +282,18 @@ const AgentManagementTabEnhanced = ({
           setShowCreateModal(false);
           resetCreateForm();
         }}
-        onOk={handleCreateAgent}
-        confirmLoading={creating}
+        footer={
+          <ModalActionFooter
+            onConfirm={handleCreateAgent}
+            onCancel={() => {
+              setShowCreateModal(false);
+              resetCreateForm();
+            }}
+            confirmText={t('提交')}
+            cancelText={t('取消')}
+            confirmLoading={creating}
+          />
+        }
       >
         <Space vertical align='start' style={{ width: '100%' }}>
           <Input

@@ -18,6 +18,8 @@ import {
   showWarning,
   timestamp2string,
 } from '../../helpers';
+import { IconClose } from '@douyinfe/semi-icons';
+import ModalActionFooter from '../../components/common/modals/ModalActionFooter';
 
 const { Text } = Typography;
 
@@ -446,8 +448,18 @@ const ManagedUsersTabEnhanced = ({
           setAdjustVisible(false);
           setAdjustingUser(null);
         }}
-        onOk={handleAdjustQuota}
-        confirmLoading={adjustSubmitting}
+        footer={
+          <ModalActionFooter
+            onConfirm={handleAdjustQuota}
+            onCancel={() => {
+              setAdjustVisible(false);
+              setAdjustingUser(null);
+            }}
+            confirmText={t('提交')}
+            cancelText={t('取消')}
+            confirmLoading={adjustSubmitting}
+          />
+        }
       >
         <Space vertical align='start' style={{ width: '100%' }}>
           <Text>
@@ -482,9 +494,17 @@ const ManagedUsersTabEnhanced = ({
         title={batchAdjustResult ? t('批量调额结果') : t('批量调额')}
         visible={batchAdjustVisible}
         onCancel={closeBatchAdjustModal}
-        onOk={batchAdjustResult ? closeBatchAdjustModal : handleBatchAdjustQuota}
-        confirmLoading={batchAdjustSubmitting}
-        okText={batchAdjustResult ? t('关闭') : t('提交')}
+        footer={
+          <ModalActionFooter
+            onConfirm={batchAdjustResult ? closeBatchAdjustModal : handleBatchAdjustQuota}
+            onCancel={closeBatchAdjustModal}
+            confirmText={batchAdjustResult ? t('关闭') : t('提交')}
+            cancelText={t('取消')}
+            confirmLoading={batchAdjustSubmitting}
+            confirmIcon={batchAdjustResult ? <IconClose /> : undefined}
+            showCancel={!batchAdjustResult}
+          />
+        }
       >
         {batchAdjustResult ? (
           <Space vertical align='start' style={{ width: '100%' }}>

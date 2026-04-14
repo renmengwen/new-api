@@ -13,6 +13,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
+import ModalActionFooter from '../../components/common/modals/ModalActionFooter';
 import CardPro from '../../components/common/ui/CardPro';
 import { API, createCardProPagination, showError, showSuccess, timestamp2string } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
@@ -386,10 +387,15 @@ const AdminPermissionTemplatesPageV2 = () => {
         title={editingTemplate ? t('编辑权限模板') : t('新增权限模板')}
         visible={modalVisible}
         onCancel={closeModal}
-        onOk={handleSubmit}
-        okText={editingTemplate ? t('保存变更') : t('确认创建')}
-        cancelText={t('取消')}
-        confirmLoading={submitting}
+        footer={
+          <ModalActionFooter
+            onConfirm={handleSubmit}
+            onCancel={closeModal}
+            confirmText={editingTemplate ? t('保存变更') : t('确认创建')}
+            cancelText={t('取消')}
+            confirmLoading={submitting}
+          />
+        }
         width={880}
       >
         <Space vertical spacing='loose' style={{ width: '100%' }}>

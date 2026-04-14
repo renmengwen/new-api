@@ -9,7 +9,9 @@ import {
   Select,
   Space,
   Table,
+  TabPane,
   Tag,
+  Tabs,
   Typography,
 } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
@@ -37,6 +39,7 @@ import {
   getEffectiveScopeText,
   getUserTypeText,
 } from './helpers';
+import ModalActionFooter from '../../components/common/modals/ModalActionFooter';
 
 const { Text } = Typography;
 
@@ -75,6 +78,7 @@ const AdminUserPermissionsCleanPage = () => {
   const [detailError, setDetailError] = useState('');
   const [editingUser, setEditingUser] = useState(null);
   const [selectedProfileId, setSelectedProfileId] = useState(0);
+  const [activePermissionTab, setActivePermissionTab] = useState('action');
   const [actionOverrideMap, setActionOverrideMap] = useState({});
   const [menuOverrideMap, setMenuOverrideMap] = useState({});
   const [dataScopeOverrideMap, setDataScopeOverrideMap] = useState({});
@@ -85,6 +89,7 @@ const AdminUserPermissionsCleanPage = () => {
     setEditingUser(null);
     setDetailError('');
     setSelectedProfileId(0);
+    setActivePermissionTab('action');
     setActionOverrideMap({});
     setMenuOverrideMap({});
     setDataScopeOverrideMap({});
@@ -311,10 +316,15 @@ const AdminUserPermissionsCleanPage = () => {
         title={editingUser ? `${t('用户权限管理')} · ${editingUser.display_name || editingUser.username}` : t('用户权限管理')}
         visible={modalVisible}
         onCancel={closeModal}
-        onOk={handleSave}
-        okText={t('保存权限')}
-        cancelText={t('取消')}
-        confirmLoading={saving}
+        footer={
+          <ModalActionFooter
+            onConfirm={handleSave}
+            onCancel={closeModal}
+            confirmText={t('保存权限')}
+            cancelText={t('取消')}
+            confirmLoading={saving}
+          />
+        }
         width={980}
       >
         {detailLoading ? <Text>{t('加载中...')}</Text> : null}
@@ -337,145 +347,153 @@ const AdminUserPermissionsCleanPage = () => {
               />
             </div>
 
-            <div style={sectionStyle}>
-              <div className='mb-3 flex flex-col gap-1'>
-                <Text strong>{t('动作权限覆盖')}</Text>
-                <Text type='tertiary'>{t('对模板能力做单账号级别的允许或禁止。')}</Text>
-              </div>
-              <div className='flex flex-col gap-3'>
-                {ADMIN_PERMISSION_RESOURCES.map((resource) => (
-                  <div
-                    key={resource.resourceKey}
-                    className='rounded-xl border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-3'
-                  >
-                    <div className='mb-2'>
-                      <Text strong>{t(resource.label)}</Text>
-                    </div>
-                    <div className='flex flex-col gap-2'>
-                      {resource.actions.map((action) => {
-                        const key = `${resource.resourceKey}.${action.actionKey}`;
-                        return (
-                          <div key={key} className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
-                            <Text>{t(action.label)}</Text>
+            <Tabs activeKey={activePermissionTab} onChange={setActivePermissionTab} type='line'>
+              <TabPane tab={t('动作权限覆盖')} itemKey='action'>
+                <div style={sectionStyle}>
+                  <div className='mb-3 flex flex-col gap-1'>
+                    <Text strong>{t('动作权限覆盖')}</Text>
+                    <Text type='tertiary'>{t('对模板能力做单账号级别的允许或禁止。')}</Text>
+                  </div>
+                  <div className='flex flex-col gap-3'>
+                    {ADMIN_PERMISSION_RESOURCES.map((resource) => (
+                      <div
+                        key={resource.resourceKey}
+                        className='rounded-xl border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-3'
+                      >
+                        <div className='mb-2'>
+                          <Text strong>{t(resource.label)}</Text>
+                        </div>
+                        <div className='flex flex-col gap-2'>
+                          {resource.actions.map((action) => {
+                            const key = `${resource.resourceKey}.${action.actionKey}`;
+                            return (
+                              <div key={key} className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
+                                <Text>{t(action.label)}</Text>
+                                <Radio.Group
+                                  type='button'
+                                  value={actionOverrideMap[key] || 'inherit'}
+                                  onChange={(event) =>
+                                    setActionOverrideMap((prev) => ({
+                                      ...prev,
+                                      [key]: event.target.value,
+                                    }))
+                                  }
+                                  options={ACTION_OVERRIDE_OPTIONS.map((option) => ({
+                                    label: t(option.label),
+                                    value: option.value,
+                                  }))}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </TabPane>
+
+              <TabPane tab={t('菜单可见性覆盖')} itemKey='menu'>
+                <div style={sectionStyle}>
+                  <div className='mb-3 flex flex-col gap-1'>
+                    <Text strong>{t('菜单可见性覆盖')}</Text>
+                    <Text type='tertiary'>{t('决定该账号在左侧导航中是否看得到对应菜单。')}</Text>
+                  </div>
+                  <div className='flex flex-col gap-3'>
+                    {ADMIN_MENU_OPTIONS.map((menu) => {
+                      const key = `${menu.sectionKey}.${menu.moduleKey}`;
+                      return (
+                        <div
+                          key={key}
+                          className='flex flex-col gap-2 rounded-xl border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-3 md:flex-row md:items-center md:justify-between'
+                        >
+                          <Text>{t(menu.label)}</Text>
+                          <Radio.Group
+                            type='button'
+                            value={menuOverrideMap[key] || 'inherit'}
+                            onChange={(event) =>
+                              setMenuOverrideMap((prev) => ({
+                                ...prev,
+                                [key]: event.target.value,
+                              }))
+                            }
+                            options={MENU_OVERRIDE_OPTIONS.map((option) => ({
+                              label: t(option.label),
+                              value: option.value,
+                            }))}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </TabPane>
+
+              <TabPane tab={t('数据范围覆盖')} itemKey='data-scope'>
+                <div style={sectionStyle}>
+                  <div className='mb-3 flex flex-col gap-1'>
+                    <Text strong>{t('数据范围覆盖')}</Text>
+                    <Text type='tertiary'>{t('控制该账号能够查看或操作哪些用户数据。')}</Text>
+                  </div>
+                  <div className='flex flex-col gap-3'>
+                    {ADMIN_DATA_SCOPE_RESOURCES.map((resource) => {
+                      const currentScope = dataScopeOverrideMap[resource.resourceKey] || {
+                        scopeType: 'inherit',
+                        scopeValue: '',
+                      };
+                      return (
+                        <div
+                          key={resource.resourceKey}
+                          className='rounded-xl border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-3'
+                        >
+                          <div className='mb-2 flex flex-col gap-1 md:flex-row md:items-center md:justify-between'>
+                            <Text strong>{t(resource.label)}</Text>
+                            <Tag color='grey'>{`${t('当前生效')}: ${t(getEffectiveScopeText(effectiveDataScopes[resource.resourceKey]))}`}</Tag>
+                          </div>
+                          <div className='flex flex-col gap-2'>
                             <Radio.Group
                               type='button'
-                              value={actionOverrideMap[key] || 'inherit'}
+                              value={currentScope.scopeType || 'inherit'}
                               onChange={(event) =>
-                                setActionOverrideMap((prev) => ({
+                                setDataScopeOverrideMap((prev) => ({
                                   ...prev,
-                                  [key]: event.target.value,
+                                  [resource.resourceKey]: {
+                                    scopeType: event.target.value,
+                                    scopeValue:
+                                      event.target.value === 'assigned'
+                                        ? prev[resource.resourceKey]?.scopeValue || ''
+                                        : '',
+                                  },
                                 }))
                               }
-                              options={ACTION_OVERRIDE_OPTIONS.map((option) => ({
+                              options={DATA_SCOPE_OPTIONS.map((option) => ({
                                 label: t(option.label),
                                 value: option.value,
                               }))}
                             />
+                            {currentScope.scopeType === 'assigned' ? (
+                              <Input
+                                placeholder={t('请输入用户 ID，多个用户请使用英文逗号分隔')}
+                                value={currentScope.scopeValue || ''}
+                                onChange={(value) =>
+                                  setDataScopeOverrideMap((prev) => ({
+                                    ...prev,
+                                    [resource.resourceKey]: {
+                                      scopeType: 'assigned',
+                                      scopeValue: value,
+                                    },
+                                  }))
+                                }
+                              />
+                            ) : null}
                           </div>
-                        );
-                      })}
-                    </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={sectionStyle}>
-              <div className='mb-3 flex flex-col gap-1'>
-                <Text strong>{t('菜单可见性覆盖')}</Text>
-                <Text type='tertiary'>{t('决定该账号在左侧导航中是否看得到对应菜单。')}</Text>
-              </div>
-              <div className='flex flex-col gap-3'>
-                {ADMIN_MENU_OPTIONS.map((menu) => {
-                  const key = `${menu.sectionKey}.${menu.moduleKey}`;
-                  return (
-                    <div
-                      key={key}
-                      className='flex flex-col gap-2 rounded-xl border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-3 md:flex-row md:items-center md:justify-between'
-                    >
-                      <Text>{t(menu.label)}</Text>
-                      <Radio.Group
-                        type='button'
-                        value={menuOverrideMap[key] || 'inherit'}
-                        onChange={(event) =>
-                          setMenuOverrideMap((prev) => ({
-                            ...prev,
-                            [key]: event.target.value,
-                          }))
-                        }
-                        options={MENU_OVERRIDE_OPTIONS.map((option) => ({
-                          label: t(option.label),
-                          value: option.value,
-                        }))}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div style={sectionStyle}>
-              <div className='mb-3 flex flex-col gap-1'>
-                <Text strong>{t('数据范围覆盖')}</Text>
-                <Text type='tertiary'>{t('控制该账号能够查看或操作哪些用户数据。')}</Text>
-              </div>
-              <div className='flex flex-col gap-3'>
-                {ADMIN_DATA_SCOPE_RESOURCES.map((resource) => {
-                  const currentScope = dataScopeOverrideMap[resource.resourceKey] || {
-                    scopeType: 'inherit',
-                    scopeValue: '',
-                  };
-                  return (
-                    <div
-                      key={resource.resourceKey}
-                      className='rounded-xl border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] p-3'
-                    >
-                      <div className='mb-2 flex flex-col gap-1 md:flex-row md:items-center md:justify-between'>
-                        <Text strong>{t(resource.label)}</Text>
-                        <Tag color='grey'>{`${t('当前生效')}: ${t(getEffectiveScopeText(effectiveDataScopes[resource.resourceKey]))}`}</Tag>
-                      </div>
-                      <div className='flex flex-col gap-2'>
-                        <Radio.Group
-                          type='button'
-                          value={currentScope.scopeType || 'inherit'}
-                          onChange={(event) =>
-                            setDataScopeOverrideMap((prev) => ({
-                              ...prev,
-                              [resource.resourceKey]: {
-                                scopeType: event.target.value,
-                                scopeValue:
-                                  event.target.value === 'assigned'
-                                    ? prev[resource.resourceKey]?.scopeValue || ''
-                                    : '',
-                              },
-                            }))
-                          }
-                          options={DATA_SCOPE_OPTIONS.map((option) => ({
-                            label: t(option.label),
-                            value: option.value,
-                          }))}
-                        />
-                        {currentScope.scopeType === 'assigned' ? (
-                          <Input
-                            placeholder={t('请输入用户 ID，多个用户请使用英文逗号分隔')}
-                            value={currentScope.scopeValue || ''}
-                            onChange={(value) =>
-                              setDataScopeOverrideMap((prev) => ({
-                                ...prev,
-                                [resource.resourceKey]: {
-                                  scopeType: 'assigned',
-                                  scopeValue: value,
-                                },
-                              }))
-                            }
-                          />
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+                </div>
+              </TabPane>
+            </Tabs>
           </Space>
         ) : null}
       </Modal>

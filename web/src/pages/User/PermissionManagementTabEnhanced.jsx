@@ -11,6 +11,7 @@ import {
   Tag,
 } from '@douyinfe/semi-ui';
 import { API, showError, showSuccess } from '../../helpers';
+import ModalActionFooter from '../../components/common/modals/ModalActionFooter';
 
 const getEmptyDescription = (t, keyword, defaultText, filteredText) =>
   keyword.trim() ? filteredText : defaultText;
@@ -227,8 +228,15 @@ const PermissionManagementTabEnhanced = ({ t, canBindProfile }) => {
         title={t('配置权限模板')}
         visible={!!editingUser}
         onCancel={closeBindModal}
-        onOk={handleBindProfile}
-        confirmLoading={saving}
+        footer={
+          <ModalActionFooter
+            onConfirm={handleBindProfile}
+            onCancel={closeBindModal}
+            confirmText={t('提交')}
+            cancelText={t('取消')}
+            confirmLoading={saving}
+          />
+        }
       >
         <div style={{ marginBottom: 12 }}>
           {editingUser

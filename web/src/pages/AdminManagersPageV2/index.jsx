@@ -13,6 +13,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
+import ModalActionFooter from '../../components/common/modals/ModalActionFooter';
 import CardPro from '../../components/common/ui/CardPro';
 import { API, createCardProPagination, showError, showSuccess, timestamp2string } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
@@ -32,6 +33,18 @@ const sectionStyle = {
   borderRadius: 12,
   padding: 16,
   background: 'var(--semi-color-bg-0)',
+};
+
+const mergedSectionStyle = {
+  ...sectionStyle,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 24,
+};
+
+const sectionBlockStyle = {
+  borderTop: '1px solid var(--semi-color-border)',
+  paddingTop: 20,
 };
 
 const fieldStyle = {
@@ -342,14 +355,19 @@ const AdminManagersPageV2 = () => {
         title={editingRecord ? t('编辑管理员') : t('新增管理员')}
         visible={modalVisible}
         onCancel={closeModal}
-        onOk={handleSubmit}
-        okText={editingRecord ? t('保存变更') : t('确认创建')}
-        cancelText={t('取消')}
-        confirmLoading={submitting}
+        footer={
+          <ModalActionFooter
+            onConfirm={handleSubmit}
+            onCancel={closeModal}
+            confirmText={editingRecord ? t('保存变更') : t('确认创建')}
+            cancelText={t('取消')}
+            confirmLoading={submitting}
+          />
+        }
         width={760}
       >
-        <Space vertical spacing='loose' style={{ width: '100%' }}>
-          <div style={sectionStyle}>
+        <div style={mergedSectionStyle}>
+          <div>
             <div className='mb-3 flex flex-col gap-1'>
               <Text strong>{t('基础信息')}</Text>
               <Text type='tertiary'>{t('维护管理员账号标识、显示名称和密码信息。')}</Text>
@@ -387,8 +405,7 @@ const AdminManagersPageV2 = () => {
               </div>
             </div>
           </div>
-
-          <div style={sectionStyle}>
+          <div style={sectionBlockStyle}>
             <div className='mb-3 flex flex-col gap-1'>
               <Text strong>{t('备注信息')}</Text>
               <Text type='tertiary'>{t('补充岗位职责、权限说明或交接备注，仅后台可见。')}</Text>
@@ -400,7 +417,7 @@ const AdminManagersPageV2 = () => {
               onChange={(value) => setFormState((prev) => ({ ...prev, remark: value }))}
             />
           </div>
-        </Space>
+        </div>
       </Modal>
 
       <Modal
@@ -428,7 +445,7 @@ const AdminManagersPageV2 = () => {
         ) : null}
         {!detailLoading && !detailError && !detailData ? <Empty description={t('暂无详情数据')} /> : null}
         {!detailLoading && !detailError && detailData ? (
-          <Space vertical spacing='loose' style={{ width: '100%' }}>
+          <div className='flex flex-col gap-4'>
             <div style={sectionStyle}>
               <div className='flex items-start justify-between gap-4'>
                 <div className='flex flex-col gap-1'>
@@ -442,26 +459,30 @@ const AdminManagersPageV2 = () => {
                 </Tag>
               </div>
             </div>
-            <div style={sectionStyle}>
+            <div style={mergedSectionStyle}>
               <div className='mb-3 flex flex-col gap-1'>
                 <Text strong>{t('账号资料')}</Text>
                 <Text type='tertiary'>{t('查看管理员账号的显示名称、最近活跃时间和备注信息。')}</Text>
               </div>
               <Descriptions
                 data={[
-                  { key: 'username', label: t('登录用户名'), value: detailData.username || '-' },
-                  { key: 'display_name', label: t('显示名称'), value: detailData.display_name || '-' },
+                  { key: t('登录用户名'), value: detailData.username || '-' },
+                  { key: t('显示名称'), value: detailData.display_name || '-' },
                   {
-                    key: 'last_active_at',
-                    label: t('最后活跃'),
+                    key: t('最后活跃'),
                     value: detailData.last_active_at ? timestamp2string(detailData.last_active_at) : '-',
                   },
-                  { key: 'remark', label: t('备注'), value: detailData.remark || '-' },
                 ]}
                 columns={2}
               />
+              <div style={sectionBlockStyle}>
+                <div className='mb-3 flex flex-col gap-1'>
+                  <Text strong>{t('备注信息')}</Text>
+                </div>
+                <Text style={{ whiteSpace: 'pre-wrap' }}>{detailData.remark || '-'}</Text>
+              </div>
             </div>
-          </Space>
+          </div>
         ) : null}
       </Modal>
 

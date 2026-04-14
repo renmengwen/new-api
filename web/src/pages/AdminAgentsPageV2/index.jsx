@@ -13,6 +13,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
+import ModalActionFooter from '../../components/common/modals/ModalActionFooter';
 import CardPro from '../../components/common/ui/CardPro';
 import { API, createCardProPagination, showError, showSuccess } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
@@ -35,6 +36,18 @@ const sectionStyle = {
   borderRadius: 12,
   padding: 16,
   background: 'var(--semi-color-bg-0)',
+};
+
+const mergedSectionStyle = {
+  ...sectionStyle,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 24,
+};
+
+const sectionBlockStyle = {
+  borderTop: '1px solid var(--semi-color-border)',
+  paddingTop: 20,
 };
 
 const fieldStyle = {
@@ -363,14 +376,19 @@ const AdminAgentsPageV2 = () => {
         title={editingAgent ? t('编辑代理商') : t('新增代理商')}
         visible={modalVisible}
         onCancel={closeModal}
-        onOk={handleSubmit}
-        okText={editingAgent ? t('保存变更') : t('确认创建')}
-        cancelText={t('取消')}
-        confirmLoading={submitting}
+        footer={
+          <ModalActionFooter
+            onConfirm={handleSubmit}
+            onCancel={closeModal}
+            confirmText={editingAgent ? t('保存变更') : t('确认创建')}
+            cancelText={t('取消')}
+            confirmLoading={submitting}
+          />
+        }
         width={760}
       >
-        <Space vertical spacing='loose' style={{ width: '100%' }}>
-          <div style={sectionStyle}>
+        <div style={mergedSectionStyle}>
+          <div>
             <div className='mb-3 flex flex-col gap-1'>
               <Text strong>{t('基础信息')}</Text>
               <Text type='tertiary'>{t('维护账号标识、代理商名称和联系信息。')}</Text>
@@ -432,7 +450,7 @@ const AdminAgentsPageV2 = () => {
               </div>
             </div>
           </div>
-          <div style={sectionStyle}>
+          <div style={sectionBlockStyle}>
             <div className='mb-3 flex flex-col gap-1'>
               <Text strong>{t('备注信息')}</Text>
               <Text type='tertiary'>{t('补充合作背景、负责人或特殊说明。')}</Text>
@@ -444,7 +462,7 @@ const AdminAgentsPageV2 = () => {
               onChange={(value) => setFormState((prev) => ({ ...prev, remark: value }))}
             />
           </div>
-        </Space>
+        </div>
       </Modal>
 
       <Modal
@@ -471,7 +489,7 @@ const AdminAgentsPageV2 = () => {
           </div>
         ) : null}
         {!detailLoading && !detailError && detailData ? (
-          <Space vertical spacing='loose' style={{ width: '100%' }}>
+          <div className='flex flex-col gap-4'>
             <div style={sectionStyle}>
               <div className='flex items-start justify-between gap-4'>
                 <div className='flex flex-col gap-1'>
@@ -485,36 +503,41 @@ const AdminAgentsPageV2 = () => {
                 </Tag>
               </div>
             </div>
-            <div style={sectionStyle}>
+            <div style={mergedSectionStyle}>
               <div className='mb-3 flex flex-col gap-1'>
                 <Text strong>{t('账号资料')}</Text>
                 <Text type='tertiary'>{t('查看代理商名称、公司信息和联系方式。')}</Text>
               </div>
               <Descriptions
                 data={[
-                  { key: 'display_name', label: t('显示名称'), value: detailData.display_name || '-' },
-                  { key: 'agent_name', label: t('代理商名称'), value: detailData.agent_name || '-' },
-                  { key: 'company_name', label: t('公司名称'), value: detailData.company_name || '-' },
-                  { key: 'contact_phone', label: t('联系电话'), value: detailData.contact_phone || '-' },
-                  { key: 'remark', label: t('备注'), value: detailData.remark || '-' },
+                  { key: t('显示名称'), value: detailData.display_name || '-' },
+                  { key: t('代理商名称'), value: detailData.agent_name || '-' },
+                  { key: t('公司名称'), value: detailData.company_name || '-' },
+                  { key: t('联系电话'), value: detailData.contact_phone || '-' },
                 ]}
                 columns={2}
               />
-            </div>
-            <div style={sectionStyle}>
-              <div className='mb-3 flex flex-col gap-1'>
-                <Text strong>{t('额度摘要')}</Text>
-                <Text type='tertiary'>{t('查看当前可用额度和冻结额度。')}</Text>
+              <div style={sectionBlockStyle}>
+                <div className='mb-3 flex flex-col gap-1'>
+                  <Text strong>{t('备注信息')}</Text>
+                </div>
+                <Text style={{ whiteSpace: 'pre-wrap' }}>{detailData.remark || '-'}</Text>
               </div>
-              <Descriptions
-                data={[
-                  { key: 'balance', label: t('当前额度'), value: detailData.quota_summary?.balance ?? 0 },
-                  { key: 'frozen_balance', label: t('冻结额度'), value: detailData.quota_summary?.frozen_balance ?? 0 },
-                ]}
-                columns={2}
-              />
+              <div style={sectionBlockStyle}>
+                <div className='mb-3 flex flex-col gap-1'>
+                  <Text strong>{t('额度摘要')}</Text>
+                  <Text type='tertiary'>{t('查看当前可用额度和冻结额度。')}</Text>
+                </div>
+                <Descriptions
+                  data={[
+                    { key: t('当前额度'), value: detailData.quota_summary?.balance ?? 0 },
+                    { key: t('冻结额度'), value: detailData.quota_summary?.frozen_balance ?? 0 },
+                  ]}
+                  columns={2}
+                />
+              </div>
             </div>
-          </Space>
+          </div>
         ) : null}
       </Modal>
 

@@ -15,6 +15,7 @@ import {
   getQuotaAccountName,
   getQuotaEntryTypeLabel,
   getQuotaOperatorName,
+  getQuotaReasonLabel,
 } from '../../helpers/quotaLedgerDisplay';
 
 const getEmptyDescription = (t, userId, entryType) =>
@@ -108,7 +109,12 @@ const QuotaLedgerTabEnhanced = ({ t }) => {
         dataIndex: 'operator_username',
         render: (_, record) => getQuotaOperatorName(record),
       },
-      { title: t('原因'), dataIndex: 'reason', ellipsis: true },
+      {
+        title: t('原因'),
+        dataIndex: 'reason',
+        ellipsis: true,
+        render: (value) => getQuotaReasonLabel(value),
+      },
       {
         title: t('时间'),
         dataIndex: 'created_at',

@@ -8,6 +8,7 @@ import {
   getQuotaAccountName,
   getQuotaEntryTypeLabel,
   getQuotaOperatorName,
+  getQuotaReasonLabel,
 } from '../../helpers/quotaLedgerDisplay';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
@@ -142,6 +143,7 @@ const AdminQuotaLedgerPageV2 = () => {
         title: t('原因'),
         dataIndex: 'reason',
         ellipsis: true,
+        render: (value) => getQuotaReasonLabel(value),
       },
       {
         title: t('时间'),
