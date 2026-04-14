@@ -41,6 +41,8 @@ const (
 	RelayModeSunoSubmit
 
 	RelayModeVideoFetchByID
+	RelayModeVideoFetchList
+	RelayModeVideoDelete
 	RelayModeVideoSubmit
 
 	RelayModeRerank

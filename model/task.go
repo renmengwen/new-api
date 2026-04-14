@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	commonRelay "github.com/QuantumNous/new-api/relay/common"
+	"gorm.io/gorm"
 )
 
 type TaskStatus string
@@ -159,11 +160,14 @@ func (p TaskPrivateData) Value() (driver.Value, error) {
 // SyncTaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段
 type SyncTaskQueryParams struct {
 	Platform       constant.TaskPlatform
+	Platforms      []constant.TaskPlatform
 	ChannelID      string
 	TaskID         string
+	TaskIDs        []string
 	UserID         string
 	Action         string
 	Status         string
+	Statuses       []TaskStatus
 	StartTimestamp int64
 	EndTimestamp   int64
 	UserIDs        []int
@@ -236,6 +240,11 @@ func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQ
 	}
 
 	// 获取数据
+	query = applySyncTaskQueryFilters(query, SyncTaskQueryParams{
+		Platforms: queryParams.Platforms,
+		TaskIDs:   queryParams.TaskIDs,
+		Statuses:  queryParams.Statuses,
+	})
 	err = query.Omit("channel_id").Order("id desc").Limit(num).Offset(startIdx).Find(&tasks).Error
 	if err != nil {
 		return nil
@@ -281,6 +290,11 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 	}
 
 	// 获取数据
+	query = applySyncTaskQueryFilters(query, SyncTaskQueryParams{
+		Platforms: queryParams.Platforms,
+		TaskIDs:   queryParams.TaskIDs,
+		Statuses:  queryParams.Statuses,
+	})
 	err = query.Order("id desc").Limit(num).Offset(startIdx).Find(&tasks).Error
 	if err != nil {
 		return nil
@@ -466,6 +480,11 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 	if queryParams.EndTimestamp != 0 {
 		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
 	}
+	query = applySyncTaskQueryFilters(query, SyncTaskQueryParams{
+		Platforms: queryParams.Platforms,
+		TaskIDs:   queryParams.TaskIDs,
+		Statuses:  queryParams.Statuses,
+	})
 	_ = query.Count(&total).Error
 	return total
 }
@@ -492,9 +511,28 @@ func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 	if queryParams.EndTimestamp != 0 {
 		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
 	}
+	query = applySyncTaskQueryFilters(query, SyncTaskQueryParams{
+		Platforms: queryParams.Platforms,
+		TaskIDs:   queryParams.TaskIDs,
+		Statuses:  queryParams.Statuses,
+	})
 	_ = query.Count(&total).Error
 	return total
 }
+
+func applySyncTaskQueryFilters(query *gorm.DB, queryParams SyncTaskQueryParams) *gorm.DB {
+	if len(queryParams.Platforms) > 0 {
+		query = query.Where("platform IN ?", queryParams.Platforms)
+	}
+	if len(queryParams.TaskIDs) > 0 {
+		query = query.Where("task_id IN ?", queryParams.TaskIDs)
+	}
+	if len(queryParams.Statuses) > 0 {
+		query = query.Where("status IN ?", queryParams.Statuses)
+	}
+	return query
+}
+
 func (t *Task) ToOpenAIVideo() *dto.OpenAIVideo {
 	openAIVideo := dto.NewOpenAIVideo()
 	openAIVideo.ID = t.TaskID

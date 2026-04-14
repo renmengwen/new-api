@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -172,5 +173,37 @@ func TestNormalizeChannelTestEndpointKeepsVolcEngineChatModelDefault(t *testing.
 	got := normalizeChannelTestEndpoint(channel, "Doubao-pro-32k", "")
 	if got != "" {
 		t.Fatalf("normalizeChannelTestEndpoint() = %q, want empty string", got)
+	}
+}
+
+func TestChannelRejectsVolcEngineSeedanceModel(t *testing.T) {
+	t.Parallel()
+
+	channel := &model.Channel{Type: constant.ChannelTypeVolcEngine}
+
+	result := testChannel(channel, "doubao-seedance-1-5-pro", "", false)
+	if result.localErr == nil {
+		t.Fatal("testChannel() localErr is nil, want unsupported error")
+	}
+	if !strings.Contains(strings.ToLower(result.localErr.Error()), "not supported") {
+		t.Fatalf("testChannel() localErr = %q, want unsupported error", result.localErr.Error())
+	}
+}
+
+func TestChannelRejectsMappedVolcEngineSeedanceAlias(t *testing.T) {
+	t.Parallel()
+
+	modelMapping := `{"alias-seedance":"doubao-seedance-2-0"}`
+	channel := &model.Channel{
+		Type:         constant.ChannelTypeVolcEngine,
+		ModelMapping: &modelMapping,
+	}
+
+	result := testChannel(channel, "alias-seedance", "", false)
+	if result.localErr == nil {
+		t.Fatal("testChannel() localErr is nil, want unsupported error")
+	}
+	if !strings.Contains(strings.ToLower(result.localErr.Error()), "not supported") {
+		t.Fatalf("testChannel() localErr = %q, want unsupported error", result.localErr.Error())
 	}
 }

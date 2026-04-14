@@ -42,6 +42,14 @@ type testResult struct {
 	newAPIError *types.NewAPIError
 }
 
+func isSeedanceChannelTestModel(modelName string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(modelName))
+	if normalized == "" {
+		return false
+	}
+	return strings.Contains(normalized, "seedance")
+}
+
 func resolveChannelTestModelName(channel *model.Channel, modelName string) string {
 	resolvedModel, _, err := helper.ResolveMappedModelName(strings.TrimSpace(modelName), channel.GetModelMapping())
 	if err != nil || strings.TrimSpace(resolvedModel) == "" {
@@ -103,6 +111,11 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 
 	resolvedTestModel := resolveChannelTestModelName(channel, testModel)
+	if channel.Type == constant.ChannelTypeVolcEngine && isSeedanceChannelTestModel(resolvedTestModel) {
+		return testResult{
+			localErr: fmt.Errorf("%s seedance channel test is not supported", constant.GetChannelTypeName(channel.Type)),
+		}
+	}
 
 	endpointType = normalizeChannelTestEndpoint(channel, resolvedTestModel, endpointType)
 
