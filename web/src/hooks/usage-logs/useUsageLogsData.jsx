@@ -117,7 +117,8 @@ export const useLogsData = () => {
   const [committedQuery, setCommittedQuery] = useState(() =>
     createUsageLogCommittedQuery(formInitValues),
   );
-  const [isExportReady, setIsExportReady] = useState(true);
+  const [listRequestsInFlight, setListRequestsInFlight] = useState(0);
+  const isExportReady = listRequestsInFlight === 0;
   const [exportLoading, setExportLoading] = useState(false);
 
   // Get default column visibility based on user role
@@ -247,7 +248,7 @@ export const useLogsData = () => {
   // 获取表单值的辅助函数，确保所有值都是字符串
   const getFormValues = () => {
     const formValues = formApi ? formApi.getValues() : formInitValues;
-    return createUsageLogCommittedQuery(formValues);
+    return createUsageLogCommittedQuery(formValues, formInitValues.dateRange);
   };
 
   // Statistics functions
@@ -713,7 +714,7 @@ export const useLogsData = () => {
   // Load logs function
   const loadLogs = async (startIdx, pageSize, query = committedQuery) => {
     setLoading(true);
-    setIsExportReady(false);
+    setListRequestsInFlight((count) => count + 1);
 
     let url = '';
     const {
@@ -753,7 +754,7 @@ export const useLogsData = () => {
       return false;
     } finally {
       setLoading(false);
-      setIsExportReady(true);
+      setListRequestsInFlight((count) => Math.max(0, count - 1));
     }
   };
 

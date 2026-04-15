@@ -27,7 +27,8 @@ test('useUsageLogsData uses committed query state for export, refresh, paging, a
   assert.match(hookSource, /createUsageLogCommittedQuery/);
   assert.match(hookSource, /getVisibleUsageLogColumnKeys/);
   assert.match(hookSource, /const \[committedQuery, setCommittedQuery\] = useState\(/);
-  assert.match(hookSource, /const \[isExportReady, setIsExportReady\] = useState\(true\)/);
+  assert.match(hookSource, /const \[listRequestsInFlight, setListRequestsInFlight\] = useState\(0\)/);
+  assert.match(hookSource, /const isExportReady = listRequestsInFlight === 0;/);
   assert.match(hookSource, /downloadExcelBlob/);
   assert.match(hookSource, /\/api\/log\/export/);
   assert.match(hookSource, /\/api\/log\/self\/export/);
@@ -43,8 +44,15 @@ test('useUsageLogsData uses committed query state for export, refresh, paging, a
   );
   assert.match(hookSource, /loadLogs\(page,\s*pageSize,\s*committedQuery\)/);
   assert.match(hookSource, /loadLogs\(1,\s*size,\s*committedQuery\)/);
-  assert.match(hookSource, /setIsExportReady\(false\)/);
-  assert.match(hookSource, /setIsExportReady\(true\)/);
+  assert.match(hookSource, /setListRequestsInFlight\(\(count\) => count \+ 1\)/);
+  assert.match(
+    hookSource,
+    /setListRequestsInFlight\(\(count\) => Math\.max\(0,\s*count - 1\)\)/,
+  );
+  assert.match(
+    hookSource,
+    /createUsageLogCommittedQuery\(formValues,\s*formInitValues\.dateRange\)/,
+  );
   assert.match(
     hookSource,
     /if \(loading \|\| exportLoading \|\| !isExportReady\) \{\s*return;\s*\}/,

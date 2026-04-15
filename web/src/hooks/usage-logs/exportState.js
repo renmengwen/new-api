@@ -15,17 +15,29 @@ const toUnixTimestamp = (value) => {
   return Math.floor(parsedValue / 1000);
 };
 
-export const createUsageLogCommittedQuery = (values = {}) => {
-  const dateRange = Array.isArray(values.dateRange) ? values.dateRange : [];
-  const startTimestamp = dateRange[0] ?? values.start_timestamp ?? '';
-  const endTimestamp = dateRange[1] ?? values.end_timestamp ?? '';
+export const createUsageLogCommittedQuery = (
+  values = {},
+  fallbackDateRange = [],
+) => {
+  const dateRange =
+    Array.isArray(values.dateRange) && values.dateRange.length === 2
+      ? values.dateRange
+      : [];
+  const fallbackRange =
+    Array.isArray(fallbackDateRange) && fallbackDateRange.length === 2
+      ? fallbackDateRange
+      : [];
+  const startTimestamp =
+    dateRange[0] || values.start_timestamp || fallbackRange[0] || '';
+  const endTimestamp =
+    dateRange[1] || values.end_timestamp || fallbackRange[1] || '';
 
   return {
     username: normalizeText(values.username),
     token_name: normalizeText(values.token_name),
     model_name: normalizeText(values.model_name),
-    start_timestamp: startTimestamp,
-    end_timestamp: endTimestamp,
+    start_timestamp: normalizeText(startTimestamp),
+    end_timestamp: normalizeText(endTimestamp),
     channel: normalizeText(values.channel),
     group: normalizeText(values.group),
     request_id: normalizeText(values.request_id),

@@ -32,6 +32,30 @@ test('createUsageLogCommittedQuery normalizes submitted usage log filters into a
   });
 });
 
+test('createUsageLogCommittedQuery falls back to the default date range when the current date range is cleared', () => {
+  const committedQuery = createUsageLogCommittedQuery(
+    {
+      username: 'alice',
+      token_name: 'demo-token',
+      dateRange: [],
+      logType: '2',
+    },
+    ['2026-04-15 00:00:00', '2026-04-16 01:00:00'],
+  );
+
+  assert.deepEqual(committedQuery, {
+    username: 'alice',
+    token_name: 'demo-token',
+    model_name: '',
+    start_timestamp: '2026-04-15 00:00:00',
+    end_timestamp: '2026-04-16 01:00:00',
+    channel: '',
+    group: '',
+    request_id: '',
+    logType: 2,
+  });
+});
+
 test('buildUsageLogExportRequest uses the committed query snapshot, visible column order, and the shared export cap', () => {
   const exportRequest = buildUsageLogExportRequest({
     committedQuery: {
