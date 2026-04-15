@@ -11,16 +11,36 @@ type ExcelFileSpec struct {
 	FileNamePrefix string
 	SheetName      string
 	Headers        []string
+	ColumnWidths   []float64
 	Rows           [][]string
 }
 
-func BuildExcelFile(spec ExcelFileSpec) (string, []byte, error) {
+func BuildExcelFile(spec ExcelFileSpec) (fileName string, content []byte, err error) {
 	file := excelize.NewFile()
+	defer func() {
+		closeErr := file.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+			fileName = ""
+			content = nil
+		}
+	}()
+
 	sheetName := spec.SheetName
 	defaultSheetName := file.GetSheetName(0)
 
 	if err := file.SetSheetName(defaultSheetName, sheetName); err != nil {
 		return "", nil, err
+	}
+
+	for index, width := range spec.ColumnWidths {
+		columnName, err := excelize.ColumnNumberToName(index + 1)
+		if err != nil {
+			return "", nil, err
+		}
+		if err := file.SetColWidth(sheetName, columnName, columnName, width); err != nil {
+			return "", nil, err
+		}
 	}
 
 	for index, header := range spec.Headers {
@@ -50,6 +70,7 @@ func BuildExcelFile(spec ExcelFileSpec) (string, []byte, error) {
 		return "", nil, err
 	}
 
-	fileName := fmt.Sprintf("%s_%s.xlsx", spec.FileNamePrefix, time.Now().Format("2006-01-02_15-04-05"))
-	return fileName, buffer.Bytes(), nil
+	fileName = fmt.Sprintf("%s_%s.xlsx", spec.FileNamePrefix, time.Now().Format("2006-01-02_15-04-05"))
+	content = buffer.Bytes()
+	return fileName, content, nil
 }
