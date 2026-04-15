@@ -449,17 +449,8 @@ func (user *User) Insert(inviterId int) error {
 	if _, err = InitQuotaAccount(QuotaOwnerTypeUser, user.Id, user.Quota); err != nil {
 		return err
 	}
-	if common.QuotaForNewUser > 0 {
-		if err = appendUserQuotaLedgerSnapshot(userQuotaLedgerInput{
-			UserId:     user.Id,
-			Delta:      common.QuotaForNewUser,
-			EntryType:  LedgerEntryReward,
-			SourceType: "user_register",
-			SourceId:   user.Id,
-			Reason:     "user_register",
-		}, 0, user.Quota); err != nil {
-			return err
-		}
+	if err = appendUserOpeningQuotaLedger(user.Id, common.QuotaForNewUser, "user_register"); err != nil {
+		return err
 	}
 
 	// 用户创建成功后，根据角色初始化边栏配置
@@ -505,9 +496,9 @@ func (user *User) Insert(inviterId int) error {
 }
 
 // InsertWithTx inserts a new user within an existing transaction.
-// This is used for OAuth registration where user creation and binding need to be atomic.
+// openingSourceType controls whether an opening ledger is written in the same transaction.
 // Post-creation tasks (sidebar config, logs, inviter rewards) are handled after the transaction commits.
-func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
+func (user *User) InsertWithTx(tx *gorm.DB, inviterId int, openingSourceType string) error {
 	var err error
 	if user.Password != "" {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -532,8 +523,18 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 	if _, err = InitQuotaAccountTx(tx, QuotaOwnerTypeUser, user.Id, user.Quota); err != nil {
 		return err
 	}
+	if err = AppendUserOpeningQuotaLedgerTx(tx, user.Id, common.QuotaForNewUser, openingSourceType); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+func (user *User) hasOAuthIdentity() (bool, error) {
+	if user == nil {
+		return false, nil
+	}
+	return user.GitHubId != "" || user.DiscordId != "" || user.OidcId != "" || user.WeChatId != "" || user.TelegramId != "" || user.LinuxDOId != "", nil
 }
 
 // FinalizeOAuthUserCreation performs post-transaction tasks for OAuth user creation.
@@ -553,15 +554,7 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	}
 
 	if common.QuotaForNewUser > 0 {
-		_ = appendUserQuotaLedgerSnapshot(userQuotaLedgerInput{
-			UserId:     user.Id,
-			Delta:      common.QuotaForNewUser,
-			EntryType:  LedgerEntryReward,
-			SourceType: "user_register",
-			SourceId:   user.Id,
-			Reason:     "user_register",
-		}, 0, common.QuotaForNewUser)
-		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
+			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
 	if inviterId != 0 {
 		if common.QuotaForInvitee > 0 {
@@ -963,6 +956,7 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	return userBase.GetSetting(), nil
 }
 
+// IncreaseUserQuota is legacy-only; not strict-ledger-safe. Do not use for new wallet flows.
 func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
@@ -988,6 +982,7 @@ func increaseUserQuota(id int, quota int) (err error) {
 	return err
 }
 
+// DecreaseUserQuota is legacy-only; not strict-ledger-safe. Do not use for new wallet flows.
 func DecreaseUserQuota(id int, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
@@ -1013,6 +1008,7 @@ func decreaseUserQuota(id int, quota int) (err error) {
 	return err
 }
 
+// DeltaUpdateUserQuota is legacy-only; not strict-ledger-safe. Do not use for new wallet flows.
 func DeltaUpdateUserQuota(id int, delta int) (err error) {
 	if delta == 0 {
 		return nil

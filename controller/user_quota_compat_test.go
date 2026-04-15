@@ -129,6 +129,7 @@ func TestUpdateUserQuotaChangeCreatesLedgerForEndUser(t *testing.T) {
 	require.Equal(t, 600, ledger.BalanceBefore)
 	require.Equal(t, 950, ledger.BalanceAfter)
 	require.Equal(t, 350, ledger.Amount)
+	require.Equal(t, "manual_adjust", ledger.Reason)
 }
 
 func TestUpdateUserQuotaChangeCreatesLedgerForAgentAndKeepsProfileFields(t *testing.T) {
@@ -169,6 +170,7 @@ func TestUpdateUserQuotaChangeCreatesLedgerForAgentAndKeepsProfileFields(t *test
 	require.Equal(t, 1200, ledger.BalanceBefore)
 	require.Equal(t, 1000, ledger.BalanceAfter)
 	require.Equal(t, 200, ledger.Amount)
+	require.Equal(t, "manual_adjust", ledger.Reason)
 }
 
 func TestUpdateUserQuotaChangeReconcilesLegacyBalanceDriftBeforeAdjust(t *testing.T) {

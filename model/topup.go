@@ -62,27 +62,17 @@ func applyTopUpRechargeTx(tx *gorm.DB, topUp *TopUp, quotaToAdd int, sourceType 
 
 	now := common.GetTimestamp()
 	user := &User{}
-	if err := tx.Select("id", "quota").Where("id = ?", topUp.UserId).First(user).Error; err != nil {
+	if err := userQuotaReconcileUserForUpdateQuery(tx, topUp.UserId).First(user).Error; err != nil {
 		return err
 	}
 
-	account, err := getQuotaAccountByOwnerWithDB(tx, QuotaOwnerTypeUser, topUp.UserId)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		account, err = InitQuotaAccountTx(tx, QuotaOwnerTypeUser, topUp.UserId, user.Quota)
-	}
+	account, err := getUserQuotaAccountForReconcileTx(tx, topUp.UserId, user.Quota)
 	if err != nil {
 		return err
 	}
 
-	if account.Balance != user.Quota {
-		if err := tx.Model(&QuotaAccount{}).Where("id = ?", account.Id).Updates(map[string]interface{}{
-			"balance":    user.Quota,
-			"version":    gorm.Expr("version + 1"),
-			"updated_at": now,
-		}).Error; err != nil {
-			return err
-		}
-		account.Balance = user.Quota
+	if err := reconcileUserQuotaAccountBalanceTx(tx, user, account, now); err != nil {
+		return err
 	}
 
 	before := account.Balance

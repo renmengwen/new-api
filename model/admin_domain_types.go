@@ -31,6 +31,7 @@ const (
 )
 
 const (
+	LedgerEntryOpening    = "opening"
 	LedgerEntryAdjust     = "adjust"
 	LedgerEntryRecharge   = "recharge"
 	LedgerEntryReclaim    = "reclaim"

@@ -131,7 +131,7 @@ func CreateAdminUserWithOperator(req CreateAdminUserRequest, operatorUserId int,
 		}
 	}()
 
-	if err := user.InsertWithTx(tx, 0); err != nil {
+	if err := user.InsertWithTx(tx, 0, "admin_user_create"); err != nil {
 		tx.Rollback()
 		return nil, err
 	}

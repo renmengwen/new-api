@@ -48,12 +48,15 @@ func setupAdminUserTestDB(t *testing.T) *gorm.DB {
 		&model.PermissionProfile{},
 		&model.PermissionProfileItem{},
 		&model.UserPermissionBinding{},
+		&model.UserPermissionOverride{},
+		&model.UserMenuOverride{},
 		&model.UserDataScopeOverride{},
 		&model.AgentUserRelation{},
 		&model.AgentQuotaPolicy{},
 		&model.QuotaAccount{},
 		&model.QuotaTransferOrder{},
 		&model.QuotaLedger{},
+		&model.Log{},
 		&model.AdminAuditLog{},
 	))
 
@@ -124,6 +127,17 @@ func seedManagedUser(t *testing.T, db *gorm.DB, username string, userType string
 		UpdatedAtTs:    common.GetTimestamp(),
 	}).Error)
 	return user
+}
+
+func listQuotaLedgersForUser(t *testing.T, db *gorm.DB, userId int) []model.QuotaLedger {
+	t.Helper()
+
+	account, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, userId)
+	require.NoError(t, err)
+
+	var ledgers []model.QuotaLedger
+	require.NoError(t, db.Where("account_id = ?", account.Id).Order("id asc").Find(&ledgers).Error)
+	return ledgers
 }
 
 func TestGetAdminUsersReturnsOnlyEndUsers(t *testing.T) {
@@ -373,8 +387,13 @@ func TestUpdateAdminUserStatusWritesAudit(t *testing.T) {
 	require.NoError(t, db.Where("action_module = ? AND action_type = ? AND target_type = ? AND target_id = ?", "user_management", "disable", "user", user.Id).First(&audit).Error)
 }
 
-func TestCreateAdminUserForAgentForcesEndUserAndCreatesBinding(t *testing.T) {
+func TestCreateAdminUserForAgentCreatesOpeningLedgerEntry(t *testing.T) {
 	db := setupAdminUserTestDB(t)
+	previousNewUserQuota := common.QuotaForNewUser
+	common.QuotaForNewUser = 64
+	t.Cleanup(func() {
+		common.QuotaForNewUser = previousNewUserQuota
+	})
 	agent := seedManagedUser(t, db, "agent_create_operator", model.UserTypeAgent, common.RoleAdminUser, 0, 0)
 	grantPermissionActions(t, db, agent.Id, model.UserTypeAgent,
 		permissionGrant{Resource: service.ResourceUserManagement, Action: service.ActionCreate},
@@ -385,8 +404,6 @@ func TestCreateAdminUserForAgentForcesEndUserAndCreatesBinding(t *testing.T) {
 		"password":     "12345678",
 		"display_name": "Agent Created User",
 		"remark":       "created by agent",
-		"role":         common.RoleAdminUser,
-		"user_type":    model.UserTypeAdmin,
 	}, agent.Id, common.RoleAdminUser)
 
 	CreateAdminUser(ctx)
@@ -400,6 +417,20 @@ func TestCreateAdminUserForAgentForcesEndUserAndCreatesBinding(t *testing.T) {
 	require.Equal(t, common.RoleCommonUser, user.Role)
 	require.Equal(t, model.UserTypeEndUser, user.GetUserType())
 	require.Equal(t, agent.Id, user.ParentAgentId)
+
+	account, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, user.Id)
+	require.NoError(t, err)
+	require.Equal(t, common.QuotaForNewUser, account.Balance)
+
+	ledgers := listQuotaLedgersForUser(t, db, user.Id)
+	require.Len(t, ledgers, 1)
+	require.Equal(t, "opening", ledgers[0].EntryType)
+	require.Equal(t, model.LedgerDirectionIn, ledgers[0].Direction)
+	require.Equal(t, common.QuotaForNewUser, ledgers[0].Amount)
+	require.Equal(t, 0, ledgers[0].BalanceBefore)
+	require.Equal(t, common.QuotaForNewUser, ledgers[0].BalanceAfter)
+	require.Equal(t, "admin_user_create", ledgers[0].SourceType)
+	require.Equal(t, user.Id, ledgers[0].SourceId)
 
 	var relation model.AgentUserRelation
 	require.NoError(t, db.Where("agent_user_id = ? AND end_user_id = ? AND status = ?", agent.Id, user.Id, model.CommonStatusEnabled).First(&relation).Error)

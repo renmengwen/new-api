@@ -33,7 +33,10 @@ import {
   displayAmountToQuota,
 } from '../../../../helpers/quota';
 import {
-  applyQuotaDelta,
+  QUOTA_ADJUST_MODE,
+  calculateAdjustedQuota,
+  normalizePositiveAdjustmentValue,
+  shouldDisableQuotaAdjustmentConfirm,
   shouldDisableQuotaInput,
 } from './editUserModalHelpers';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
@@ -51,6 +54,7 @@ import {
   Row,
   Col,
   InputNumber,
+  Select,
 } from '@douyinfe/semi-ui';
 import {
   IconUser,
@@ -62,6 +66,7 @@ import UserBindingManagementModal from './UserBindingManagementModal';
 import ModalActionFooter from '../../../common/modals/ModalActionFooter';
 
 const { Text, Title } = Typography;
+const ADMIN_QUOTA_DISPLAY_DIGITS = 6;
 
 const EditUserModal = (props) => {
   const { t } = useTranslation();
@@ -70,6 +75,9 @@ const EditUserModal = (props) => {
   const [addQuotaModalOpen, setIsModalOpen] = useState(false);
   const [addQuotaLocal, setAddQuotaLocal] = useState('');
   const [addAmountLocal, setAddAmountLocal] = useState('');
+  const [quotaAdjustMode, setQuotaAdjustMode] = useState(
+    QUOTA_ADJUST_MODE.increase,
+  );
   const isMobile = useIsMobile();
   const [groupOptions, setGroupOptions] = useState([]);
   const [bindingModalVisible, setBindingModalVisible] = useState(false);
@@ -161,12 +169,33 @@ const EditUserModal = (props) => {
   };
 
   /* --------------------- quota helper -------------------- */
-  const addLocalQuota = () => {
-    const current = formApiRef.current?.getValue('quota');
-    formApiRef.current?.setValue(
-      'quota',
-      applyQuotaDelta(current, addQuotaLocal),
-    );
+  const resetQuotaAdjustModal = () => {
+    setIsModalOpen(false);
+    setAddQuotaLocal('');
+    setAddAmountLocal('');
+    setQuotaAdjustMode(QUOTA_ADJUST_MODE.increase);
+  };
+
+  const currentQuota = parseInt(formApiRef.current?.getValue('quota'), 10) || 0;
+  const adjustedQuota = calculateAdjustedQuota(
+    currentQuota,
+    addQuotaLocal,
+    quotaAdjustMode,
+  );
+  const quotaAdjustDisabled = shouldDisableQuotaAdjustmentConfirm(
+    currentQuota,
+    addQuotaLocal,
+    quotaAdjustMode,
+  );
+  const quotaAdjustOperator =
+    quotaAdjustMode === QUOTA_ADJUST_MODE.decrease ? '-' : '+';
+
+  const applyQuotaAdjustment = () => {
+    if (quotaAdjustDisabled) {
+      return;
+    }
+    formApiRef.current?.setValue('quota', adjustedQuota);
+    resetQuotaAdjustModal();
   };
 
   /* --------------------------- UI --------------------------- */
@@ -308,7 +337,10 @@ const EditUserModal = (props) => {
                           label={t('剩余额度')}
                           placeholder={t('请输入新的剩余额度')}
                           step={500000}
-                          extraText={renderQuotaWithPrompt(values.quota || 0)}
+                          extraText={renderQuotaWithPrompt(
+                            values.quota || 0,
+                            ADMIN_QUOTA_DISPLAY_DIGITS,
+                          )}
                           rules={[{ required: true, message: t('请输入额度') }]}
                           style={{ width: '100%' }}
                           disabled={shouldDisableQuotaInput(isEdit)}
@@ -316,11 +348,18 @@ const EditUserModal = (props) => {
                       </Col>
 
                       <Col span={14}>
-                        <Form.Slot label={t('添加额度')}>
+                        <Form.Slot
+                          label={
+                            <span className='invisible'>{t('调整额度')}</span>
+                          }
+                        >
                           <Button
                             icon={<IconPlus />}
                             onClick={() => setIsModalOpen(true)}
-                          />
+                            className='!inline-flex !items-center !gap-1'
+                          >
+                            {t('调整额度')}
+                          </Button>
                         </Form.Slot>
                       </Col>
                     </Row>
@@ -376,32 +415,47 @@ const EditUserModal = (props) => {
       <Modal
         centered
         visible={addQuotaModalOpen}
-        onOk={() => {
-          addLocalQuota();
-          setIsModalOpen(false);
-          setAddQuotaLocal('');
-          setAddAmountLocal('');
-        }}
-        onCancel={() => {
-          setIsModalOpen(false);
-        }}
+        footer={
+          <ModalActionFooter
+            onConfirm={applyQuotaAdjustment}
+            onCancel={resetQuotaAdjustModal}
+            confirmText={t('确定')}
+            cancelText={t('取消')}
+            confirmDisabled={quotaAdjustDisabled}
+          />
+        }
+        onCancel={resetQuotaAdjustModal}
         closable={null}
         title={
           <div className='flex items-center'>
             <IconPlus className='mr-2' />
-            {t('添加额度')}
+            {t('调整额度')}
           </div>
         }
       >
+        <div className='mb-3'>
+          <div className='mb-1'>
+            <Text size='small'>{t('操作类型')}</Text>
+          </div>
+          <Select
+            value={quotaAdjustMode}
+            style={{ width: '100%' }}
+            optionList={[
+              { label: t('增加'), value: QUOTA_ADJUST_MODE.increase },
+              { label: t('减少'), value: QUOTA_ADJUST_MODE.decrease },
+            ]}
+            onChange={(value) => setQuotaAdjustMode(value)}
+          />
+        </div>
         <div className='mb-4'>
-          {(() => {
-            const current = formApiRef.current?.getValue('quota') || 0;
-            return (
-              <Text type='secondary' className='block mb-2'>
-                {`${t('新额度：')}${renderQuota(current)} + ${renderQuota(addQuotaLocal)} = ${renderQuota(current + parseInt(addQuotaLocal || 0))}`}
-              </Text>
-            );
-          })()}
+          <Text type='secondary' className='block mb-2'>
+            {`${t('新额度：')}${renderQuota(currentQuota, ADMIN_QUOTA_DISPLAY_DIGITS)} ${quotaAdjustOperator} ${renderQuota(addQuotaLocal, ADMIN_QUOTA_DISPLAY_DIGITS)} = ${renderQuota(adjustedQuota, ADMIN_QUOTA_DISPLAY_DIGITS)}`}
+          </Text>
+          {adjustedQuota < 0 ? (
+            <Text type='danger' className='block'>
+              {t('新额度不能小于 0')}
+            </Text>
+          ) : null}
         </div>
         {getCurrencyConfig().type !== 'TOKENS' && (
           <div className='mb-3'>
@@ -418,15 +472,17 @@ const EditUserModal = (props) => {
               value={addAmountLocal}
               precision={2}
               onChange={(val) => {
-                setAddAmountLocal(val);
+                const normalizedAmount = normalizePositiveAdjustmentValue(val);
+                setAddAmountLocal(normalizedAmount);
                 setAddQuotaLocal(
-                  val != null && val !== ''
-                    ? displayAmountToQuota(Math.abs(val)) * Math.sign(val)
+                  normalizedAmount !== ''
+                    ? displayAmountToQuota(normalizedAmount)
                     : '',
                 );
               }}
               style={{ width: '100%' }}
               showClear
+              min={0}
             />
           </div>
         )}
@@ -438,13 +494,12 @@ const EditUserModal = (props) => {
             placeholder={t('输入额度')}
             value={addQuotaLocal}
             onChange={(val) => {
-              setAddQuotaLocal(val);
+              const normalizedQuota = normalizePositiveAdjustmentValue(val);
+              setAddQuotaLocal(normalizedQuota);
               setAddAmountLocal(
-                val != null && val !== ''
+                normalizedQuota !== ''
                   ? Number(
-                      (
-                        quotaToDisplayAmount(Math.abs(val)) * Math.sign(val)
-                      ).toFixed(2),
+                      quotaToDisplayAmount(normalizedQuota).toFixed(2),
                     )
                   : '',
               );
@@ -452,6 +507,7 @@ const EditUserModal = (props) => {
             style={{ width: '100%' }}
             showClear
             step={500000}
+            min={0}
           />
         </div>
       </Modal>

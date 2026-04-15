@@ -608,7 +608,7 @@ func UpdateUser(c *gin.Context) {
 			OperatorRole:   c.GetInt("role"),
 			TargetUserId:   originUser.Id,
 			Delta:          targetQuota - originUser.Quota,
-			Reason:         "legacy_user_update",
+			Reason:         "manual_adjust",
 			IP:             c.ClientIP(),
 		}, originUser)
 		if err != nil {

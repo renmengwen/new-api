@@ -84,8 +84,15 @@ func createRootAccountIfNeed() error {
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		DB.Create(&rootUser)
-		_, _ = InitQuotaAccount(QuotaOwnerTypeUser, rootUser.Id, rootUser.Quota)
+		if err := DB.Create(&rootUser).Error; err != nil {
+			return err
+		}
+		if _, err := InitQuotaAccount(QuotaOwnerTypeUser, rootUser.Id, rootUser.Quota); err != nil {
+			return err
+		}
+		if err := appendUserOpeningQuotaLedger(rootUser.Id, rootUser.Quota, "root_bootstrap"); err != nil {
+			return err
+		}
 	}
 	return nil
 }

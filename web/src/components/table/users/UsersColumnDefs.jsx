@@ -156,20 +156,21 @@ const renderStatistics = (text, record, showEnableDisableModal, t) => {
 
 const renderQuotaUsage = (text, record, t) => {
   const { Paragraph } = Typography;
+  const quotaDigits = 6;
   const used = parseInt(record.used_quota) || 0;
   const remain = parseInt(record.quota) || 0;
   const total = used + remain;
   const percent = total > 0 ? (remain / total) * 100 : 0;
   const popoverContent = (
     <div className='text-xs p-2'>
-      <Paragraph copyable={{ content: renderQuota(used) }}>
-        {t('已用额度')}: {renderQuota(used)}
+      <Paragraph copyable={{ content: renderQuota(used, quotaDigits) }}>
+        {t('已用额度')}: {renderQuota(used, quotaDigits)}
       </Paragraph>
-      <Paragraph copyable={{ content: renderQuota(remain) }}>
-        {t('剩余额度')}: {renderQuota(remain)} ({percent.toFixed(0)}%)
+      <Paragraph copyable={{ content: renderQuota(remain, quotaDigits) }}>
+        {t('剩余额度')}: {renderQuota(remain, quotaDigits)} ({percent.toFixed(0)}%)
       </Paragraph>
-      <Paragraph copyable={{ content: renderQuota(total) }}>
-        {t('总额度')}: {renderQuota(total)}
+      <Paragraph copyable={{ content: renderQuota(total, quotaDigits) }}>
+        {t('总额度')}: {renderQuota(total, quotaDigits)}
       </Paragraph>
     </div>
   );
@@ -177,7 +178,7 @@ const renderQuotaUsage = (text, record, t) => {
     <Popover content={popoverContent} position='top'>
       <Tag color='white' shape='circle'>
         <div className='flex flex-col items-end'>
-          <span className='text-xs leading-none'>{`${renderQuota(remain)} / ${renderQuota(total)}`}</span>
+          <span className='text-xs leading-none'>{`${renderQuota(remain, quotaDigits)} / ${renderQuota(total, quotaDigits)}`}</span>
           <Progress
             percent={percent}
             aria-label='quota usage'

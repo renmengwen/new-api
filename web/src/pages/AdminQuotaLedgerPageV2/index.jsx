@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Banner, Button, Empty, Input, Select, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import CardPro from '../../components/common/ui/CardPro';
-import { API, createCardProPagination, showError, timestamp2string } from '../../helpers';
+import { API, createCardProPagination, renderQuota, showError, timestamp2string } from '../../helpers';
 import {
   QUOTA_LEDGER_ENTRY_TYPE_OPTIONS,
   getQuotaAccountName,
@@ -14,6 +14,7 @@ import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
 
 const { Text } = Typography;
+const ADMIN_QUOTA_LEDGER_DIGITS = 6;
 
 const AdminQuotaLedgerPageV2 = () => {
   const { t } = useTranslation();
@@ -121,17 +122,20 @@ const AdminQuotaLedgerPageV2 = () => {
       {
         title: t('金额'),
         dataIndex: 'amount',
-        width: 90,
+        width: 132,
+        render: (value) => renderQuota(value, ADMIN_QUOTA_LEDGER_DIGITS),
       },
       {
         title: t('变动前'),
         dataIndex: 'balance_before',
-        width: 96,
+        width: 132,
+        render: (value) => renderQuota(value, ADMIN_QUOTA_LEDGER_DIGITS),
       },
       {
         title: t('变动后'),
         dataIndex: 'balance_after',
-        width: 96,
+        width: 132,
+        render: (value) => renderQuota(value, ADMIN_QUOTA_LEDGER_DIGITS),
       },
       {
         title: t('操作人'),

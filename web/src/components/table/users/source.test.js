@@ -13,6 +13,13 @@ test('managed users table keeps extra user-management capabilities configurable'
 });
 
 test('user operation column no longer exposes promote or demote buttons', () => {
-  assert.doesNotMatch(columnDefsSource, /\{t\('提升'\)\}/);
-  assert.doesNotMatch(columnDefsSource, /\{t\('降级'\)\}/);
+  assert.doesNotMatch(columnDefsSource, /\{t\('鎻愬崌'\)\}/);
+  assert.doesNotMatch(columnDefsSource, /\{t\('闄嶇骇'\)\}/);
+});
+
+test('user quota usage display keeps six decimal places for admin audit views', () => {
+  assert.match(columnDefsSource, /const quotaDigits = 6;/);
+  assert.match(columnDefsSource, /renderQuota\(used,\s*quotaDigits\)/);
+  assert.match(columnDefsSource, /renderQuota\(remain,\s*quotaDigits\)/);
+  assert.match(columnDefsSource, /renderQuota\(total,\s*quotaDigits\)/);
 });

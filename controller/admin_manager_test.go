@@ -45,6 +45,7 @@ func setupAdminManagerTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.AutoMigrate(
 		&model.User{},
 		&model.QuotaAccount{},
+		&model.QuotaLedger{},
 		&model.PermissionProfile{},
 		&model.PermissionProfileItem{},
 		&model.UserPermissionBinding{},
@@ -93,8 +94,13 @@ func newAdminManagerContext(t *testing.T, method string, target string, body any
 	return ctx, recorder
 }
 
-func TestCreateAdminManagerCreatesAdminUser(t *testing.T) {
+func TestCreateAdminManagerCreatesOpeningLedgerEntry(t *testing.T) {
 	db := setupAdminManagerTestDB(t)
+	previousNewUserQuota := common.QuotaForNewUser
+	common.QuotaForNewUser = 96
+	t.Cleanup(func() {
+		common.QuotaForNewUser = previousNewUserQuota
+	})
 
 	ctx, recorder := newAdminManagerContext(t, http.MethodPost, "/api/admin/admin-users", map[string]any{
 		"username":     "admin_created_1",
@@ -113,6 +119,20 @@ func TestCreateAdminManagerCreatesAdminUser(t *testing.T) {
 	require.NoError(t, db.Where("username = ?", "admin_created_1").First(&user).Error)
 	require.Equal(t, common.RoleAdminUser, user.Role)
 	require.Equal(t, model.UserTypeAdmin, user.GetUserType())
+
+	account, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, user.Id)
+	require.NoError(t, err)
+	require.Equal(t, common.QuotaForNewUser, account.Balance)
+
+	ledgers := listQuotaLedgersForUser(t, db, user.Id)
+	require.Len(t, ledgers, 1)
+	require.Equal(t, "opening", ledgers[0].EntryType)
+	require.Equal(t, model.LedgerDirectionIn, ledgers[0].Direction)
+	require.Equal(t, common.QuotaForNewUser, ledgers[0].Amount)
+	require.Equal(t, 0, ledgers[0].BalanceBefore)
+	require.Equal(t, common.QuotaForNewUser, ledgers[0].BalanceAfter)
+	require.Equal(t, "admin_manager_create", ledgers[0].SourceType)
+	require.Equal(t, user.Id, ledgers[0].SourceId)
 
 	var audit model.AdminAuditLog
 	require.NoError(t, db.Where("action_module = ? AND target_type = ? AND target_id = ?", "admin_management", "user", user.Id).First(&audit).Error)

@@ -50,6 +50,7 @@ func setupAdminAgentTestDB(t *testing.T) *gorm.DB {
 		&model.AgentProfile{},
 		&model.AgentQuotaPolicy{},
 		&model.QuotaAccount{},
+		&model.QuotaLedger{},
 		&model.AdminAuditLog{},
 	))
 
@@ -83,8 +84,13 @@ func newAdminAgentContext(t *testing.T, method string, target string, body any) 
 	return ctx, recorder
 }
 
-func TestCreateAgentCreatesQuotaAccount(t *testing.T) {
+func TestCreateAgentCreatesOpeningLedgerEntry(t *testing.T) {
 	db := setupAdminAgentTestDB(t)
+	previousNewUserQuota := common.QuotaForNewUser
+	common.QuotaForNewUser = 72
+	t.Cleanup(func() {
+		common.QuotaForNewUser = previousNewUserQuota
+	})
 
 	ctx, recorder := newAdminAgentContext(t, http.MethodPost, "/api/admin/agents", map[string]any{
 		"username":      "agent_created_1",
@@ -107,6 +113,17 @@ func TestCreateAgentCreatesQuotaAccount(t *testing.T) {
 	account, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, user.Id)
 	require.NoError(t, err)
 	require.Equal(t, user.Id, account.OwnerId)
+	require.Equal(t, common.QuotaForNewUser, account.Balance)
+
+	ledgers := listQuotaLedgersForUser(t, db, user.Id)
+	require.Len(t, ledgers, 1)
+	require.Equal(t, "opening", ledgers[0].EntryType)
+	require.Equal(t, model.LedgerDirectionIn, ledgers[0].Direction)
+	require.Equal(t, common.QuotaForNewUser, ledgers[0].Amount)
+	require.Equal(t, 0, ledgers[0].BalanceBefore)
+	require.Equal(t, common.QuotaForNewUser, ledgers[0].BalanceAfter)
+	require.Equal(t, "agent_create", ledgers[0].SourceType)
+	require.Equal(t, user.Id, ledgers[0].SourceId)
 
 	var audit model.AdminAuditLog
 	require.NoError(t, db.Where("action_module = ? AND target_type = ? AND target_id = ?", "agent", "user", user.Id).First(&audit).Error)
