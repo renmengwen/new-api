@@ -132,6 +132,17 @@ func GetPerformanceStats(c *gin.Context) {
 		DiskSpaceInfo: diskSpaceInfo,
 		Config:        config,
 	}
+	createSettingAuditLog(
+		c,
+		settingAuditMetaRefreshPerformanceStats,
+		0,
+		"",
+		marshalSettingAuditPayload(map[string]any{
+			"active_disk_files": stats.CacheStats.ActiveDiskFiles,
+			"cache_size_bytes":  stats.CacheStats.CurrentDiskUsageBytes,
+			"goroutines":        stats.MemoryStats.NumGoroutine,
+		}),
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -148,6 +159,9 @@ func ClearDiskCache(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	createSettingAuditLog(c, settingAuditMetaClearDiskCache, 0, "", marshalSettingAuditPayload(map[string]any{
+		"grace_minutes": 10,
+	}))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -158,6 +172,9 @@ func ClearDiskCache(c *gin.Context) {
 // ResetPerformanceStats 重置性能统计
 func ResetPerformanceStats(c *gin.Context) {
 	common.ResetDiskCacheStats()
+	createSettingAuditLog(c, settingAuditMetaResetPerformanceStats, 0, "", marshalSettingAuditPayload(map[string]any{
+		"reset": true,
+	}))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -168,6 +185,9 @@ func ResetPerformanceStats(c *gin.Context) {
 // ForceGC 强制执行 GC
 func ForceGC(c *gin.Context) {
 	runtime.GC()
+	createSettingAuditLog(c, settingAuditMetaForceGC, 0, "", marshalSettingAuditPayload(map[string]any{
+		"forced": true,
+	}))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -261,6 +281,11 @@ func GetLogFiles(c *gin.Context) {
 		resp.OldestTime = &oldest
 		resp.NewestTime = &newest
 	}
+	createSettingAuditLog(c, settingAuditMetaGetLogFiles, 0, "", marshalSettingAuditPayload(map[string]any{
+		"file_count":  resp.FileCount,
+		"total_size":  resp.TotalSize,
+		"log_dir_set": resp.LogDir != "",
+	}))
 	common.ApiSuccess(c, resp)
 }
 
@@ -335,8 +360,16 @@ func CleanupLogFiles(c *gin.Context) {
 		"freed_bytes":   freedBytes,
 		"failed_files":  failedFiles,
 	}
+	afterJSON := marshalSettingAuditPayload(map[string]any{
+		"mode":          mode,
+		"value":         value,
+		"deleted_count": deletedCount,
+		"freed_bytes":   freedBytes,
+		"failed_files":  failedFiles,
+	})
 
 	if len(failedFiles) > 0 {
+		createSettingAuditLog(c, settingAuditMetaCleanupLogFiles, 0, "", afterJSON)
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": fmt.Sprintf("部分文件删除失败（%d/%d）", len(failedFiles), len(toDelete)),
@@ -345,6 +378,7 @@ func CleanupLogFiles(c *gin.Context) {
 		return
 	}
 
+	createSettingAuditLog(c, settingAuditMetaCleanupLogFiles, 0, "", afterJSON)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

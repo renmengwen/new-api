@@ -16,6 +16,7 @@ const ADMIN_CONFIG = {
     'permission-templates': true,
     'user-permissions': true,
     'quota-ledger': true,
+    'audit-logs': true,
     subscription: true,
     setting: true,
   },
@@ -36,6 +37,7 @@ test('permission sidebar snapshots deny missing admin modules by default', () =>
   assert.equal(finalConfig.admin.enabled, true);
   assert.equal(finalConfig.admin.channel, false);
   assert.equal(finalConfig.admin.models, false);
+  assert.equal(finalConfig.admin['audit-logs'], false);
   assert.equal(finalConfig.admin.setting, false);
 });
 
@@ -54,5 +56,6 @@ test('user sidebar preferences keep missing admin modules enabled by default', (
   assert.equal(finalConfig.admin.enabled, true);
   assert.equal(finalConfig.admin.channel, true);
   assert.equal(finalConfig.admin.models, true);
+  assert.equal(finalConfig.admin['audit-logs'], true);
   assert.equal(finalConfig.admin.setting, false);
 });

@@ -98,8 +98,11 @@ func GetOptions(c *gin.Context) {
 }
 
 type OptionUpdateRequest struct {
-	Key   string `json:"key"`
-	Value any    `json:"value"`
+	Key         string `json:"key"`
+	Value       any    `json:"value"`
+	AuditModule string `json:"audit_module"`
+	AuditType   string `json:"audit_type"`
+	AuditDesc   string `json:"audit_desc"`
 }
 
 func UpdateOption(c *gin.Context) {
@@ -297,11 +300,13 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	}
+	oldValue := getSettingOptionCurrentValue(option.Key)
 	err = model.UpdateOption(option.Key, option.Value.(string))
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	createSettingOptionAuditLog(c, option, oldValue, option.Value.(string))
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

@@ -26,6 +26,15 @@ func MigrateConsoleSetting(c *gin.Context) {
 	for _, o := range opts {
 		valMap[o.Key] = o.Value
 	}
+	beforeJSON := marshalSettingAuditPayload(map[string]any{
+		"legacy_keys": map[string]bool{
+			"ApiInfo":        valMap["ApiInfo"] != "",
+			"Announcements":  valMap["Announcements"] != "",
+			"FAQ":            valMap["FAQ"] != "",
+			"UptimeKumaUrl":  valMap["UptimeKumaUrl"] != "",
+			"UptimeKumaSlug": valMap["UptimeKumaSlug"] != "",
+		},
+	})
 
 	// 处理 APIInfo
 	if v := valMap["ApiInfo"]; v != "" {
@@ -101,6 +110,15 @@ func MigrateConsoleSetting(c *gin.Context) {
 
 	// 重新加载 OptionMap
 	model.InitOptionMap()
+	afterJSON := marshalSettingAuditPayload(map[string]any{
+		"console_setting_keys": map[string]bool{
+			"console_setting.api_info":           valMap["ApiInfo"] != "",
+			"console_setting.announcements":      valMap["Announcements"] != "",
+			"console_setting.faq":                valMap["FAQ"] != "",
+			"console_setting.uptime_kuma_groups": url != "" && slug != "",
+		},
+	})
+	createSettingAuditLog(c, settingAuditMetaMigrateConsoleSetting, 0, beforeJSON, afterJSON)
 	common.SysLog("console setting migrated")
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "migrated"})
 }

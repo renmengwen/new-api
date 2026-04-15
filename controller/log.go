@@ -162,6 +162,10 @@ func DeleteHistoryLogs(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	createSettingAuditLog(c, settingAuditMetaClearHistoryLogs, 0, "", marshalSettingAuditPayload(map[string]any{
+		"target_timestamp": targetTimestamp,
+		"deleted_count":    count,
+	}))
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

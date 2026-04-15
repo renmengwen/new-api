@@ -17,17 +17,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-export * from './history';
-export * from './auth';
-export * from './utils';
-export * from './base64';
-export * from './api';
-export * from './render';
-export * from './log';
-export * from './data';
-export * from './token';
-export * from './boolean';
-export * from './dashboard';
-export * from './passkey';
-export * from './statusCodeRules';
-export * from './settingAudit';
+export const buildOptionAuditPayload = ({
+  key,
+  value,
+  auditModule,
+  auditType,
+  auditDesc,
+}) => {
+  const payload = {
+    key,
+    value,
+  };
+
+  if (auditModule && auditType) {
+    payload.audit_module = auditModule;
+    payload.audit_type = auditType;
+    if (auditDesc) {
+      payload.audit_desc = auditDesc;
+    }
+  }
+
+  return payload;
+};

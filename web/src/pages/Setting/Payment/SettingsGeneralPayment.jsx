@@ -21,6 +21,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Button, Form, Spin } from '@douyinfe/semi-ui';
 import {
   API,
+  buildOptionAuditPayload,
   removeTrailingSlash,
   showError,
   showSuccess,
@@ -53,10 +54,16 @@ export default function SettingsGeneralPayment(props) {
     setLoading(true);
     try {
       let ServerAddress = removeTrailingSlash(inputs.ServerAddress);
-      const res = await API.put('/api/option/', {
-        key: 'ServerAddress',
-        value: ServerAddress,
-      });
+      const res = await API.put(
+        '/api/option/',
+        buildOptionAuditPayload({
+          key: 'ServerAddress',
+          value: ServerAddress,
+          auditModule: 'setting_payment',
+          auditType: 'save_payment_general',
+          auditDesc: '系统设置-支付设置-通用-更新服务器地址',
+        }),
+      );
       if (res.data.success) {
         showSuccess(t('更新成功'));
         props.refresh && props.refresh();
