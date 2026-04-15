@@ -46,8 +46,12 @@ const moduleOptions = AUDIT_LOG_COVERAGE.map(({ module }) => ({
 }));
 
 const parseOptionalInteger = (value) => {
-  const parsedValue = Number.parseInt(value, 10);
-  return Number.isNaN(parsedValue) ? 0 : parsedValue;
+  const normalizedValue = String(value ?? '').trim();
+  if (!/^-?\d+$/.test(normalizedValue)) {
+    return 0;
+  }
+
+  return Number.parseInt(normalizedValue, 10);
 };
 
 const AdminAuditLogsPageV1 = () => {
@@ -136,16 +140,21 @@ const AdminAuditLogsPageV1 = () => {
     await loadAuditLogs(nextQueryState);
   };
 
-  const runExport = async () =>
-    downloadExcelBlob({
-      url: '/api/admin/audit-logs/export',
-      payload: {
-        action_module: committedRequest.actionModule.trim(),
-        operator_user_id: parseOptionalInteger(committedRequest.operatorUserId),
-        limit: MAX_EXCEL_EXPORT_ROWS,
-      },
-      fallbackFileName: 'audit-logs.xlsx',
-    });
+  const runExport = async () => {
+    try {
+      await downloadExcelBlob({
+        url: '/api/admin/audit-logs/export',
+        payload: {
+          action_module: committedRequest.actionModule.trim(),
+          operator_user_id: parseOptionalInteger(committedRequest.operatorUserId),
+          limit: MAX_EXCEL_EXPORT_ROWS,
+        },
+        fallbackFileName: 'audit-logs.xlsx',
+      });
+    } catch (error) {
+      showError(error);
+    }
+  };
 
   const exportAuditLogs = async () => {
     if (!total) {

@@ -114,3 +114,65 @@ test('downloadExcelBlob posts payload as blob request and downloads an excel blo
   assert.deepEqual(revokeCalls, ['blob:download-url']);
   assert.equal(createdLinks.length, 0);
 });
+
+test('downloadExcelBlob does not download backend json error blobs and surfaces the backend message', async () => {
+  const { downloadExcelBlob } = await import('./exportExcel.js');
+
+  const response = {
+    data: new Blob(
+      [JSON.stringify({ success: false, message: '导出失败：没有权限' })],
+      { type: 'application/json' },
+    ),
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+    },
+  };
+  let createObjectUrlCalls = 0;
+  let clickCalls = 0;
+  const apiClient = {
+    async post() {
+      return response;
+    },
+  };
+  const documentApi = {
+    body: {
+      appendChild() {},
+      removeChild() {},
+    },
+    createElement() {
+      return {
+        click() {
+          clickCalls += 1;
+        },
+      };
+    },
+  };
+  const urlApi = {
+    createObjectURL() {
+      createObjectUrlCalls += 1;
+      return 'blob:download-url';
+    },
+    revokeObjectURL() {},
+  };
+
+  await assert.rejects(
+    () =>
+      downloadExcelBlob({
+        url: '/api/admin/audit-logs/export',
+        payload: {
+          action_module: 'quota',
+        },
+        fallbackFileName: 'fallback.xlsx',
+        apiClient,
+        documentApi,
+        urlApi,
+      }),
+    (error) => {
+      assert.equal(error.message, '导出失败：没有权限');
+      return true;
+    },
+  );
+
+  assert.equal(createObjectUrlCalls, 0);
+  assert.equal(clickCalls, 0);
+});

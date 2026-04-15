@@ -43,6 +43,51 @@ const normalizeFilename = (value, fallbackFileName) => {
   }
 };
 
+const isJsonContentType = (headers) =>
+  /(^|\/|\+)json\b/i.test(getHeaderValue(headers, 'content-type'));
+
+const readBlobText = async (blobData) => {
+  if (blobData === null || blobData === undefined) {
+    return '';
+  }
+
+  if (typeof blobData === 'string') {
+    return blobData;
+  }
+
+  if (typeof blobData.text === 'function') {
+    return await blobData.text();
+  }
+
+  if (blobData instanceof ArrayBuffer) {
+    return new TextDecoder().decode(new Uint8Array(blobData));
+  }
+
+  if (ArrayBuffer.isView(blobData)) {
+    return new TextDecoder().decode(blobData);
+  }
+
+  return String(blobData);
+};
+
+const throwJsonExportError = async (response) => {
+  if (!isJsonContentType(response?.headers)) {
+    return;
+  }
+
+  const responseText = await readBlobText(response?.data);
+  let message = 'Export failed';
+
+  try {
+    const payload = JSON.parse(responseText);
+    if (payload?.message) {
+      message = payload.message;
+    }
+  } catch {}
+
+  throw new Error(message);
+};
+
 export const extractDownloadFilename = (
   headers,
   fallbackFileName = 'export.xlsx',
@@ -106,6 +151,7 @@ export const downloadExcelBlob = async ({
   const response = await client.post(url, payload, {
     responseType: 'blob',
   });
+  await throwJsonExportError(response);
   const fileName = extractDownloadFilename(response?.headers, fallbackFileName);
   const excelBlob = new blobCtor([response.data], {
     type: EXCEL_BLOB_MIME_TYPE,

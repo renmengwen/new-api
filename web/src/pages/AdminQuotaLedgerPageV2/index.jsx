@@ -35,8 +35,12 @@ const { Text } = Typography;
 const ADMIN_QUOTA_LEDGER_DIGITS = 6;
 
 const parseOptionalInteger = (value) => {
-  const parsedValue = Number.parseInt(value, 10);
-  return Number.isNaN(parsedValue) ? 0 : parsedValue;
+  const normalizedValue = String(value ?? '').trim();
+  if (!/^-?\d+$/.test(normalizedValue)) {
+    return 0;
+  }
+
+  return Number.parseInt(normalizedValue, 10);
 };
 
 const AdminQuotaLedgerPageV2 = () => {
@@ -111,16 +115,21 @@ const AdminQuotaLedgerPageV2 = () => {
     await loadLedger(nextQueryState);
   };
 
-  const runExport = async () =>
-    downloadExcelBlob({
-      url: '/api/admin/quota/ledger/export',
-      payload: {
-        user_id: parseOptionalInteger(committedRequest.userId),
-        entry_type: committedRequest.entryType,
-        limit: MAX_EXCEL_EXPORT_ROWS,
-      },
-      fallbackFileName: 'quota-ledger.xlsx',
-    });
+  const runExport = async () => {
+    try {
+      await downloadExcelBlob({
+        url: '/api/admin/quota/ledger/export',
+        payload: {
+          user_id: parseOptionalInteger(committedRequest.userId),
+          entry_type: committedRequest.entryType,
+          limit: MAX_EXCEL_EXPORT_ROWS,
+        },
+        fallbackFileName: 'quota-ledger.xlsx',
+      });
+    } catch (error) {
+      showError(error);
+    }
+  };
 
   const exportLedger = async () => {
     if (!total) {
