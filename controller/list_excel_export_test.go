@@ -30,6 +30,221 @@ type quotaLedgerExportFixture struct {
 	OperatorMismatch  model.QuotaLedger
 }
 
+type usageLogExportFixture struct {
+	LatestMatching  model.Log
+	OldestExported  model.Log
+	CappedOut       model.Log
+	BeforeStart     model.Log
+	AfterEnd        model.Log
+	TypeMismatch    model.Log
+	UserMismatch    model.Log
+	TokenMismatch   model.Log
+	ModelMismatch   model.Log
+	ChannelMismatch model.Log
+	GroupMismatch   model.Log
+	RequestMismatch model.Log
+}
+
+type userUsageLogExportFixture struct {
+	LatestOwnMatching model.Log
+	OldestOwnMatching model.Log
+	OtherUserMatching model.Log
+	OwnTokenMismatch  model.Log
+}
+
+func TestExportAdminLogsUsesFiltersColumnKeysAndCap(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	fixture := seedAdminUsageLogsForExport(t, db)
+
+	adminUser := testListExportUser(9001, "root_exporter", "Root Exporter", common.RoleRootUser, model.UserTypeRoot)
+	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/log/export", map[string]any{
+		"type":            model.LogTypeConsume,
+		"start_timestamp": fixture.OldestExported.CreatedAt - 50,
+		"end_timestamp":   fixture.LatestMatching.CreatedAt,
+		"username":        fixture.LatestMatching.Username,
+		"token_name":      fixture.LatestMatching.TokenName,
+		"model_name":      fixture.LatestMatching.ModelName,
+		"channel":         fixture.LatestMatching.ChannelId,
+		"group":           fixture.LatestMatching.Group,
+		"request_id":      fixture.LatestMatching.RequestId,
+		"column_keys":     []string{"details", "model", "username", "time"},
+		"limit":           5000,
+	}, adminUser.Id, common.RoleRootUser)
+	ctx.Set("username", adminUser.Username)
+
+	ExportAllLogs(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
+	require.Contains(t, recorder.Header().Get("Content-Disposition"), "使用日志_")
+
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	require.Equal(t, "使用日志", workbook.GetSheetName(0))
+
+	rows, err := workbook.GetRows("使用日志")
+	require.NoError(t, err)
+	require.Len(t, rows, 2001)
+	require.Equal(t, []string{"详情", "模型", "用户", "时间"}, rows[0])
+
+	dataRows := rows[1:]
+	exportedDetails := sheetColumnValues(dataRows, 0)
+	require.Equal(t, fixture.LatestMatching.Content, dataRows[0][0])
+	require.Equal(t, fixture.LatestMatching.ModelName, dataRows[0][1])
+	require.Equal(t, fixture.LatestMatching.Username, dataRows[0][2])
+	require.Equal(t, formatExportTimestamp(fixture.LatestMatching.CreatedAt), dataRows[0][3])
+	require.Equal(t, fixture.OldestExported.Content, dataRows[len(dataRows)-1][0])
+	require.NotContains(t, exportedDetails, fixture.CappedOut.Content)
+	require.NotContains(t, exportedDetails, fixture.BeforeStart.Content)
+	require.NotContains(t, exportedDetails, fixture.AfterEnd.Content)
+	require.NotContains(t, exportedDetails, fixture.TypeMismatch.Content)
+	require.NotContains(t, exportedDetails, fixture.UserMismatch.Content)
+	require.NotContains(t, exportedDetails, fixture.TokenMismatch.Content)
+	require.NotContains(t, exportedDetails, fixture.ModelMismatch.Content)
+	require.NotContains(t, exportedDetails, fixture.ChannelMismatch.Content)
+	require.NotContains(t, exportedDetails, fixture.GroupMismatch.Content)
+	require.NotContains(t, exportedDetails, fixture.RequestMismatch.Content)
+}
+
+func TestExportAdminLogsKeepsNewestFirst(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+
+	logs := []model.Log{
+		{
+			UserId:    3001,
+			Username:  "admin_order_user",
+			CreatedAt: 1810000101,
+			Type:      model.LogTypeConsume,
+			Content:   "oldest",
+			TokenName: "admin-order-token",
+			ModelName: "gpt-4o-mini",
+			Group:     "ops",
+			RequestId: "admin-order-req",
+		},
+		{
+			UserId:    3001,
+			Username:  "admin_order_user",
+			CreatedAt: 1810000102,
+			Type:      model.LogTypeConsume,
+			Content:   "middle",
+			TokenName: "admin-order-token",
+			ModelName: "gpt-4o-mini",
+			Group:     "ops",
+			RequestId: "admin-order-req",
+		},
+		{
+			UserId:    3001,
+			Username:  "admin_order_user",
+			CreatedAt: 1810000103,
+			Type:      model.LogTypeConsume,
+			Content:   "latest",
+			TokenName: "admin-order-token",
+			ModelName: "gpt-4o-mini",
+			Group:     "ops",
+			RequestId: "admin-order-req",
+		},
+	}
+	require.NoError(t, db.Create(&logs).Error)
+
+	adminUser := testListExportUser(9001, "root_exporter", "Root Exporter", common.RoleRootUser, model.UserTypeRoot)
+	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/log/export", map[string]any{
+		"type":        model.LogTypeConsume,
+		"username":    "admin_order_user",
+		"token_name":  "admin-order-token",
+		"model_name":  "gpt-4o-mini",
+		"group":       "ops",
+		"request_id":  "admin-order-req",
+		"column_keys": []string{"details"},
+		"limit":       10,
+	}, adminUser.Id, common.RoleRootUser)
+	ctx.Set("username", adminUser.Username)
+
+	ExportAllLogs(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	rows, err := workbook.GetRows("使用日志")
+	require.NoError(t, err)
+	require.Len(t, rows, 4)
+	require.Equal(t, []string{"详情"}, rows[0])
+	require.Equal(t, "latest", rows[1][0])
+	require.Equal(t, "middle", rows[2][0])
+	require.Equal(t, "oldest", rows[3][0])
+}
+
+func TestExportUserLogsOnlyExportsOwnRows(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	fixture := seedUserUsageLogsForExport(t, db)
+
+	selfUser := testListExportUser(7001, "self_exporter", "Self Exporter", common.RoleCommonUser, model.UserTypeEndUser)
+	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/log/self/export", map[string]any{
+		"type":        model.LogTypeConsume,
+		"token_name":  fixture.LatestOwnMatching.TokenName,
+		"model_name":  fixture.LatestOwnMatching.ModelName,
+		"group":       fixture.LatestOwnMatching.Group,
+		"request_id":  fixture.LatestOwnMatching.RequestId,
+		"column_keys": []string{"details", "token", "time"},
+		"limit":       100,
+	}, selfUser.Id, common.RoleCommonUser)
+	ctx.Set("username", selfUser.Username)
+
+	ExportUserLogs(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	rows, err := workbook.GetRows("使用日志")
+	require.NoError(t, err)
+	require.Len(t, rows, 3)
+	require.Equal(t, []string{"详情", "令牌", "时间"}, rows[0])
+	require.Equal(t, fixture.LatestOwnMatching.Content, rows[1][0])
+	require.Equal(t, fixture.LatestOwnMatching.TokenName, rows[1][1])
+	require.Equal(t, formatExportTimestamp(fixture.LatestOwnMatching.CreatedAt), rows[1][2])
+	require.Equal(t, fixture.OldestOwnMatching.Content, rows[2][0])
+	require.NotEqual(t, fixture.OtherUserMatching.Content, rows[1][0])
+	require.NotEqual(t, fixture.OtherUserMatching.Content, rows[2][0])
+	require.NotEqual(t, fixture.OwnTokenMismatch.Content, rows[1][0])
+	require.NotEqual(t, fixture.OwnTokenMismatch.Content, rows[2][0])
+}
+
+func TestExportUserLogsUsesDefaultColumnsWhenColumnKeysEmpty(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	fixture := seedUserUsageLogsForExport(t, db)
+
+	selfUser := testListExportUser(7001, "self_exporter", "Self Exporter", common.RoleCommonUser, model.UserTypeEndUser)
+	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/log/self/export", map[string]any{
+		"type":       model.LogTypeConsume,
+		"token_name": fixture.LatestOwnMatching.TokenName,
+		"model_name": fixture.LatestOwnMatching.ModelName,
+		"group":      fixture.LatestOwnMatching.Group,
+		"request_id": fixture.LatestOwnMatching.RequestId,
+		"limit":      10,
+	}, selfUser.Id, common.RoleCommonUser)
+	ctx.Set("username", selfUser.Username)
+
+	ExportUserLogs(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	rows, err := workbook.GetRows("使用日志")
+	require.NoError(t, err)
+	require.Len(t, rows, 3)
+
+	dataRow := rows[1]
+	require.Len(t, dataRow, 11)
+	require.Equal(t, formatExportTimestamp(fixture.LatestOwnMatching.CreatedAt), dataRow[0])
+	require.Equal(t, fixture.LatestOwnMatching.TokenName, dataRow[1])
+	require.Equal(t, fixture.LatestOwnMatching.Group, dataRow[2])
+	require.Equal(t, fixture.LatestOwnMatching.ModelName, dataRow[4])
+	require.Equal(t, strconv.Itoa(fixture.LatestOwnMatching.UseTime), dataRow[5])
+	require.Equal(t, strconv.Itoa(fixture.LatestOwnMatching.PromptTokens), dataRow[6])
+	require.Equal(t, strconv.Itoa(fixture.LatestOwnMatching.CompletionTokens), dataRow[7])
+	require.Equal(t, strconv.Itoa(fixture.LatestOwnMatching.Quota), dataRow[8])
+	require.Equal(t, fixture.LatestOwnMatching.Ip, dataRow[9])
+	require.Equal(t, fixture.LatestOwnMatching.Content, dataRow[10])
+}
+
 func TestExportAdminAuditLogsUsesFiltersAndCap(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 	fixture := seedAuditLogs(t, db, 2050, "quota", 9001)
@@ -351,6 +566,7 @@ func setupListExcelExportTestDB(t *testing.T) *gorm.DB {
 		&model.AgentUserRelation{},
 		&model.QuotaAccount{},
 		&model.QuotaLedger{},
+		&model.Channel{},
 	))
 	return db
 }
@@ -621,4 +837,259 @@ func seedListExportLedger(t *testing.T, db *gorm.DB, ledger model.QuotaLedger) m
 
 	require.NoError(t, db.Create(&ledger).Error)
 	return ledger
+}
+
+func seedAdminUsageLogsForExport(t *testing.T, db *gorm.DB) usageLogExportFixture {
+	t.Helper()
+
+	require.NoError(t, db.Create(&model.Channel{
+		Id:     7,
+		Name:   "Main Channel",
+		Key:    "channel-key",
+		Status: common.ChannelStatusEnabled,
+		Group:  "default",
+	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id:     8,
+		Name:   "Backup Channel",
+		Key:    "channel-key-2",
+		Status: common.ChannelStatusEnabled,
+		Group:  "default",
+	}).Error)
+
+	logs := make([]model.Log, 0, 2058)
+	for i := 0; i < 2050; i++ {
+		logs = append(logs, model.Log{
+			UserId:           501,
+			Username:         "admin_export_user",
+			CreatedAt:        int64(1710000000 + i),
+			Type:             model.LogTypeConsume,
+			Content:          fmt.Sprintf("match_%04d", i),
+			TokenName:        "admin-export-token",
+			ModelName:        "gpt-4o",
+			Quota:            100 + i,
+			PromptTokens:     10 + i,
+			CompletionTokens: 20 + i,
+			UseTime:          30 + i,
+			IsStream:         i%2 == 0,
+			ChannelId:        7,
+			Group:            "ops",
+			Ip:               fmt.Sprintf("203.0.113.%d", (i%200)+1),
+			RequestId:        "admin-export-request",
+		})
+	}
+	logs = append(logs,
+		model.Log{
+			UserId:           501,
+			Username:         "admin_export_user",
+			CreatedAt:        1709999999,
+			Type:             model.LogTypeConsume,
+			Content:          "before_start",
+			TokenName:        "admin-export-token",
+			ModelName:        "gpt-4o",
+			Quota:            1,
+			PromptTokens:     1,
+			CompletionTokens: 1,
+			UseTime:          1,
+			ChannelId:        7,
+			Group:            "ops",
+			RequestId:        "admin-export-request",
+		},
+		model.Log{
+			UserId:           501,
+			Username:         "admin_export_user",
+			CreatedAt:        1710002050,
+			Type:             model.LogTypeConsume,
+			Content:          "after_end",
+			TokenName:        "admin-export-token",
+			ModelName:        "gpt-4o",
+			Quota:            1,
+			PromptTokens:     1,
+			CompletionTokens: 1,
+			UseTime:          1,
+			ChannelId:        7,
+			Group:            "ops",
+			RequestId:        "admin-export-request",
+		},
+		model.Log{
+			UserId:    501,
+			Username:  "admin_export_user",
+			CreatedAt: 1710002048,
+			Type:      model.LogTypeError,
+			Content:   "type_mismatch",
+			TokenName: "admin-export-token",
+			ModelName: "gpt-4o",
+			ChannelId: 7,
+			Group:     "ops",
+			RequestId: "admin-export-request",
+		},
+		model.Log{
+			UserId:    502,
+			Username:  "other_user",
+			CreatedAt: 1710002048,
+			Type:      model.LogTypeConsume,
+			Content:   "username_mismatch",
+			TokenName: "admin-export-token",
+			ModelName: "gpt-4o",
+			ChannelId: 7,
+			Group:     "ops",
+			RequestId: "admin-export-request",
+		},
+		model.Log{
+			UserId:    501,
+			Username:  "admin_export_user",
+			CreatedAt: 1710002048,
+			Type:      model.LogTypeConsume,
+			Content:   "token_mismatch",
+			TokenName: "other-token",
+			ModelName: "gpt-4o",
+			ChannelId: 7,
+			Group:     "ops",
+			RequestId: "admin-export-request",
+		},
+		model.Log{
+			UserId:    501,
+			Username:  "admin_export_user",
+			CreatedAt: 1710002048,
+			Type:      model.LogTypeConsume,
+			Content:   "model_mismatch",
+			TokenName: "admin-export-token",
+			ModelName: "claude-3-5-sonnet",
+			ChannelId: 7,
+			Group:     "ops",
+			RequestId: "admin-export-request",
+		},
+		model.Log{
+			UserId:    501,
+			Username:  "admin_export_user",
+			CreatedAt: 1710002048,
+			Type:      model.LogTypeConsume,
+			Content:   "channel_mismatch",
+			TokenName: "admin-export-token",
+			ModelName: "gpt-4o",
+			ChannelId: 8,
+			Group:     "ops",
+			RequestId: "admin-export-request",
+		},
+		model.Log{
+			UserId:    501,
+			Username:  "admin_export_user",
+			CreatedAt: 1710002048,
+			Type:      model.LogTypeConsume,
+			Content:   "group_mismatch",
+			TokenName: "admin-export-token",
+			ModelName: "gpt-4o",
+			ChannelId: 7,
+			Group:     "sales",
+			RequestId: "admin-export-request",
+		},
+		model.Log{
+			UserId:    501,
+			Username:  "admin_export_user",
+			CreatedAt: 1710002048,
+			Type:      model.LogTypeConsume,
+			Content:   "request_mismatch",
+			TokenName: "admin-export-token",
+			ModelName: "gpt-4o",
+			ChannelId: 7,
+			Group:     "ops",
+			RequestId: "other-request",
+		},
+	)
+
+	require.NoError(t, db.CreateInBatches(logs, 200).Error)
+
+	return usageLogExportFixture{
+		LatestMatching:  logs[2049],
+		OldestExported:  logs[50],
+		CappedOut:       logs[49],
+		BeforeStart:     logs[2050],
+		AfterEnd:        logs[2051],
+		TypeMismatch:    logs[2052],
+		UserMismatch:    logs[2053],
+		TokenMismatch:   logs[2054],
+		ModelMismatch:   logs[2055],
+		ChannelMismatch: logs[2056],
+		GroupMismatch:   logs[2057],
+		RequestMismatch: logs[2058],
+	}
+}
+
+func seedUserUsageLogsForExport(t *testing.T, db *gorm.DB) userUsageLogExportFixture {
+	t.Helper()
+
+	logs := []model.Log{
+		{
+			UserId:           7001,
+			Username:         "self_exporter",
+			CreatedAt:        1810000201,
+			Type:             model.LogTypeConsume,
+			Content:          "self_oldest",
+			TokenName:        "self-export-token",
+			ModelName:        "gpt-4o-mini",
+			Quota:            12,
+			PromptTokens:     120,
+			CompletionTokens: 24,
+			UseTime:          5,
+			Group:            "personal",
+			Ip:               "203.0.113.30",
+			RequestId:        "self-export-request",
+		},
+		{
+			UserId:           7001,
+			Username:         "self_exporter",
+			CreatedAt:        1810000202,
+			Type:             model.LogTypeConsume,
+			Content:          "self_latest",
+			TokenName:        "self-export-token",
+			ModelName:        "gpt-4o-mini",
+			Quota:            22,
+			PromptTokens:     220,
+			CompletionTokens: 44,
+			UseTime:          8,
+			Group:            "personal",
+			Ip:               "203.0.113.31",
+			RequestId:        "self-export-request",
+		},
+		{
+			UserId:           7002,
+			Username:         "other_user",
+			CreatedAt:        1810000203,
+			Type:             model.LogTypeConsume,
+			Content:          "other_user_match",
+			TokenName:        "self-export-token",
+			ModelName:        "gpt-4o-mini",
+			Quota:            32,
+			PromptTokens:     320,
+			CompletionTokens: 64,
+			UseTime:          9,
+			Group:            "personal",
+			Ip:               "203.0.113.32",
+			RequestId:        "self-export-request",
+		},
+		{
+			UserId:           7001,
+			Username:         "self_exporter",
+			CreatedAt:        1810000204,
+			Type:             model.LogTypeConsume,
+			Content:          "own_token_mismatch",
+			TokenName:        "other-token",
+			ModelName:        "gpt-4o-mini",
+			Quota:            42,
+			PromptTokens:     420,
+			CompletionTokens: 84,
+			UseTime:          10,
+			Group:            "personal",
+			Ip:               "203.0.113.33",
+			RequestId:        "self-export-request",
+		},
+	}
+
+	require.NoError(t, db.Create(&logs).Error)
+	return userUsageLogExportFixture{
+		OldestOwnMatching: logs[0],
+		LatestOwnMatching: logs[1],
+		OtherUserMatching: logs[2],
+		OwnTokenMismatch:  logs[3],
+	}
 }
