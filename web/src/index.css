@@ -1013,6 +1013,29 @@ html.dark .with-pastel-balls::before {
   border-radius: 10px !important;
 }
 
+/* Normalize Firefox focus rings for Semi form controls */
+.semi-input-wrapper input:focus,
+.semi-input-wrapper input:focus-visible,
+.semi-input-wrapper input:-moz-focusring,
+.semi-input-wrapper .semi-input:focus,
+.semi-input-wrapper .semi-input:focus-visible,
+.semi-input-wrapper .semi-input:-moz-focusring,
+.semi-input-textarea-wrapper textarea:focus,
+.semi-input-textarea-wrapper textarea:focus-visible,
+.semi-input-textarea-wrapper textarea:-moz-focusring,
+.semi-input-textarea-wrapper .semi-input:focus,
+.semi-input-textarea-wrapper .semi-input:focus-visible,
+.semi-input-textarea-wrapper .semi-input:-moz-focusring,
+.semi-select input:focus,
+.semi-select input:focus-visible,
+.semi-select input:-moz-focusring,
+.semi-select .semi-input:focus,
+.semi-select .semi-input:focus-visible,
+.semi-select .semi-input:-moz-focusring {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 @keyframes slideInLeft {
   from {
     transform: translateX(-100%);
