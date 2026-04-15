@@ -52,7 +52,29 @@ type userUsageLogExportFixture struct {
 	OwnTokenMismatch  model.Log
 }
 
-func TestExportAdminLogsUsesFiltersColumnKeysAndCap(t *testing.T) {
+func TestExportAdminUsageLogsModelHelperCapsAndFilters(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	fixture := seedAdminUsageLogsForExport(t, db)
+
+	logs, err := model.GetAllLogsForExport(
+		model.LogTypeConsume,
+		fixture.OldestExported.CreatedAt-50,
+		fixture.LatestMatching.CreatedAt,
+		fixture.LatestMatching.ModelName,
+		fixture.LatestMatching.Username,
+		fixture.LatestMatching.TokenName,
+		5000,
+		fixture.LatestMatching.ChannelId,
+		fixture.LatestMatching.Group,
+		fixture.LatestMatching.RequestId,
+	)
+	require.NoError(t, err)
+	require.Len(t, logs, 2000)
+	require.Equal(t, fixture.LatestMatching.Content, logs[0].Content)
+	require.Equal(t, fixture.OldestExported.Content, logs[len(logs)-1].Content)
+}
+
+func TestExportAdminUsageLogsUsesFiltersColumnKeysAndCap(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 	fixture := seedAdminUsageLogsForExport(t, db)
 
@@ -105,7 +127,7 @@ func TestExportAdminLogsUsesFiltersColumnKeysAndCap(t *testing.T) {
 	require.NotContains(t, exportedDetails, fixture.RequestMismatch.Content)
 }
 
-func TestExportAdminLogsKeepsNewestFirst(t *testing.T) {
+func TestExportAdminUsageLogsKeepsNewestFirst(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 
 	logs := []model.Log{
@@ -172,7 +194,28 @@ func TestExportAdminLogsKeepsNewestFirst(t *testing.T) {
 	require.Equal(t, "oldest", rows[3][0])
 }
 
-func TestExportUserLogsOnlyExportsOwnRows(t *testing.T) {
+func TestExportSelfUsageLogsModelHelperOnlyReturnsSelfRows(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	fixture := seedUserUsageLogsForExport(t, db)
+
+	logs, err := model.GetUserLogsForExport(
+		7001,
+		model.LogTypeConsume,
+		0,
+		0,
+		fixture.LatestOwnMatching.ModelName,
+		fixture.LatestOwnMatching.TokenName,
+		100,
+		fixture.LatestOwnMatching.Group,
+		fixture.LatestOwnMatching.RequestId,
+	)
+	require.NoError(t, err)
+	require.Len(t, logs, 2)
+	require.Equal(t, fixture.LatestOwnMatching.Content, logs[0].Content)
+	require.Equal(t, fixture.OldestOwnMatching.Content, logs[1].Content)
+}
+
+func TestExportSelfUsageLogsOnlyExportsOwnRows(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 	fixture := seedUserUsageLogsForExport(t, db)
 
@@ -207,7 +250,7 @@ func TestExportUserLogsOnlyExportsOwnRows(t *testing.T) {
 	require.NotEqual(t, fixture.OwnTokenMismatch.Content, rows[2][0])
 }
 
-func TestExportUserLogsUsesDefaultColumnsWhenColumnKeysEmpty(t *testing.T) {
+func TestExportSelfUsageLogsUsesDefaultColumnsWhenColumnKeysEmpty(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 	fixture := seedUserUsageLogsForExport(t, db)
 

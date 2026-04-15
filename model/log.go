@@ -255,8 +255,28 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
+const logExportLimit = 2000
+
+func ensureLogExportQueryColumnsInitialized() {
+	if logGroupCol == "" || logKeyCol == "" {
+		initCol()
+	}
+}
+
+func normalizeLogExportLimit(limit int) int {
+	if limit <= 0 || limit > logExportLimit {
+		return logExportLimit
+	}
+	return limit
+}
+
+func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, limit int, channel int, group string, requestId string) (logs []*Log, err error) {
+	ensureLogExportQueryColumnsInitialized()
+	logs, _, err = GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, 0, normalizeLogExportLimit(limit), channel, group, requestId)
+	return logs, err
+}
+
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string) (logs []*Log, total int64, err error) {
-	ensureLogQueryColumnsInitialized()
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -342,14 +362,13 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 
 const logSearchCountLimit = 10000
 
-func ensureLogQueryColumnsInitialized() {
-	if logGroupCol == "" || logKeyCol == "" {
-		initCol()
-	}
+func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, limit int, group string, requestId string) (logs []*Log, err error) {
+	ensureLogExportQueryColumnsInitialized()
+	logs, _, err = GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, 0, normalizeLogExportLimit(limit), group, requestId)
+	return logs, err
 }
 
 func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string) (logs []*Log, total int64, err error) {
-	ensureLogQueryColumnsInitialized()
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
@@ -401,7 +420,6 @@ type Stat struct {
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
-	ensureLogQueryColumnsInitialized()
 	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
 
 	// 为rpm和tpm创建单独的查询

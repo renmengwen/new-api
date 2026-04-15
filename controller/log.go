@@ -204,15 +204,14 @@ func ExportAllLogs(c *gin.Context) {
 		return
 	}
 
-	logs, _, err := model.GetAllLogs(
+	logs, err := model.GetAllLogsForExport(
 		req.Type,
 		req.StartTimestamp,
 		req.EndTimestamp,
 		req.ModelName,
 		req.Username,
 		req.TokenName,
-		0,
-		normalizeExportLimit(req.Limit),
+		req.Limit,
 		req.Channel,
 		req.Group,
 		req.RequestID,
@@ -232,15 +231,14 @@ func ExportUserLogs(c *gin.Context) {
 		return
 	}
 
-	logs, _, err := model.GetUserLogs(
+	logs, err := model.GetUserLogsForExport(
 		c.GetInt("id"),
 		req.Type,
 		req.StartTimestamp,
 		req.EndTimestamp,
 		req.ModelName,
 		req.TokenName,
-		0,
-		normalizeExportLimit(req.Limit),
+		req.Limit,
 		req.Group,
 		req.RequestID,
 	)
