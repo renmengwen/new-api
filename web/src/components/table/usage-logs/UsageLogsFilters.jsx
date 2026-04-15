@@ -29,6 +29,7 @@ const LogsFilters = ({
   refresh,
   handleExport,
   exportLoading,
+  isExportReady,
   setShowColumnSelector,
   formApi,
   setLogType,
@@ -188,6 +189,7 @@ const LogsFilters = ({
             <Button
               type='tertiary'
               onClick={handleExport}
+              disabled={loading || exportLoading || !isExportReady}
               loading={exportLoading}
               size='small'
             >

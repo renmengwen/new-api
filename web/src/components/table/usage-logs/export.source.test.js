@@ -14,6 +14,10 @@ const hookSource = fs.readFileSync(
 test('UsageLogsFilters adds an export excel button wired to the export handler', () => {
   assert.match(filtersSource, /handleExport/);
   assert.match(filtersSource, /onClick=\{handleExport\}/);
+  assert.match(
+    filtersSource,
+    /disabled=\{loading \|\| exportLoading \|\| !isExportReady\}/,
+  );
   assert.match(filtersSource, /导出 Excel/);
 });
 
@@ -23,14 +27,41 @@ test('useUsageLogsData uses committed query state for export, refresh, paging, a
   assert.match(hookSource, /createUsageLogCommittedQuery/);
   assert.match(hookSource, /getVisibleUsageLogColumnKeys/);
   assert.match(hookSource, /const \[committedQuery, setCommittedQuery\] = useState\(/);
+  assert.match(hookSource, /const \[isExportReady, setIsExportReady\] = useState\(true\)/);
   assert.match(hookSource, /downloadExcelBlob/);
   assert.match(hookSource, /\/api\/log\/export/);
   assert.match(hookSource, /\/api\/log\/self\/export/);
   assert.match(hookSource, /showInfo\(t\('无可导出数据'\)\)/);
   assert.match(hookSource, /Modal\.confirm/);
   assert.match(hookSource, /const nextCommittedQuery = getFormValues\(\)/);
-  assert.match(hookSource, /setCommittedQuery\(nextCommittedQuery\)/);
+  assert.doesNotMatch(hookSource, /await handleEyeClick\(nextCommittedQuery\)/);
+  assert.match(hookSource, /handleEyeClick\(nextCommittedQuery\)/);
   assert.match(hookSource, /await loadLogs\(1,\s*pageSize,\s*nextCommittedQuery\)/);
+  assert.match(
+    hookSource,
+    /await loadLogs\(1,\s*pageSize,\s*nextCommittedQuery\)[\s\S]*setCommittedQuery\(nextCommittedQuery\)/,
+  );
   assert.match(hookSource, /loadLogs\(page,\s*pageSize,\s*committedQuery\)/);
   assert.match(hookSource, /loadLogs\(1,\s*size,\s*committedQuery\)/);
+  assert.match(hookSource, /setIsExportReady\(false\)/);
+  assert.match(hookSource, /setIsExportReady\(true\)/);
+  assert.match(
+    hookSource,
+    /if \(loading \|\| exportLoading \|\| !isExportReady\) \{\s*return;\s*\}/,
+  );
+});
+
+test('useUsageLogsData swallows stat request failures so refresh still reaches the list request', () => {
+  assert.match(
+    hookSource,
+    /const handleEyeClick = async \(query = committedQuery\) => \{[\s\S]*try \{/,
+  );
+  assert.match(
+    hookSource,
+    /catch \(error\) \{[\s\S]*showError\(error\);[\s\S]*\}/,
+  );
+  assert.match(
+    hookSource,
+    /finally \{[\s\S]*setLoadingStat\(false\);[\s\S]*\}/,
+  );
 });

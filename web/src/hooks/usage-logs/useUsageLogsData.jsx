@@ -117,6 +117,7 @@ export const useLogsData = () => {
   const [committedQuery, setCommittedQuery] = useState(() =>
     createUsageLogCommittedQuery(formInitValues),
   );
+  const [isExportReady, setIsExportReady] = useState(true);
   const [exportLoading, setExportLoading] = useState(false);
 
   // Get default column visibility based on user role
@@ -301,13 +302,18 @@ export const useLogsData = () => {
       return;
     }
     setLoadingStat(true);
-    if (isAdminUser) {
-      await getLogStat(query);
-    } else {
-      await getLogSelfStat(query);
+    try {
+      if (isAdminUser) {
+        await getLogStat(query);
+      } else {
+        await getLogSelfStat(query);
+      }
+      setShowStat(true);
+    } catch (error) {
+      showError(error);
+    } finally {
+      setLoadingStat(false);
     }
-    setShowStat(true);
-    setLoadingStat(false);
   };
 
   // User info function
@@ -707,6 +713,7 @@ export const useLogsData = () => {
   // Load logs function
   const loadLogs = async (startIdx, pageSize, query = committedQuery) => {
     setLoading(true);
+    setIsExportReady(false);
 
     let url = '';
     const {
@@ -729,19 +736,25 @@ export const useLogsData = () => {
       url = `/api/log/self/?p=${startIdx}&page_size=${pageSize}&type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}&request_id=${request_id}`;
     }
     url = encodeURI(url);
-    const res = await API.get(url);
-    const { success, message, data } = res.data;
-    if (success) {
-      const newPageData = data.items;
-      setActivePage(data.page);
-      setPageSize(data.page_size);
-      setLogCount(data.total);
+    try {
+      const res = await API.get(url);
+      const { success, message, data } = res.data;
+      if (success) {
+        const newPageData = data.items;
+        setActivePage(data.page);
+        setPageSize(data.page_size);
+        setLogCount(data.total);
 
-      setLogsFormat(newPageData);
-    } else {
+        setLogsFormat(newPageData);
+        return true;
+      }
+
       showError(message);
+      return false;
+    } finally {
+      setLoading(false);
+      setIsExportReady(true);
     }
-    setLoading(false);
   };
 
   // Page handlers
@@ -764,10 +777,12 @@ export const useLogsData = () => {
   // Refresh function
   const refresh = async () => {
     const nextCommittedQuery = getFormValues();
-    setCommittedQuery(nextCommittedQuery);
     setActivePage(1);
-    await handleEyeClick(nextCommittedQuery);
-    await loadLogs(1, pageSize, nextCommittedQuery);
+    handleEyeClick(nextCommittedQuery);
+    const didRefresh = await loadLogs(1, pageSize, nextCommittedQuery);
+    if (didRefresh) {
+      setCommittedQuery(nextCommittedQuery);
+    }
   };
 
   // Copy text function
@@ -816,6 +831,10 @@ export const useLogsData = () => {
   };
 
   const handleExport = async () => {
+    if (loading || exportLoading || !isExportReady) {
+      return;
+    }
+
     if (!logCount) {
       showInfo(t('无可导出数据'));
       return;
@@ -883,6 +902,7 @@ export const useLogsData = () => {
     formInitValues,
     getFormValues,
     committedQuery,
+    isExportReady,
 
     // Column visibility
     visibleColumns,
