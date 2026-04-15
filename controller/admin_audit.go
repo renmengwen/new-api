@@ -1,14 +1,25 @@
 package controller
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
 func GetAdminAuditLogs(c *gin.Context) {
+	operator, err := service.ResolveOperatorUser(c.GetInt("id"), c.GetInt("role"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if operator.Role != common.RoleRootUser && operator.GetUserType() != model.UserTypeRoot && operator.GetUserType() != model.UserTypeAdmin {
+		common.ApiError(c, errors.New("permission denied"))
+		return
+	}
 	if !requireAdminActionPermission(c, service.ResourceAuditManagement, service.ActionRead) {
 		return
 	}

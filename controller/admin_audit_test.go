@@ -40,6 +40,14 @@ type adminAuditPageResponse struct {
 	Data    adminAuditLogPageData `json:"data"`
 }
 
+type adminAuditPageRawResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Data    struct {
+		Items []map[string]any `json:"items"`
+	} `json:"data"`
+}
+
 func setupAdminAuditTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -201,6 +209,72 @@ func TestGetAdminAuditLogsLeavesTargetIdentityEmptyForNonUserTargets(t *testing.
 	require.Len(t, response.Data.Items, 1)
 	require.Equal(t, "", response.Data.Items[0].TargetUsername)
 	require.Equal(t, "", response.Data.Items[0].TargetDisplayName)
+}
+
+func TestGetAdminAuditLogsDeniesAgentUsersEvenWithReadGrant(t *testing.T) {
+	db := setupAdminAuditTestDB(t)
+	operator := model.User{
+		Username:    "audit_agent_with_grant",
+		Password:    "hashed-password",
+		DisplayName: "Audit Agent With Grant",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAgent,
+		Group:       "default",
+		AffCode:     "auditagentgr",
+	}
+	require.NoError(t, db.Create(&operator).Error)
+	grantPermissionActions(t, db, operator.Id, model.UserTypeAgent, permissionGrant{
+		Resource: "audit_management",
+		Action:   "read",
+	})
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/admin/audit-logs?p=1&page_size=10", nil)
+	ctx.Set("id", operator.Id)
+	ctx.Set("role", operator.Role)
+
+	GetAdminAuditLogs(ctx)
+
+	var response adminAuditPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+}
+
+func TestGetAdminAuditLogsListResponseOmitsHeavyFields(t *testing.T) {
+	db := setupAdminAuditTestDB(t)
+	require.NoError(t, db.Create(&model.AdminAuditLog{
+		OperatorUserId:   1,
+		OperatorUserType: model.UserTypeAdmin,
+		ActionModule:     "quota",
+		ActionType:       "adjust",
+		ActionDesc:       "should stay out of list rows",
+		TargetType:       "user",
+		TargetId:         2,
+		BeforeJSON:       `{"before":"value"}`,
+		AfterJSON:        `{"after":"value"}`,
+		CreatedAtTs:      common.GetTimestamp(),
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/admin/audit-logs?p=1&page_size=10", nil)
+	ctx.Set("id", 999)
+	ctx.Set("role", common.RoleRootUser)
+
+	GetAdminAuditLogs(ctx)
+
+	var response adminAuditPageRawResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Len(t, response.Data.Items, 1)
+	_, hasBeforeJSON := response.Data.Items[0]["before_json"]
+	_, hasAfterJSON := response.Data.Items[0]["after_json"]
+	_, hasActionDesc := response.Data.Items[0]["action_desc"]
+	require.False(t, hasBeforeJSON)
+	require.False(t, hasAfterJSON)
+	require.False(t, hasActionDesc)
 }
 
 func TestGetAdminAuditLogsRequiresActionPermissionForAdmin(t *testing.T) {

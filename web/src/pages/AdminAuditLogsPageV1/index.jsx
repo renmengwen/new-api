@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Banner, Button, Empty, Input, Table, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Empty, Input, Select, Table, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import CardPro from '../../components/common/ui/CardPro';
 import { API, createCardProPagination, showError, timestamp2string } from '../../helpers';
@@ -16,6 +16,7 @@ import {
   updateDraftFilters,
 } from './requestState';
 import {
+  AUDIT_LOG_COVERAGE,
   formatAuditIdentity,
   formatAuditTarget,
   getAuditLogActionLabel,
@@ -30,6 +31,11 @@ const renderText = (value) => {
   }
   return value;
 };
+
+const moduleOptions = AUDIT_LOG_COVERAGE.map(({ module }) => ({
+  label: getAuditLogModuleLabel(module),
+  value: module,
+}));
 
 const AdminAuditLogsPageV1 = () => {
   const { t } = useTranslation();
@@ -218,11 +224,12 @@ const AdminAuditLogsPageV1 = () => {
         }
         searchArea={
           <div className='flex flex-col md:flex-row items-center gap-2 w-full'>
-            <Input
+            <Select
               size='small'
               placeholder={t('按动作模块筛选')}
               value={actionModule}
               onChange={(value) => setQueryState((currentState) => updateDraftFilters(currentState, { actionModule: value }))}
+              optionList={moduleOptions}
               style={{ width: isMobile ? '100%' : 220 }}
             />
             <Input

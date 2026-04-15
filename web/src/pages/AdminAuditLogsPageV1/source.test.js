@@ -23,6 +23,16 @@ test('AdminAuditLogsPageV1 uses audit_management.read and calls the audit logs e
   assert.match(pageSource, /operator_user_id/);
 });
 
+test('AdminAuditLogsPageV1 builds moduleOptions from AUDIT_LOG_COVERAGE and filters modules with Select', () => {
+  assert.match(pageSource, /AUDIT_LOG_COVERAGE/);
+  assert.match(pageSource, /const moduleOptions =/);
+  assert.match(pageSource, /AUDIT_LOG_COVERAGE\.map\(\(\{ module \}\) => \(\{/);
+  assert.match(pageSource, /label: getAuditLogModuleLabel\(module\)/);
+  assert.match(pageSource, /value: module/);
+  assert.match(pageSource, /<Select[\s\S]*optionList=\{moduleOptions\}/);
+  assert.doesNotMatch(pageSource, /<Input[\s\S]*?value=\{actionModule\}/);
+});
+
 test('AdminAuditLogsPageV1 renders enriched audit log display fields through display helpers', () => {
   assert.match(pageSource, /from '\.\/display'/);
   assert.match(pageSource, /getAuditLogModuleLabel/);
