@@ -47,7 +47,7 @@ const moduleOptions = AUDIT_LOG_COVERAGE.map(({ module }) => ({
 
 const parseOptionalInteger = (value) => {
   const normalizedValue = String(value ?? '').trim();
-  if (!/^-?\d+$/.test(normalizedValue)) {
+  if (!/^[+-]?\d+$/.test(normalizedValue)) {
     return 0;
   }
 

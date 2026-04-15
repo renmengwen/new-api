@@ -56,7 +56,7 @@ test('AdminAuditLogsPageV1 wires Excel export from the committed request and gua
   assert.match(pageSource, /committedRequest\.actionModule/);
   assert.match(pageSource, /committedRequest\.operatorUserId/);
   assert.match(pageSource, /String\(value \?\? ''\)\.trim\(\)/);
-  assert.match(pageSource, /if \(!\/\^-\?\\d\+\$\/\.test\(normalizedValue\)\)/);
+  assert.match(pageSource, /if \(!\/\^\[\+-\]\?\\d\+\$\/\.test\(normalizedValue\)\)/);
   assert.doesNotMatch(pageSource, /Number\.parseInt\(value,\s*10\)/);
   assert.match(pageSource, /limit:\s*MAX_EXCEL_EXPORT_ROWS/);
   assert.match(pageSource, /showInfo\(t\('无可导出数据'\)\)/);

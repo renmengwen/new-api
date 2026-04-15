@@ -36,7 +36,7 @@ const ADMIN_QUOTA_LEDGER_DIGITS = 6;
 
 const parseOptionalInteger = (value) => {
   const normalizedValue = String(value ?? '').trim();
-  if (!/^-?\d+$/.test(normalizedValue)) {
+  if (!/^[+-]?\d+$/.test(normalizedValue)) {
     return 0;
   }
 

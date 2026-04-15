@@ -49,7 +49,7 @@ test('AdminQuotaLedgerPageV2 uses committed request state and wires Excel export
   assert.match(pageSource, /committedRequest\.userId/);
   assert.match(pageSource, /committedRequest\.entryType/);
   assert.match(pageSource, /String\(value \?\? ''\)\.trim\(\)/);
-  assert.match(pageSource, /if \(!\/\^-\?\\d\+\$\/\.test\(normalizedValue\)\)/);
+  assert.match(pageSource, /if \(!\/\^\[\+-\]\?\\d\+\$\/\.test\(normalizedValue\)\)/);
   assert.doesNotMatch(pageSource, /Number\.parseInt\(value,\s*10\)/);
   assert.match(pageSource, /limit:\s*MAX_EXCEL_EXPORT_ROWS/);
   assert.match(pageSource, /showInfo\(t\('无可导出数据'\)\)/);
