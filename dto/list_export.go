@@ -20,7 +20,7 @@ type UsageLogExportRequest struct {
 	Username       string   `json:"username"`
 	TokenName      string   `json:"token_name"`
 	ModelName      string   `json:"model_name"`
-	Channel        int      `json:"channel"`
+	Channel        string   `json:"channel"`
 	Group          string   `json:"group"`
 	RequestID      string   `json:"request_id"`
 	ColumnKeys     []string `json:"column_keys"`

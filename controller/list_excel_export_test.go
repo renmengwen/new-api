@@ -86,7 +86,7 @@ func TestExportAdminUsageLogsUsesFiltersColumnKeysAndCap(t *testing.T) {
 		"username":        fixture.LatestMatching.Username,
 		"token_name":      fixture.LatestMatching.TokenName,
 		"model_name":      fixture.LatestMatching.ModelName,
-		"channel":         fixture.LatestMatching.ChannelId,
+		"channel":         strconv.Itoa(fixture.LatestMatching.ChannelId),
 		"group":           fixture.LatestMatching.Group,
 		"request_id":      fixture.LatestMatching.RequestId,
 		"column_keys":     []string{"details", "model", "username", "time"},
@@ -250,7 +250,7 @@ func TestExportSelfUsageLogsOnlyExportsOwnRows(t *testing.T) {
 	require.NotEqual(t, fixture.OwnTokenMismatch.Content, rows[2][0])
 }
 
-func TestExportSelfUsageLogsUsesDefaultColumnsWhenColumnKeysEmpty(t *testing.T) {
+func TestExportSelfUsageLogsUsesDefaultColumnsWhenColumnKeysOmitted(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 	fixture := seedUserUsageLogsForExport(t, db)
 
@@ -286,6 +286,56 @@ func TestExportSelfUsageLogsUsesDefaultColumnsWhenColumnKeysEmpty(t *testing.T) 
 	require.Equal(t, strconv.Itoa(fixture.LatestOwnMatching.Quota), dataRow[8])
 	require.Equal(t, fixture.LatestOwnMatching.Ip, dataRow[9])
 	require.Equal(t, fixture.LatestOwnMatching.Content, dataRow[10])
+}
+
+func TestExportSelfUsageLogsDoesNotFallbackWhenColumnKeysExplicitlyEmpty(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	fixture := seedUserUsageLogsForExport(t, db)
+
+	selfUser := testListExportUser(7001, "self_exporter", "Self Exporter", common.RoleCommonUser, model.UserTypeEndUser)
+	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/log/self/export", map[string]any{
+		"type":        model.LogTypeConsume,
+		"token_name":  fixture.LatestOwnMatching.TokenName,
+		"model_name":  fixture.LatestOwnMatching.ModelName,
+		"group":       fixture.LatestOwnMatching.Group,
+		"request_id":  fixture.LatestOwnMatching.RequestId,
+		"column_keys": []string{},
+		"limit":       10,
+	}, selfUser.Id, common.RoleCommonUser)
+	ctx.Set("username", selfUser.Username)
+
+	ExportUserLogs(ctx)
+
+	var response settingAuditResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+	require.Equal(t, "no export columns selected", response.Message)
+	require.NotEqual(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
+}
+
+func TestExportSelfUsageLogsDoesNotFallbackWhenColumnKeysAllInvalid(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	fixture := seedUserUsageLogsForExport(t, db)
+
+	selfUser := testListExportUser(7001, "self_exporter", "Self Exporter", common.RoleCommonUser, model.UserTypeEndUser)
+	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/log/self/export", map[string]any{
+		"type":        model.LogTypeConsume,
+		"token_name":  fixture.LatestOwnMatching.TokenName,
+		"model_name":  fixture.LatestOwnMatching.ModelName,
+		"group":       fixture.LatestOwnMatching.Group,
+		"request_id":  fixture.LatestOwnMatching.RequestId,
+		"column_keys": []string{"unknown", "invalid"},
+		"limit":       10,
+	}, selfUser.Id, common.RoleCommonUser)
+	ctx.Set("username", selfUser.Username)
+
+	ExportUserLogs(ctx)
+
+	var response settingAuditResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+	require.Equal(t, "no export columns selected", response.Message)
+	require.NotEqual(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
 }
 
 func TestExportAdminAuditLogsUsesFiltersAndCap(t *testing.T) {

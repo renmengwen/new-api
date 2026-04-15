@@ -203,6 +203,7 @@ func ExportAllLogs(c *gin.Context) {
 		common.ApiError(c, errors.New("invalid request body"))
 		return
 	}
+	channel, _ := strconv.Atoi(req.Channel)
 
 	logs, err := model.GetAllLogsForExport(
 		req.Type,
@@ -212,7 +213,7 @@ func ExportAllLogs(c *gin.Context) {
 		req.Username,
 		req.TokenName,
 		req.Limit,
-		req.Channel,
+		channel,
 		req.Group,
 		req.RequestID,
 	)
@@ -252,6 +253,10 @@ func ExportUserLogs(c *gin.Context) {
 
 func exportUsageLogs(c *gin.Context, logs []*model.Log, requestedColumnKeys []string, isAdmin bool) {
 	columnKeys := resolveUsageLogExportColumnKeys(requestedColumnKeys, isAdmin)
+	if len(columnKeys) == 0 {
+		common.ApiError(c, errors.New("no export columns selected"))
+		return
+	}
 	headers := make([]string, 0, len(columnKeys))
 	rows := make([][]string, 0, len(logs))
 
@@ -285,6 +290,9 @@ func resolveUsageLogExportColumnKeys(requestedColumnKeys []string, isAdmin bool)
 	if isAdmin {
 		allowedKeys = defaultAdminUsageLogExportColumnKeys
 	}
+	if requestedColumnKeys == nil {
+		return allowedKeys
+	}
 	allowedSet := make(map[string]struct{}, len(allowedKeys))
 	for _, key := range allowedKeys {
 		allowedSet[key] = struct{}{}
@@ -305,10 +313,7 @@ func resolveUsageLogExportColumnKeys(requestedColumnKeys []string, isAdmin bool)
 		seen[key] = struct{}{}
 		selected = append(selected, key)
 	}
-	if len(selected) > 0 {
-		return selected
-	}
-	return allowedKeys
+	return selected
 }
 
 func formatUsageLogChannel(log *model.Log) string {
