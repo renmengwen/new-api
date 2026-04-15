@@ -50,7 +50,7 @@ test('AdminAuditLogsPageV1 renders enriched audit log display fields through dis
 });
 
 test('AdminAuditLogsPageV1 wires Excel export from the committed request and guards empty or capped exports', () => {
-  assert.match(pageSource, /postExcelBlob/);
+  assert.match(pageSource, /downloadExcelBlob/);
   assert.match(pageSource, /\/api\/admin\/audit-logs\/export/);
   assert.match(pageSource, /committedRequest\.actionModule/);
   assert.match(pageSource, /committedRequest\.operatorUserId/);

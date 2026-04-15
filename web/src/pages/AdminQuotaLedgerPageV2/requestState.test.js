@@ -5,7 +5,7 @@ import * as requestStateHelpers from './requestState.js';
 test('quota ledger draft filter edits do not change the committed request until search is submitted', () => {
   assert.equal(typeof requestStateHelpers.createQuotaLedgerQueryState, 'function');
   assert.equal(typeof requestStateHelpers.updateDraftFilters, 'function');
-  assert.equal(typeof requestStateHelpers.commitDraftFilters, 'function');
+  assert.equal(typeof requestStateHelpers.commitQuotaLedgerFilters, 'function');
 
   const initialState = requestStateHelpers.createQuotaLedgerQueryState({
     committedRequest: {
@@ -32,7 +32,7 @@ test('quota ledger draft filter edits do not change the committed request until 
     entryType: 'adjust',
   });
 
-  const searchedState = requestStateHelpers.commitDraftFilters(editedState);
+  const searchedState = requestStateHelpers.commitQuotaLedgerFilters(editedState);
   assert.deepEqual(searchedState.committedRequest, {
     page: 1,
     pageSize: 20,

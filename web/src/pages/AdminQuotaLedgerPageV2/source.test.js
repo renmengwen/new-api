@@ -38,12 +38,12 @@ test('AdminQuotaLedgerPageV2 formats ledger quota amounts with six decimal place
 test('AdminQuotaLedgerPageV2 uses committed request state and wires Excel export from committed filters', () => {
   assert.match(pageSource, /from '\.\/requestState'/);
   assert.match(pageSource, /createQuotaLedgerQueryState/);
-  assert.match(pageSource, /commitDraftFilters/);
+  assert.match(pageSource, /commitQuotaLedgerFilters/);
   assert.match(pageSource, /changeCommittedPage/);
   assert.match(pageSource, /changeCommittedPageSize/);
   assert.match(pageSource, /const \[queryState, setQueryState\] = useState\(\(\) => createQuotaLedgerQueryState\(\)\)/);
   assert.match(pageSource, /const \{ draftFilters, committedRequest \} = queryState/);
-  assert.match(pageSource, /postExcelBlob/);
+  assert.match(pageSource, /downloadExcelBlob/);
   assert.match(pageSource, /\/api\/admin\/quota\/ledger\/export/);
   assert.match(pageSource, /committedRequest\.userId/);
   assert.match(pageSource, /committedRequest\.entryType/);

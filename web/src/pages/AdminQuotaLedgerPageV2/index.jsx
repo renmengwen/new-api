@@ -6,7 +6,7 @@ import {
   API,
   createCardProPagination,
   MAX_EXCEL_EXPORT_ROWS,
-  postExcelBlob,
+  downloadExcelBlob,
   renderQuota,
   showError,
   showInfo,
@@ -24,7 +24,7 @@ import { useUserPermissions } from '../../hooks/common/useUserPermissions';
 import {
   changeCommittedPage,
   changeCommittedPageSize,
-  commitDraftFilters,
+  commitQuotaLedgerFilters,
   createQuotaLedgerQueryState,
   getRefreshRequestState,
   resetDraftAndCommittedFilters,
@@ -112,7 +112,7 @@ const AdminQuotaLedgerPageV2 = () => {
   };
 
   const runExport = async () =>
-    postExcelBlob({
+    downloadExcelBlob({
       apiClient: API,
       url: '/api/admin/quota/ledger/export',
       data: {
@@ -278,7 +278,7 @@ const AdminQuotaLedgerPageV2 = () => {
               size='small'
               type='tertiary'
               onClick={() => {
-                const nextQueryState = commitDraftFilters(queryState);
+                const nextQueryState = commitQuotaLedgerFilters(queryState);
                 setQueryState(nextQueryState);
                 loadLedger(nextQueryState);
               }}

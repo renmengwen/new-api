@@ -1,25 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-test('resolveExcelFilename prefers filename* and falls back to filename', async () => {
-  const { resolveExcelFilename } = await import('./exportExcel.js');
+test('extractDownloadFilename prefers filename* and falls back to filename', async () => {
+  const { extractDownloadFilename } = await import('./exportExcel.js');
 
   assert.equal(
-    resolveExcelFilename(
+    extractDownloadFilename(
       `attachment; filename="audit.xlsx"; filename*=UTF-8''%E5%AE%A1%E8%AE%A1%E6%97%A5%E5%BF%97.xlsx`,
       'fallback.xlsx',
     ),
     '审计日志.xlsx',
   );
   assert.equal(
-    resolveExcelFilename('attachment; filename="quota-ledger.xlsx"', 'fallback.xlsx'),
+    extractDownloadFilename('attachment; filename="quota-ledger.xlsx"', 'fallback.xlsx'),
     'quota-ledger.xlsx',
   );
-  assert.equal(resolveExcelFilename('', 'fallback.xlsx'), 'fallback.xlsx');
+  assert.equal(extractDownloadFilename('', 'fallback.xlsx'), 'fallback.xlsx');
 });
 
-test('postExcelBlob posts with blob response type and downloads the returned file', async () => {
-  const { postExcelBlob } = await import('./exportExcel.js');
+test('downloadExcelBlob posts with blob response type and downloads the returned file', async () => {
+  const { downloadExcelBlob } = await import('./exportExcel.js');
 
   const response = {
     data: { blob: true },
@@ -70,7 +70,7 @@ test('postExcelBlob posts with blob response type and downloads the returned fil
     },
   };
 
-  const result = await postExcelBlob({
+  const result = await downloadExcelBlob({
     apiClient,
     url: '/api/admin/audit-logs/export',
     data: {

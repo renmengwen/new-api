@@ -20,7 +20,7 @@ const normalizeFilename = (value, fallbackFileName) => {
   }
 };
 
-export const resolveExcelFilename = (
+export const extractDownloadFilename = (
   contentDisposition,
   fallbackFileName = 'export.xlsx',
 ) => {
@@ -69,7 +69,7 @@ export const downloadBlobFile = (
   }
 };
 
-export const postExcelBlob = async ({
+export const downloadExcelBlob = async ({
   apiClient,
   url,
   data,
@@ -84,7 +84,7 @@ export const postExcelBlob = async ({
     response?.headers?.['content-disposition'] ||
     response?.headers?.['Content-Disposition'] ||
     '';
-  const fileName = resolveExcelFilename(contentDisposition, fallbackFileName);
+  const fileName = extractDownloadFilename(contentDisposition, fallbackFileName);
 
   downloadBlobFile(response.data, fileName, {
     documentApi,
@@ -93,3 +93,6 @@ export const postExcelBlob = async ({
 
   return response;
 };
+
+export const resolveExcelFilename = extractDownloadFilename;
+export const postExcelBlob = downloadExcelBlob;

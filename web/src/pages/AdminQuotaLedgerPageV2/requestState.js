@@ -29,7 +29,7 @@ export const updateDraftFilters = (state, nextDraftFilters = {}) => ({
   }),
 });
 
-export const commitDraftFilters = (state) => ({
+export const commitQuotaLedgerFilters = (state) => ({
   ...state,
   committedRequest: normalizeCommittedRequest({
     ...state.committedRequest,
@@ -37,6 +37,8 @@ export const commitDraftFilters = (state) => ({
     page: DEFAULT_PAGE,
   }),
 });
+
+export const commitDraftFilters = commitQuotaLedgerFilters;
 
 export const resetDraftAndCommittedFilters = (state) => {
   const draftFilters = normalizeFilters();

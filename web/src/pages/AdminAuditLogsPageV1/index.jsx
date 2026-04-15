@@ -6,7 +6,7 @@ import {
   API,
   createCardProPagination,
   MAX_EXCEL_EXPORT_ROWS,
-  postExcelBlob,
+  downloadExcelBlob,
   showError,
   showInfo,
   timestamp2string,
@@ -137,7 +137,7 @@ const AdminAuditLogsPageV1 = () => {
   };
 
   const runExport = async () =>
-    postExcelBlob({
+    downloadExcelBlob({
       apiClient: API,
       url: '/api/admin/audit-logs/export',
       data: {
