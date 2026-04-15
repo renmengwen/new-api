@@ -61,6 +61,7 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.DEPLOY_HOST }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
           username: root
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           command_timeout: 30m
@@ -80,6 +81,7 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.TEST_DEPLOY_HOST }}
+          port: ${{ secrets.TEST_DEPLOY_PORT || 22 }}
           username: root
           key: ${{ secrets.TEST_DEPLOY_SSH_KEY }}
           command_timeout: 30m
