@@ -224,6 +224,32 @@ func TestExportQuotaLedgerRequiresLedgerReadPermission(t *testing.T) {
 	require.NotEqual(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
 }
 
+func TestExportQuotaLedgerDoesNotCreateAccountForFilteredUserWithoutAccount(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+
+	user := testListExportUser(9301, "no_quota_account_user", "No Quota Account User", common.RoleCommonUser, model.UserTypeEndUser)
+	require.NoError(t, db.Create(&user).Error)
+
+	_, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, user.Id)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+
+	ctx, recorder := newSettingAuditContext(t, http.MethodPost, "/api/admin/quota/ledger/export", map[string]any{
+		"user_id": user.Id,
+		"limit":   10,
+	})
+
+	ExportQuotaLedger(ctx)
+
+	require.Equal(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	rows, err := workbook.GetRows("额度流水")
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+
+	_, err = model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, user.Id)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
 func TestExportQuotaLedgerAgentOnlyExportsSelfAndManagedRows(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 

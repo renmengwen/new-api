@@ -778,7 +778,10 @@ func buildQuotaLedgerListQuery(requesterUserId int, requesterRole int, userId in
 
 	if userId > 0 {
 		if operator.GetUserType() == model.UserTypeAgent && userId == operator.Id {
-			account, err := ensureUserQuotaAccount(operator.Id)
+			account, err := getQuotaAccountByOwnerWithDB(model.DB, model.QuotaOwnerTypeUser, operator.Id)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return query.Where("1 = 0"), nil
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -788,7 +791,10 @@ func buildQuotaLedgerListQuery(requesterUserId int, requesterRole int, userId in
 			if err != nil {
 				return nil, err
 			}
-			account, err := ensureUserQuotaAccount(managedUser.Id)
+			account, err := getQuotaAccountByOwnerWithDB(model.DB, model.QuotaOwnerTypeUser, managedUser.Id)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return query.Where("1 = 0"), nil
+			}
 			if err != nil {
 				return nil, err
 			}
