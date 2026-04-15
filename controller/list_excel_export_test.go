@@ -180,6 +180,31 @@ func TestExportAdminAuditLogsRequiresReadPermission(t *testing.T) {
 	require.NotEqual(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
 }
 
+func TestExportAdminAuditLogsAllowsReadPermission(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	seedAuditLogs(t, db, 1, "quota", 9001)
+
+	admin := testListExportUser(9105, "audit_reader", "Audit Reader", common.RoleAdminUser, model.UserTypeAdmin)
+	require.NoError(t, db.Create(&admin).Error)
+	grantPermissionActions(t, db, admin.Id, "admin",
+		permissionGrant{Resource: service.ResourceAuditManagement, Action: service.ActionRead},
+	)
+
+	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/admin/audit-logs/export", map[string]any{
+		"action_module":    "quota",
+		"operator_user_id": 9001,
+		"limit":            10,
+	}, admin.Id, common.RoleAdminUser)
+
+	ExportAdminAuditLogs(ctx)
+
+	require.Equal(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	rows, err := workbook.GetRows("审计日志")
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+}
+
 func TestExportQuotaLedgerRequiresLedgerReadPermission(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 
