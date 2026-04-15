@@ -1,7 +1,30 @@
 export const MAX_EXCEL_EXPORT_ROWS = 2000;
+export const EXCEL_BLOB_MIME_TYPE =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 const FILENAME_STAR_PATTERN = /filename\*\s*=\s*(?:UTF-8''|utf-8'')?([^;]+)/;
 const FILENAME_PATTERN = /filename\s*=\s*("?)([^";]+)\1/;
+
+const getHeaderValue = (headers, headerName) => {
+  if (!headers) {
+    return '';
+  }
+
+  if (typeof headers === 'string') {
+    return headers;
+  }
+
+  if (typeof headers.get === 'function') {
+    return headers.get(headerName) || headers.get(headerName.toLowerCase()) || '';
+  }
+
+  const normalizedHeaderName = headerName.toLowerCase();
+  const matchedHeaderKey = Object.keys(headers).find(
+    (key) => key.toLowerCase() === normalizedHeaderName,
+  );
+
+  return matchedHeaderKey ? headers[matchedHeaderKey] : '';
+};
 
 const normalizeFilename = (value, fallbackFileName) => {
   if (!value) {
@@ -21,9 +44,10 @@ const normalizeFilename = (value, fallbackFileName) => {
 };
 
 export const extractDownloadFilename = (
-  contentDisposition,
+  headers,
   fallbackFileName = 'export.xlsx',
 ) => {
+  const contentDisposition = getHeaderValue(headers, 'content-disposition');
   if (!contentDisposition) {
     return fallbackFileName;
   }
@@ -70,23 +94,24 @@ export const downloadBlobFile = (
 };
 
 export const downloadExcelBlob = async ({
-  apiClient,
   url,
-  data,
+  payload,
   fallbackFileName = 'export.xlsx',
+  apiClient,
   documentApi = document,
   urlApi = URL,
+  blobCtor = Blob,
 }) => {
-  const response = await apiClient.post(url, data, {
+  const client = apiClient ?? (await import('./api.js')).API;
+  const response = await client.post(url, payload, {
     responseType: 'blob',
   });
-  const contentDisposition =
-    response?.headers?.['content-disposition'] ||
-    response?.headers?.['Content-Disposition'] ||
-    '';
-  const fileName = extractDownloadFilename(contentDisposition, fallbackFileName);
+  const fileName = extractDownloadFilename(response?.headers, fallbackFileName);
+  const excelBlob = new blobCtor([response.data], {
+    type: EXCEL_BLOB_MIME_TYPE,
+  });
 
-  downloadBlobFile(response.data, fileName, {
+  downloadBlobFile(excelBlob, fileName, {
     documentApi,
     urlApi,
   });
@@ -95,4 +120,8 @@ export const downloadExcelBlob = async ({
 };
 
 export const resolveExcelFilename = extractDownloadFilename;
-export const postExcelBlob = downloadExcelBlob;
+export const postExcelBlob = ({ data, ...options }) =>
+  downloadExcelBlob({
+    ...options,
+    payload: options.payload ?? data,
+  });

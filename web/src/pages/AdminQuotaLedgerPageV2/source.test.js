@@ -45,6 +45,7 @@ test('AdminQuotaLedgerPageV2 uses committed request state and wires Excel export
   assert.match(pageSource, /const \{ draftFilters, committedRequest \} = queryState/);
   assert.match(pageSource, /downloadExcelBlob/);
   assert.match(pageSource, /\/api\/admin\/quota\/ledger\/export/);
+  assert.match(pageSource, /payload:\s*\{/);
   assert.match(pageSource, /committedRequest\.userId/);
   assert.match(pageSource, /committedRequest\.entryType/);
   assert.match(pageSource, /limit:\s*MAX_EXCEL_EXPORT_ROWS/);

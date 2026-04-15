@@ -138,9 +138,8 @@ const AdminAuditLogsPageV1 = () => {
 
   const runExport = async () =>
     downloadExcelBlob({
-      apiClient: API,
       url: '/api/admin/audit-logs/export',
-      data: {
+      payload: {
         action_module: committedRequest.actionModule.trim(),
         operator_user_id: parseOptionalInteger(committedRequest.operatorUserId),
         limit: MAX_EXCEL_EXPORT_ROWS,

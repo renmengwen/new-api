@@ -113,9 +113,8 @@ const AdminQuotaLedgerPageV2 = () => {
 
   const runExport = async () =>
     downloadExcelBlob({
-      apiClient: API,
       url: '/api/admin/quota/ledger/export',
-      data: {
+      payload: {
         user_id: parseOptionalInteger(committedRequest.userId),
         entry_type: committedRequest.entryType,
         limit: MAX_EXCEL_EXPORT_ROWS,
