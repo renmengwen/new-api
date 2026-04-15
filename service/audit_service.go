@@ -19,6 +19,14 @@ type AuditLogInput struct {
 	IP               string
 }
 
+type AdminAuditLogListItem struct {
+	model.AdminAuditLog
+	OperatorUsername    string `json:"operator_username" gorm:"column:operator_username"`
+	OperatorDisplayName string `json:"operator_display_name" gorm:"column:operator_display_name"`
+	TargetUsername      string `json:"target_username" gorm:"column:target_username"`
+	TargetDisplayName   string `json:"target_display_name" gorm:"column:target_display_name"`
+}
+
 func CreateAdminAuditLog(input AuditLogInput) error {
 	return createAdminAuditLogWithDB(model.DB, input)
 }
@@ -44,11 +52,14 @@ func createAdminAuditLogWithDB(db *gorm.DB, input AuditLogInput) error {
 	return db.Create(log).Error
 }
 
-func ListAdminAuditLogs(pageInfo *common.PageInfo, actionModule string, operatorUserId int) ([]model.AdminAuditLog, int64, error) {
-	var logs []model.AdminAuditLog
+func ListAdminAuditLogs(pageInfo *common.PageInfo, actionModule string, operatorUserId int) ([]AdminAuditLogListItem, int64, error) {
+	var logs []AdminAuditLogListItem
 	var total int64
 
-	query := model.DB.Model(&model.AdminAuditLog{})
+	query := model.DB.Model(&model.AdminAuditLog{}).
+		Select("admin_audit_logs.*, operator_users.username AS operator_username, operator_users.display_name AS operator_display_name, target_users.username AS target_username, target_users.display_name AS target_display_name").
+		Joins("LEFT JOIN users AS operator_users ON operator_users.id = admin_audit_logs.operator_user_id").
+		Joins("LEFT JOIN users AS target_users ON admin_audit_logs.target_type = ? AND target_users.id = admin_audit_logs.target_id", "user")
 	if actionModule != "" {
 		query = query.Where("action_module = ?", actionModule)
 	}

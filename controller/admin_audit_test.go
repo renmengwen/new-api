@@ -13,10 +13,31 @@ import (
 	"gorm.io/gorm"
 )
 
+type adminAuditLogResponseItem struct {
+	Id                  int    `json:"id"`
+	OperatorUserId      int    `json:"operator_user_id"`
+	OperatorUserType    string `json:"operator_user_type"`
+	ActionModule        string `json:"action_module"`
+	ActionType          string `json:"action_type"`
+	TargetType          string `json:"target_type"`
+	TargetId            int    `json:"target_id"`
+	OperatorUsername    string `json:"operator_username"`
+	OperatorDisplayName string `json:"operator_display_name"`
+	TargetUsername      string `json:"target_username"`
+	TargetDisplayName   string `json:"target_display_name"`
+}
+
+type adminAuditLogPageData struct {
+	Page     int                         `json:"page"`
+	PageSize int                         `json:"page_size"`
+	Total    int                         `json:"total"`
+	Items    []adminAuditLogResponseItem `json:"items"`
+}
+
 type adminAuditPageResponse struct {
-	Success bool            `json:"success"`
-	Message string          `json:"message"`
-	Data    common.PageInfo `json:"data"`
+	Success bool                  `json:"success"`
+	Message string                `json:"message"`
+	Data    adminAuditLogPageData `json:"data"`
 }
 
 func setupAdminAuditTestDB(t *testing.T) *gorm.DB {
@@ -74,6 +95,112 @@ func TestGetAdminAuditLogsReturnsLogs(t *testing.T) {
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Success)
 	require.Equal(t, 1, response.Data.Total)
+}
+
+func TestGetAdminAuditLogsReturnsEnrichedUserIdentityFields(t *testing.T) {
+	db := setupAdminAuditTestDB(t)
+
+	operator := model.User{
+		Username:    "audit_operator_user",
+		Password:    "hashed-password",
+		DisplayName: "Audit Operator User",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAdmin,
+		Group:       "default",
+		AffCode:     "auditopuser",
+	}
+	target := model.User{
+		Username:    "audit_target_user",
+		Password:    "hashed-password",
+		DisplayName: "Audit Target User",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeEndUser,
+		Group:       "default",
+		AffCode:     "audittarget",
+	}
+	require.NoError(t, db.Create(&operator).Error)
+	require.NoError(t, db.Create(&target).Error)
+	require.NoError(t, db.Create(&model.AdminAuditLog{
+		OperatorUserId:   operator.Id,
+		OperatorUserType: operator.UserType,
+		ActionModule:     "user_management",
+		ActionType:       "update",
+		TargetType:       "user",
+		TargetId:         target.Id,
+		CreatedAtTs:      common.GetTimestamp(),
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/admin/audit-logs?p=1&page_size=10", nil)
+	ctx.Set("id", 999)
+	ctx.Set("role", common.RoleRootUser)
+
+	GetAdminAuditLogs(ctx)
+
+	var response adminAuditPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, 1, response.Data.Total)
+	require.Len(t, response.Data.Items, 1)
+	require.Equal(t, operator.Username, response.Data.Items[0].OperatorUsername)
+	require.Equal(t, operator.DisplayName, response.Data.Items[0].OperatorDisplayName)
+	require.Equal(t, target.Username, response.Data.Items[0].TargetUsername)
+	require.Equal(t, target.DisplayName, response.Data.Items[0].TargetDisplayName)
+}
+
+func TestGetAdminAuditLogsLeavesTargetIdentityEmptyForNonUserTargets(t *testing.T) {
+	db := setupAdminAuditTestDB(t)
+
+	operator := model.User{
+		Username:    "audit_batch_operator",
+		Password:    "hashed-password",
+		DisplayName: "Audit Batch Operator",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAdmin,
+		Group:       "default",
+		AffCode:     "auditbatchop",
+	}
+	userTarget := model.User{
+		Username:    "audit_batch_user_target",
+		Password:    "hashed-password",
+		DisplayName: "Audit Batch User Target",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeEndUser,
+		Group:       "default",
+		AffCode:     "auditbatchtg",
+	}
+	require.NoError(t, db.Create(&operator).Error)
+	require.NoError(t, db.Create(&userTarget).Error)
+	require.NoError(t, db.Create(&model.AdminAuditLog{
+		OperatorUserId:   operator.Id,
+		OperatorUserType: operator.UserType,
+		ActionModule:     "quota",
+		ActionType:       "adjust",
+		TargetType:       "batch",
+		TargetId:         userTarget.Id,
+		CreatedAtTs:      common.GetTimestamp(),
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/admin/audit-logs?p=1&page_size=10", nil)
+	ctx.Set("id", 999)
+	ctx.Set("role", common.RoleRootUser)
+
+	GetAdminAuditLogs(ctx)
+
+	var response adminAuditPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, 1, response.Data.Total)
+	require.Len(t, response.Data.Items, 1)
+	require.Equal(t, "", response.Data.Items[0].TargetUsername)
+	require.Equal(t, "", response.Data.Items[0].TargetDisplayName)
 }
 
 func TestGetAdminAuditLogsRequiresActionPermissionForAdmin(t *testing.T) {

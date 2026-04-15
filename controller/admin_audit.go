@@ -14,9 +14,9 @@ func GetAdminAuditLogs(c *gin.Context) {
 	}
 	pageInfo := common.GetPageQuery(c)
 	actionModule := c.Query("action_module")
-	operatorUserId, _ := strconv.Atoi(c.Query("operator_user_id"))
+	operatorUserID, _ := strconv.Atoi(c.Query("operator_user_id"))
 
-	items, total, err := service.ListAdminAuditLogs(pageInfo, actionModule, operatorUserId)
+	items, total, err := service.ListAdminAuditLogs(pageInfo, actionModule, operatorUserID)
 	if err != nil {
 		common.ApiError(c, err)
 		return
