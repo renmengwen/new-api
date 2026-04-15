@@ -394,6 +394,11 @@ func FetchUpstreamRatios(c *gin.Context) {
 	}
 
 	differences := buildDifferences(localData, successfulChannels)
+	createSettingAuditLog(c, settingAuditMetaFetchUpstreamRatio, 0, "", marshalSettingAuditPayload(map[string]any{
+		"upstream_count":   len(upstreams),
+		"success_count":    len(successfulChannels),
+		"difference_count": len(differences),
+	}))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

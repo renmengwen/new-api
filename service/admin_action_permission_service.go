@@ -62,6 +62,7 @@ var adminSidebarModuleCatalog = map[string][]string{
 		"permission-templates",
 		"user-permissions",
 		"quota-ledger",
+		"audit-logs",
 		"channel",
 		"subscription",
 		"models",

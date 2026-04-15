@@ -55,6 +55,7 @@ export const ADMIN_MENU_OPTIONS = [
   { sectionKey: 'admin', moduleKey: 'permission-templates', label: '权限模板管理' },
   { sectionKey: 'admin', moduleKey: 'user-permissions', label: '用户权限管理' },
   { sectionKey: 'admin', moduleKey: 'quota-ledger', label: '额度流水' },
+  { sectionKey: 'admin', moduleKey: 'audit-logs', label: '审计日志' },
   { sectionKey: 'admin', moduleKey: 'channel', label: '渠道管理' },
   { sectionKey: 'admin', moduleKey: 'subscription', label: '订阅管理' },
   { sectionKey: 'admin', moduleKey: 'models', label: '模型管理' },

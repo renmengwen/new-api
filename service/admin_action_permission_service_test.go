@@ -221,6 +221,7 @@ func TestBuildUserPermissionsExpandsAdminSidebarSnapshotForLegacyAdmins(t *testi
 	require.Equal(t, true, adminSection["permission-templates"])
 	require.Equal(t, true, adminSection["user-permissions"])
 	require.Equal(t, true, adminSection["quota-ledger"])
+	require.Equal(t, true, adminSection["audit-logs"])
 	require.Equal(t, false, adminSection["setting"])
 }
 
@@ -276,6 +277,7 @@ func TestBuildUserPermissionsExpandsAdminSidebarSnapshotForRootUsers(t *testing.
 	require.Equal(t, true, adminSection["permission-templates"])
 	require.Equal(t, true, adminSection["user-permissions"])
 	require.Equal(t, true, adminSection["quota-ledger"])
+	require.Equal(t, true, adminSection["audit-logs"])
 	require.Equal(t, true, adminSection["setting"])
 }
 

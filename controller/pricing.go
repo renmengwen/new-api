@@ -51,6 +51,7 @@ func GetPricing(c *gin.Context) {
 }
 
 func ResetModelRatio(c *gin.Context) {
+	oldValue := getSettingOptionCurrentValue("ModelRatio")
 	defaultStr := ratio_setting.DefaultModelRatio2JSONString()
 	err := model.UpdateOption("ModelRatio", defaultStr)
 	if err != nil {
@@ -68,6 +69,13 @@ func ResetModelRatio(c *gin.Context) {
 		})
 		return
 	}
+	createSettingAuditLog(
+		c,
+		settingAuditMetaResetModelRatio,
+		0,
+		service.MarshalSettingOptionAuditValue("ModelRatio", oldValue),
+		service.MarshalSettingOptionAuditValue("ModelRatio", defaultStr),
+	)
 	c.JSON(200, gin.H{
 		"success": true,
 		"message": "重置模型倍率成功",

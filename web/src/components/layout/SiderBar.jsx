@@ -42,6 +42,7 @@ const routerMap = {
   'permission-templates': '/console/permission-templates',
   'user-permissions': '/console/user-permissions',
   'quota-ledger': '/console/quota-ledger',
+  'audit-logs': '/console/audit-logs',
   subscription: '/console/subscription',
   log: '/console/log',
   midjourney: '/console/midjourney',
@@ -205,6 +206,11 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('额度流水'),
         itemKey: 'quota-ledger',
         to: '/console/quota-ledger',
+      },
+      {
+        text: t('审计日志'),
+        itemKey: 'audit-logs',
+        to: '/console/audit-logs',
       },
       {
         text: t('系统设置'),
@@ -553,4 +559,3 @@ const SiderBar = ({ onNavigate = () => {} }) => {
 };
 
 export default SiderBar;
-
