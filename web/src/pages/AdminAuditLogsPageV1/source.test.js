@@ -49,6 +49,17 @@ test('AdminAuditLogsPageV1 renders enriched audit log display fields through dis
   assert.match(pageSource, /target_display_name/);
 });
 
+test('AdminAuditLogsPageV1 wires Excel export from the committed request and guards empty or capped exports', () => {
+  assert.match(pageSource, /postExcelBlob/);
+  assert.match(pageSource, /\/api\/admin\/audit-logs\/export/);
+  assert.match(pageSource, /committedRequest\.actionModule/);
+  assert.match(pageSource, /committedRequest\.operatorUserId/);
+  assert.match(pageSource, /limit:\s*MAX_EXCEL_EXPORT_ROWS/);
+  assert.match(pageSource, /showInfo\(t\('无可导出数据'\)\)/);
+  assert.match(pageSource, /Modal\.confirm/);
+  assert.match(pageSource, /导出 Excel/);
+});
+
 test('App.jsx lazy-loads the audit logs page and exposes /console/audit-logs', () => {
   assert.match(appSource, /const AdminAuditLogs = lazy\(\(\) => import\('\.\/pages\/AdminAuditLogsPageV1'\)\);/);
   assert.match(appSource, /path='\/console\/audit-logs'/);

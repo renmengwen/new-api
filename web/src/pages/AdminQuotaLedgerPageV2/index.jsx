@@ -1,8 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Banner, Button, Empty, Input, Select, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Empty, Input, Modal, Select, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import CardPro from '../../components/common/ui/CardPro';
-import { API, createCardProPagination, renderQuota, showError, timestamp2string } from '../../helpers';
+import {
+  API,
+  createCardProPagination,
+  MAX_EXCEL_EXPORT_ROWS,
+  postExcelBlob,
+  renderQuota,
+  showError,
+  showInfo,
+  timestamp2string,
+} from '../../helpers';
 import {
   QUOTA_LEDGER_ENTRY_TYPE_OPTIONS,
   getQuotaAccountName,
@@ -12,9 +21,23 @@ import {
 } from '../../helpers/quotaLedgerDisplay';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
+import {
+  changeCommittedPage,
+  changeCommittedPageSize,
+  commitDraftFilters,
+  createQuotaLedgerQueryState,
+  getRefreshRequestState,
+  resetDraftAndCommittedFilters,
+  updateDraftFilters,
+} from './requestState';
 
 const { Text } = Typography;
 const ADMIN_QUOTA_LEDGER_DIGITS = 6;
+
+const parseOptionalInteger = (value) => {
+  const parsedValue = Number.parseInt(value, 10);
+  return Number.isNaN(parsedValue) ? 0 : parsedValue;
+};
 
 const AdminQuotaLedgerPageV2 = () => {
   const { t } = useTranslation();
@@ -25,29 +48,32 @@ const AdminQuotaLedgerPageV2 = () => {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [listError, setListError] = useState('');
-  const [userId, setUserId] = useState('');
-  const [entryType, setEntryType] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [queryState, setQueryState] = useState(() => createQuotaLedgerQueryState());
   const [total, setTotal] = useState(0);
 
-  const loadLedger = async (nextPage = page, nextPageSize = pageSize, nextUserId = userId, nextEntryType = entryType) => {
+  const { draftFilters, committedRequest } = queryState;
+  const { userId, entryType } = draftFilters;
+  const { page, pageSize } = committedRequest;
+
+  const loadLedger = async (nextQueryState = queryState) => {
     if (!canRead) {
       return;
     }
+
+    const requestState = getRefreshRequestState(nextQueryState);
 
     setLoading(true);
     setListError('');
     try {
       const params = new URLSearchParams({
-        p: String(nextPage),
-        page_size: String(nextPageSize),
+        p: String(requestState.page),
+        page_size: String(requestState.pageSize),
       });
-      if (nextUserId.trim()) {
-        params.set('user_id', nextUserId.trim());
+      if (requestState.userId.trim()) {
+        params.set('user_id', requestState.userId.trim());
       }
-      if (nextEntryType) {
-        params.set('entry_type', nextEntryType);
+      if (requestState.entryType) {
+        params.set('entry_type', requestState.entryType);
       }
 
       const res = await API.get(`/api/admin/quota/ledger?${params.toString()}`);
@@ -60,8 +86,14 @@ const AdminQuotaLedgerPageV2 = () => {
 
       const data = res.data.data || {};
       setItems((data.items || []).map((item) => ({ ...item, key: item.id })));
-      setPage(data.page || nextPage);
-      setPageSize(data.page_size || nextPageSize);
+      setQueryState((currentState) => ({
+        ...currentState,
+        committedRequest: {
+          ...requestState,
+          page: data.page || requestState.page,
+          pageSize: data.page_size || requestState.pageSize,
+        },
+      }));
       setTotal(data.total || 0);
     } catch (error) {
       setItems([]);
@@ -74,14 +106,46 @@ const AdminQuotaLedgerPageV2 = () => {
   };
 
   const resetFilters = async () => {
-    setUserId('');
-    setEntryType('');
-    await loadLedger(1, pageSize, '', '');
+    const nextQueryState = resetDraftAndCommittedFilters(queryState);
+    setQueryState(nextQueryState);
+    await loadLedger(nextQueryState);
+  };
+
+  const runExport = async () =>
+    postExcelBlob({
+      apiClient: API,
+      url: '/api/admin/quota/ledger/export',
+      data: {
+        user_id: parseOptionalInteger(committedRequest.userId),
+        entry_type: committedRequest.entryType,
+        limit: MAX_EXCEL_EXPORT_ROWS,
+      },
+      fallbackFileName: 'quota-ledger.xlsx',
+    });
+
+  const exportLedger = async () => {
+    if (!total) {
+      showInfo(t('无可导出数据'));
+      return;
+    }
+
+    if (total > MAX_EXCEL_EXPORT_ROWS) {
+      Modal.confirm({
+        title: t('导出 Excel'),
+        content: t('当前筛选结果超过 2000 条，将仅导出前 2000 条记录，是否继续？'),
+        okText: t('继续导出'),
+        cancelText: t('取消'),
+        onOk: runExport,
+      });
+      return;
+    }
+
+    await runExport();
   };
 
   useEffect(() => {
     if (!permissionLoading && canRead) {
-      loadLedger(1, pageSize, '', '');
+      loadLedger(createQuotaLedgerQueryState());
     }
   }, [permissionLoading, canRead]);
 
@@ -187,7 +251,10 @@ const AdminQuotaLedgerPageV2 = () => {
         }
         actionsArea={
           <div className='flex flex-wrap items-center gap-2'>
-            <Button size='small' type='tertiary' onClick={() => loadLedger(page, pageSize, userId, entryType)}>
+            <Button size='small' type='tertiary' onClick={exportLedger}>
+              {t('导出 Excel')}
+            </Button>
+            <Button size='small' type='tertiary' onClick={() => loadLedger(queryState)}>
               {t('刷新')}
             </Button>
           </div>
@@ -198,16 +265,24 @@ const AdminQuotaLedgerPageV2 = () => {
               size='small'
               placeholder={t('按用户 ID 筛选')}
               value={userId}
-              onChange={setUserId}
+              onChange={(value) => setQueryState((currentState) => updateDraftFilters(currentState, { userId: value }))}
               style={{ width: isMobile ? '100%' : 200 }}
             />
             <Select
               value={entryType}
-              onChange={setEntryType}
+              onChange={(value) => setQueryState((currentState) => updateDraftFilters(currentState, { entryType: value }))}
               optionList={QUOTA_LEDGER_ENTRY_TYPE_OPTIONS}
               style={{ width: isMobile ? '100%' : 220 }}
             />
-            <Button size='small' type='tertiary' onClick={() => loadLedger(1, pageSize, userId, entryType)}>
+            <Button
+              size='small'
+              type='tertiary'
+              onClick={() => {
+                const nextQueryState = commitDraftFilters(queryState);
+                setQueryState(nextQueryState);
+                loadLedger(nextQueryState);
+              }}
+            >
               {t('查询')}
             </Button>
             <Button size='small' type='tertiary' onClick={resetFilters}>
@@ -220,13 +295,14 @@ const AdminQuotaLedgerPageV2 = () => {
           pageSize,
           total,
           onPageChange: (nextPage) => {
-            setPage(nextPage);
-            loadLedger(nextPage, pageSize, userId, entryType);
+            const nextQueryState = changeCommittedPage(queryState, nextPage);
+            setQueryState(nextQueryState);
+            loadLedger(nextQueryState);
           },
           onPageSizeChange: (nextSize) => {
-            setPage(1);
-            setPageSize(nextSize);
-            loadLedger(1, nextSize, userId, entryType);
+            const nextQueryState = changeCommittedPageSize(queryState, nextSize);
+            setQueryState(nextQueryState);
+            loadLedger(nextQueryState);
           },
           isMobile,
           t,
@@ -237,7 +313,7 @@ const AdminQuotaLedgerPageV2 = () => {
           <div className='mb-3 flex flex-col gap-2'>
             <Banner type='warning' closeIcon={null} description={listError} />
             <div>
-              <Button size='small' type='tertiary' onClick={() => loadLedger(page, pageSize, userId, entryType)}>
+              <Button size='small' type='tertiary' onClick={() => loadLedger(queryState)}>
                 {t('重新加载')}
               </Button>
             </div>
@@ -251,7 +327,15 @@ const AdminQuotaLedgerPageV2 = () => {
           dataSource={items}
           loading={loading}
           pagination={false}
-          empty={<Empty description={userId || entryType ? t('没有匹配的额度流水') : t('暂无额度流水')} />}
+          empty={
+            <Empty
+              description={
+                committedRequest.userId || committedRequest.entryType
+                  ? t('没有匹配的额度流水')
+                  : t('暂无额度流水')
+              }
+            />
+          }
         />
       </CardPro>
     </div>

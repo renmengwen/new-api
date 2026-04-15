@@ -1,8 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Banner, Button, Empty, Input, Select, Table, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Empty, Input, Modal, Select, Table, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import CardPro from '../../components/common/ui/CardPro';
-import { API, createCardProPagination, showError, timestamp2string } from '../../helpers';
+import {
+  API,
+  createCardProPagination,
+  MAX_EXCEL_EXPORT_ROWS,
+  postExcelBlob,
+  showError,
+  showInfo,
+  timestamp2string,
+} from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
 import {
@@ -36,6 +44,11 @@ const moduleOptions = AUDIT_LOG_COVERAGE.map(({ module }) => ({
   label: getAuditLogModuleLabel(module),
   value: module,
 }));
+
+const parseOptionalInteger = (value) => {
+  const parsedValue = Number.parseInt(value, 10);
+  return Number.isNaN(parsedValue) ? 0 : parsedValue;
+};
 
 const AdminAuditLogsPageV1 = () => {
   const { t } = useTranslation();
@@ -121,6 +134,38 @@ const AdminAuditLogsPageV1 = () => {
     const nextQueryState = resetDraftAndCommittedFilters(queryState);
     setQueryState(nextQueryState);
     await loadAuditLogs(nextQueryState);
+  };
+
+  const runExport = async () =>
+    postExcelBlob({
+      apiClient: API,
+      url: '/api/admin/audit-logs/export',
+      data: {
+        action_module: committedRequest.actionModule.trim(),
+        operator_user_id: parseOptionalInteger(committedRequest.operatorUserId),
+        limit: MAX_EXCEL_EXPORT_ROWS,
+      },
+      fallbackFileName: 'audit-logs.xlsx',
+    });
+
+  const exportAuditLogs = async () => {
+    if (!total) {
+      showInfo(t('无可导出数据'));
+      return;
+    }
+
+    if (total > MAX_EXCEL_EXPORT_ROWS) {
+      Modal.confirm({
+        title: t('导出 Excel'),
+        content: t('当前筛选结果超过 2000 条，将仅导出前 2000 条记录，是否继续？'),
+        okText: t('继续导出'),
+        cancelText: t('取消'),
+        onOk: runExport,
+      });
+      return;
+    }
+
+    await runExport();
   };
 
   useEffect(() => {
@@ -213,6 +258,9 @@ const AdminAuditLogsPageV1 = () => {
         }
         actionsArea={
           <div className='flex flex-wrap items-center gap-2'>
+            <Button size='small' type='tertiary' onClick={exportAuditLogs}>
+              {t('导出 Excel')}
+            </Button>
             <Button
               size='small'
               type='tertiary'
