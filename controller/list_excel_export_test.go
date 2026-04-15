@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -13,9 +14,22 @@ import (
 	"gorm.io/gorm"
 )
 
+type auditExportFixture struct {
+	LatestMatching   model.AdminAuditLog
+	ModuleMismatch   model.AdminAuditLog
+	OperatorMismatch model.AdminAuditLog
+}
+
+type quotaLedgerExportFixture struct {
+	LatestMatching    model.QuotaLedger
+	EntryTypeMismatch model.QuotaLedger
+	UserMismatch      model.QuotaLedger
+	OperatorMismatch  model.QuotaLedger
+}
+
 func TestExportAdminAuditLogsUsesFiltersAndCap(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
-	seedAuditLogs(t, db, 2050, "quota", 9001)
+	fixture := seedAuditLogs(t, db, 2050, "quota", 9001)
 
 	ctx, recorder := newSettingAuditContext(t, http.MethodPost, "/api/admin/audit-logs/export", map[string]any{
 		"action_module":    "quota",
@@ -33,16 +47,31 @@ func TestExportAdminAuditLogsUsesFiltersAndCap(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 2001)
 	require.Equal(t, "操作人", rows[0][1])
+
+	dataRows := rows[1:]
+	exportedIDs := sheetColumnValues(dataRows, 0)
+	require.Equal(t, strconv.Itoa(fixture.LatestMatching.Id), dataRows[0][0])
+	require.Contains(t, dataRows[0][1], "[ID:9001]")
+	require.Equal(t, "quota", dataRows[0][2])
+	require.Equal(t, "adjust", dataRows[0][3])
+	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.ModuleMismatch.Id))
+	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.OperatorMismatch.Id))
+
+	for _, row := range dataRows {
+		require.Equal(t, "quota", row[2])
+		require.Contains(t, row[1], "[ID:9001]")
+	}
 }
 
 func TestExportQuotaLedgerUsesEntryTypeFilterAndCap(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
-	seedQuotaLedgerRows(t, db, 2088, model.LedgerEntryAdjust)
+	fixture := seedQuotaLedgerRows(t, db, 2088, model.LedgerEntryAdjust)
 
 	ctx, recorder := newSettingAuditContext(t, http.MethodPost, "/api/admin/quota/ledger/export", map[string]any{
-		"user_id":    0,
-		"entry_type": model.LedgerEntryAdjust,
-		"limit":      2000,
+		"user_id":          2001,
+		"operator_user_id": 9001,
+		"entry_type":       model.LedgerEntryAdjust,
+		"limit":            2000,
 	})
 
 	ExportQuotaLedger(ctx)
@@ -52,6 +81,22 @@ func TestExportQuotaLedgerUsesEntryTypeFilterAndCap(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 2001)
 	require.Equal(t, "类型", rows[0][3])
+
+	dataRows := rows[1:]
+	exportedIDs := sheetColumnValues(dataRows, 0)
+	require.Equal(t, strconv.Itoa(fixture.LatestMatching.Id), dataRows[0][0])
+	require.Equal(t, "quota_user", dataRows[0][1])
+	require.Contains(t, dataRows[0][2], "[ID:9001]")
+	require.Equal(t, model.LedgerEntryAdjust, dataRows[0][3])
+	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.EntryTypeMismatch.Id))
+	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.UserMismatch.Id))
+	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.OperatorMismatch.Id))
+
+	for _, row := range dataRows {
+		require.Equal(t, "quota_user", row[1])
+		require.Contains(t, row[2], "[ID:9001]")
+		require.Equal(t, model.LedgerEntryAdjust, row[3])
+	}
 }
 
 func setupListExcelExportTestDB(t *testing.T) *gorm.DB {
@@ -77,7 +122,7 @@ func openWorkbookBytes(t *testing.T, content []byte) *excelize.File {
 	return workbook
 }
 
-func seedAuditLogs(t *testing.T, db *gorm.DB, total int, actionModule string, operatorUserID int) {
+func seedAuditLogs(t *testing.T, db *gorm.DB, total int, actionModule string, operatorUserID int) auditExportFixture {
 	t.Helper()
 
 	seedListExportUsers(t, db,
@@ -105,34 +150,40 @@ func seedAuditLogs(t *testing.T, db *gorm.DB, total int, actionModule string, op
 			OperatorUserId:   operatorUserID,
 			OperatorUserType: model.UserTypeRoot,
 			ActionModule:     "setting_misc",
-			ActionType:       "update",
+			ActionType:       "module_mismatch",
 			ActionDesc:       "other_module",
 			TargetType:       "user",
 			TargetId:         1001,
-			Ip:               "203.0.113.9",
+			Ip:               "198.51.100.10",
 			CreatedAtTs:      1810000001,
 		},
 		model.AdminAuditLog{
 			OperatorUserId:   9002,
 			OperatorUserType: model.UserTypeAdmin,
 			ActionModule:     actionModule,
-			ActionType:       "adjust",
+			ActionType:       "operator_mismatch",
 			ActionDesc:       "other_operator",
 			TargetType:       "user",
 			TargetId:         1001,
-			Ip:               "203.0.113.10",
+			Ip:               "198.51.100.11",
 			CreatedAtTs:      1810000002,
 		},
 	)
 
 	require.NoError(t, db.CreateInBatches(logs, 200).Error)
+	return auditExportFixture{
+		LatestMatching:   logs[total-1],
+		ModuleMismatch:   logs[total],
+		OperatorMismatch: logs[total+1],
+	}
 }
 
-func seedQuotaLedgerRows(t *testing.T, db *gorm.DB, total int, entryType string) {
+func seedQuotaLedgerRows(t *testing.T, db *gorm.DB, total int, entryType string) quotaLedgerExportFixture {
 	t.Helper()
 
 	seedListExportUsers(t, db,
 		testListExportUser(9001, "root_operator", "Root Operator", common.RoleRootUser, model.UserTypeRoot),
+		testListExportUser(9002, "other_operator", "Other Operator", common.RoleAdminUser, model.UserTypeAdmin),
 		testListExportUser(2001, "quota_user", "Quota User", common.RoleCommonUser, model.UserTypeEndUser),
 		testListExportUser(2002, "other_user", "Other User", common.RoleCommonUser, model.UserTypeEndUser),
 	)
@@ -163,7 +214,7 @@ func seedQuotaLedgerRows(t *testing.T, db *gorm.DB, total int, entryType string)
 	}
 	require.NoError(t, db.Create(otherAccount).Error)
 
-	ledgers := make([]model.QuotaLedger, 0, total+2)
+	ledgers := make([]model.QuotaLedger, 0, total+3)
 	for i := 0; i < total; i++ {
 		before := 100000 + i
 		ledgers = append(ledgers, model.QuotaLedger{
@@ -198,7 +249,7 @@ func seedQuotaLedgerRows(t *testing.T, db *gorm.DB, total int, entryType string)
 			SourceId:         2001,
 			OperatorUserId:   9001,
 			OperatorUserType: model.UserTypeRoot,
-			Reason:           "recharge",
+			Reason:           "wrong_entry_type",
 			CreatedAtTs:      1810000001,
 		},
 		model.QuotaLedger{
@@ -214,12 +265,34 @@ func seedQuotaLedgerRows(t *testing.T, db *gorm.DB, total int, entryType string)
 			SourceId:         2002,
 			OperatorUserId:   9001,
 			OperatorUserType: model.UserTypeRoot,
-			Reason:           "adjust",
+			Reason:           "wrong_user",
 			CreatedAtTs:      1810000002,
+		},
+		model.QuotaLedger{
+			BizNo:            "ql_export_other_operator",
+			AccountId:        account.Id,
+			TransferOrderId:  0,
+			EntryType:        entryType,
+			Direction:        model.LedgerDirectionIn,
+			Amount:           7,
+			BalanceBefore:    20,
+			BalanceAfter:     27,
+			SourceType:       "admin_quota_adjust",
+			SourceId:         2001,
+			OperatorUserId:   9002,
+			OperatorUserType: model.UserTypeAdmin,
+			Reason:           "wrong_operator",
+			CreatedAtTs:      1810000003,
 		},
 	)
 
 	require.NoError(t, db.CreateInBatches(ledgers, 200).Error)
+	return quotaLedgerExportFixture{
+		LatestMatching:    ledgers[total-1],
+		EntryTypeMismatch: ledgers[total],
+		UserMismatch:      ledgers[total+1],
+		OperatorMismatch:  ledgers[total+2],
+	}
 }
 
 func seedListExportUsers(t *testing.T, db *gorm.DB, users ...model.User) {
@@ -242,4 +315,16 @@ func testListExportUser(id int, username string, displayName string, role int, u
 		Quota:       0,
 		Email:       fmt.Sprintf("%s@example.com", username),
 	}
+}
+
+func sheetColumnValues(rows [][]string, column int) []string {
+	values := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if len(row) <= column {
+			values = append(values, "")
+			continue
+		}
+		values = append(values, row[column])
+	}
+	return values
 }
