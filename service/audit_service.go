@@ -84,6 +84,11 @@ func ListAdminAuditLogs(pageInfo *common.PageInfo, actionModule string, operator
 	return logs, total, nil
 }
 
+func ListAdminAuditLogsForExport(actionModule string, operatorUserId int, limit int) ([]AdminAuditLogListItem, int64, error) {
+	pageInfo := &common.PageInfo{Page: 1, PageSize: limit}
+	return ListAdminAuditLogs(pageInfo, actionModule, operatorUserId)
+}
+
 func UserTypeFromRole(role int) string {
 	switch role {
 	case common.RoleRootUser:

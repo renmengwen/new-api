@@ -2,9 +2,14 @@ package controller
 
 import (
 	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -36,4 +41,116 @@ func GetAdminAuditLogs(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(items)
 	common.ApiSuccess(c, pageInfo)
+}
+
+func ExportAdminAuditLogs(c *gin.Context) {
+	operator, err := service.ResolveOperatorUser(c.GetInt("id"), c.GetInt("role"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if operator.Role != common.RoleRootUser && operator.GetUserType() != model.UserTypeRoot && operator.GetUserType() != model.UserTypeAdmin {
+		common.ApiError(c, errors.New("permission denied"))
+		return
+	}
+	if !requireAdminActionPermission(c, service.ResourceAuditManagement, service.ActionRead) {
+		return
+	}
+
+	var req dto.AdminAuditExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	items, _, err := service.ListAdminAuditLogsForExport(req.ActionModule, req.OperatorUserID, normalizeExportLimit(req.Limit))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	fileName, content, err := service.BuildExcelFile(service.ExcelFileSpec{
+		FileNamePrefix: "审计日志",
+		SheetName:      "审计日志",
+		Headers:        []string{"ID", "操作人", "动作模块", "动作类型", "目标", "IP", "时间"},
+		Rows:           buildAuditLogExportRows(items),
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	streamExcelFile(c, fileName, content)
+}
+
+func normalizeExportLimit(limit int) int {
+	const maxExportLimit = 2000
+	if limit <= 0 || limit > maxExportLimit {
+		return maxExportLimit
+	}
+	return limit
+}
+
+func streamExcelFile(c *gin.Context, fileName string, content []byte) {
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, fileName, url.QueryEscape(fileName)))
+	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", content)
+}
+
+func buildAuditLogExportRows(items []service.AdminAuditLogListItem) [][]string {
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		rows = append(rows, []string{
+			strconv.Itoa(item.Id),
+			formatAuditOperator(item),
+			item.ActionModule,
+			item.ActionType,
+			formatAuditTarget(item),
+			item.IP,
+			formatExportTimestamp(item.CreatedAt),
+		})
+	}
+	return rows
+}
+
+func formatAuditOperator(item service.AdminAuditLogListItem) string {
+	name := item.OperatorUsername
+	if item.OperatorDisplayName != "" && item.OperatorDisplayName != item.OperatorUsername {
+		if name != "" {
+			name = fmt.Sprintf("%s (%s)", item.OperatorUsername, item.OperatorDisplayName)
+		} else {
+			name = item.OperatorDisplayName
+		}
+	}
+	if name == "" {
+		name = item.OperatorUserType
+	}
+	if item.OperatorUserId > 0 {
+		return fmt.Sprintf("%s [ID:%d]", name, item.OperatorUserId)
+	}
+	return name
+}
+
+func formatAuditTarget(item service.AdminAuditLogListItem) string {
+	name := item.TargetUsername
+	if item.TargetDisplayName != "" && item.TargetDisplayName != item.TargetUsername {
+		if name != "" {
+			name = fmt.Sprintf("%s (%s)", item.TargetUsername, item.TargetDisplayName)
+		} else {
+			name = item.TargetDisplayName
+		}
+	}
+	if name == "" {
+		name = item.TargetType
+	}
+	if item.TargetId > 0 {
+		return fmt.Sprintf("%s [ID:%d]", name, item.TargetId)
+	}
+	return name
+}
+
+func formatExportTimestamp(timestamp int64) string {
+	if timestamp <= 0 {
+		return ""
+	}
+	return time.Unix(timestamp, 0).Format("2006-01-02 15:04:05")
 }

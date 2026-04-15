@@ -791,6 +791,11 @@ func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRo
 	return items, total, nil
 }
 
+func ListQuotaLedgerForExport(requesterUserId int, requesterRole int, userId int, operatorUserId int, entryType string, limit int) ([]QuotaLedgerListItem, int64, error) {
+	pageInfo := &common.PageInfo{Page: 1, PageSize: limit}
+	return ListQuotaLedger(pageInfo, requesterUserId, requesterRole, userId, operatorUserId, entryType)
+}
+
 func AdjustUserQuotaBatch(req AdjustUserQuotaBatchRequest) (map[string]any, error) {
 	if len(req.TargetUserIds) == 0 {
 		return nil, errors.New("target_user_ids is required")

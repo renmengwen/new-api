@@ -326,12 +326,14 @@ func SetApiRouter(router *gin.Engine) {
 			adminQuotaRoute.POST("/adjust", controller.AdjustUserQuota)
 			adminQuotaRoute.POST("/adjust/batch", controller.AdjustUserQuotaBatch)
 			adminQuotaRoute.GET("/ledger", controller.GetQuotaLedger)
+			adminQuotaRoute.POST("/ledger/export", controller.ExportQuotaLedger)
 		}
 
 		adminAuditRoute := apiRouter.Group("/admin/audit-logs")
 		adminAuditRoute.Use(middleware.AdminPlatformAuth())
 		{
 			adminAuditRoute.GET("", controller.GetAdminAuditLogs)
+			adminAuditRoute.POST("/export", controller.ExportAdminAuditLogs)
 		}
 
 		usageRoute := apiRouter.Group("/usage")
