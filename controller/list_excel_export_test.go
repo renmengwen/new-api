@@ -2,11 +2,15 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -15,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 type auditExportFixture struct {
@@ -72,6 +77,28 @@ func TestExportAdminUsageLogsModelHelperCapsAndFilters(t *testing.T) {
 	require.Len(t, logs, 2000)
 	require.Equal(t, fixture.LatestMatching.Content, logs[0].Content)
 	require.Equal(t, fixture.OldestExported.Content, logs[len(logs)-1].Content)
+}
+
+func TestExportAdminUsageLogsModelHelperSkipsCountQuery(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	fixture := seedAdminUsageLogsForExport(t, db)
+	queryLogger := attachCountQueryLogger(t, db)
+
+	logs, err := model.GetAllLogsForExport(
+		model.LogTypeConsume,
+		fixture.OldestExported.CreatedAt-50,
+		fixture.LatestMatching.CreatedAt,
+		fixture.LatestMatching.ModelName,
+		fixture.LatestMatching.Username,
+		fixture.LatestMatching.TokenName,
+		5000,
+		fixture.LatestMatching.ChannelId,
+		fixture.LatestMatching.Group,
+		fixture.LatestMatching.RequestId,
+	)
+	require.NoError(t, err)
+	require.Len(t, logs, 2000)
+	require.Zero(t, queryLogger.CountQueries())
 }
 
 func TestExportAdminUsageLogsUsesFiltersColumnKeysAndCap(t *testing.T) {
@@ -213,6 +240,27 @@ func TestExportSelfUsageLogsModelHelperOnlyReturnsSelfRows(t *testing.T) {
 	require.Len(t, logs, 2)
 	require.Equal(t, fixture.LatestOwnMatching.Content, logs[0].Content)
 	require.Equal(t, fixture.OldestOwnMatching.Content, logs[1].Content)
+}
+
+func TestExportSelfUsageLogsModelHelperSkipsCountQuery(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	fixture := seedUserUsageLogsForExport(t, db)
+	queryLogger := attachCountQueryLogger(t, db)
+
+	logs, err := model.GetUserLogsForExport(
+		7001,
+		model.LogTypeConsume,
+		0,
+		0,
+		fixture.LatestOwnMatching.ModelName,
+		fixture.LatestOwnMatching.TokenName,
+		100,
+		fixture.LatestOwnMatching.Group,
+		fixture.LatestOwnMatching.RequestId,
+	)
+	require.NoError(t, err)
+	require.Len(t, logs, 2)
+	require.Zero(t, queryLogger.CountQueries())
 }
 
 func TestExportSelfUsageLogsOnlyExportsOwnRows(t *testing.T) {
@@ -1185,4 +1233,63 @@ func seedUserUsageLogsForExport(t *testing.T, db *gorm.DB) userUsageLogExportFix
 		OtherUserMatching: logs[2],
 		OwnTokenMismatch:  logs[3],
 	}
+}
+
+type countQueryLogger struct {
+	base    gormlogger.Interface
+	queries *atomic.Int32
+}
+
+func newCountQueryLogger() *countQueryLogger {
+	return &countQueryLogger{
+		base:    gormlogger.Discard,
+		queries: &atomic.Int32{},
+	}
+}
+
+func (l *countQueryLogger) CountQueries() int32 {
+	return l.queries.Load()
+}
+
+func (l *countQueryLogger) LogMode(level gormlogger.LogLevel) gormlogger.Interface {
+	return &countQueryLogger{
+		base:    l.base.LogMode(level),
+		queries: l.queries,
+	}
+}
+
+func (l *countQueryLogger) Info(ctx context.Context, msg string, data ...interface{}) {
+	l.base.Info(ctx, msg, data...)
+}
+
+func (l *countQueryLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
+	l.base.Warn(ctx, msg, data...)
+}
+
+func (l *countQueryLogger) Error(ctx context.Context, msg string, data ...interface{}) {
+	l.base.Error(ctx, msg, data...)
+}
+
+func (l *countQueryLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	sql, _ := fc()
+	if strings.Contains(strings.ToLower(sql), "count(") {
+		l.queries.Add(1)
+	}
+	l.base.Trace(ctx, begin, fc, err)
+}
+
+func attachCountQueryLogger(t *testing.T, db *gorm.DB) *countQueryLogger {
+	t.Helper()
+
+	queryLogger := newCountQueryLogger()
+	originalDB := model.DB
+	originalLogDB := model.LOG_DB
+	tracedDB := db.Session(&gorm.Session{Logger: queryLogger})
+	model.DB = tracedDB
+	model.LOG_DB = tracedDB
+	t.Cleanup(func() {
+		model.DB = originalDB
+		model.LOG_DB = originalLogDB
+	})
+	return queryLogger
 }
