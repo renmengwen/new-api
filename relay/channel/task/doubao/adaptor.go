@@ -264,58 +264,36 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 
 	// Add images if present
 	if req.HasImage() {
+		imageRoles := parseSeedanceStringSlice(req.Metadata["image_roles"])
+		hasMultimodalReferences := hasSeedanceReferenceURLs(req.Metadata["videos"]) ||
+			hasSeedanceReferenceURLs(req.Metadata["video_url"]) ||
+			hasSeedanceReferenceURLs(req.Metadata["audios"]) ||
+			hasSeedanceReferenceURLs(req.Metadata["audio_url"])
 		for _, imgURL := range req.Images {
+			role := "reference_image"
+			if len(imageRoles) > 0 {
+				role = imageRoles[0]
+				imageRoles = imageRoles[1:]
+			} else if len(req.Images) == 1 && !hasMultimodalReferences {
+				role = ""
+			}
+
 			r.Content = append(r.Content, ContentItem{
 				Type: "image_url",
 				ImageURL: &ImageURL{
 					URL: imgURL,
 				},
+				Role: role,
 			})
 		}
 	}
 
 	// Add video references from metadata (Seedance 2.0 支持)
 	if req.Metadata != nil {
-		if videos, ok := req.Metadata["videos"].([]interface{}); ok {
-			for _, v := range videos {
-				if videoURL, ok := v.(string); ok && videoURL != "" {
-					r.Content = append(r.Content, ContentItem{
-						Type:     "video_url",
-						VideoURL: &VideoURL{URL: videoURL},
-						Role:     "reference_video",
-					})
-				}
-			}
-		}
-		// 支持单视频字段
-		if videoURL, ok := req.Metadata["video_url"].(string); ok && videoURL != "" {
-			r.Content = append(r.Content, ContentItem{
-				Type:     "video_url",
-				VideoURL: &VideoURL{URL: videoURL},
-				Role:     "reference_video",
-			})
-		}
-
-		// Add audio references from metadata (Seedance 2.0 支持)
-		if audios, ok := req.Metadata["audios"].([]interface{}); ok {
-			for _, a := range audios {
-				if audioURL, ok := a.(string); ok && audioURL != "" {
-					r.Content = append(r.Content, ContentItem{
-						Type:     "audio_url",
-						AudioURL: &AudioURL{URL: audioURL},
-						Role:     "reference_audio",
-					})
-				}
-			}
-		}
-		// 支持单音频字段
-		if audioURL, ok := req.Metadata["audio_url"].(string); ok && audioURL != "" {
-			r.Content = append(r.Content, ContentItem{
-				Type:     "audio_url",
-				AudioURL: &AudioURL{URL: audioURL},
-				Role:     "reference_audio",
-			})
-		}
+		r.Content = appendSeedanceReferenceContents(r.Content, req.Metadata["videos"], "video_url", "reference_video")
+		r.Content = appendSeedanceReferenceContents(r.Content, req.Metadata["video_url"], "video_url", "reference_video")
+		r.Content = appendSeedanceReferenceContents(r.Content, req.Metadata["audios"], "audio_url", "reference_audio")
+		r.Content = appendSeedanceReferenceContents(r.Content, req.Metadata["audio_url"], "audio_url", "reference_audio")
 	}
 
 	metadata := req.Metadata
@@ -324,6 +302,77 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	}
 
 	return &r, nil
+}
+
+func appendSeedanceReferenceContents(content []ContentItem, raw any, contentType, role string) []ContentItem {
+	appendURL := func(url string) {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			return
+		}
+
+		item := ContentItem{
+			Type: contentType,
+			Role: role,
+		}
+		switch contentType {
+		case "video_url":
+			item.VideoURL = &VideoURL{URL: url}
+		case "audio_url":
+			item.AudioURL = &AudioURL{URL: url}
+		default:
+			return
+		}
+		content = append(content, item)
+	}
+
+	switch value := raw.(type) {
+	case string:
+		appendURL(value)
+	case []string:
+		for _, url := range value {
+			appendURL(url)
+		}
+	case []interface{}:
+		for _, item := range value {
+			if url, ok := item.(string); ok {
+				appendURL(url)
+			}
+		}
+	}
+
+	return content
+}
+
+func parseSeedanceStringSlice(raw any) []string {
+	values := make([]string, 0)
+	appendValue := func(value string) {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			values = append(values, value)
+		}
+	}
+
+	switch value := raw.(type) {
+	case string:
+		appendValue(value)
+	case []string:
+		for _, item := range value {
+			appendValue(item)
+		}
+	case []interface{}:
+		for _, item := range value {
+			if str, ok := item.(string); ok {
+				appendValue(str)
+			}
+		}
+	}
+
+	return values
+}
+
+func hasSeedanceReferenceURLs(raw any) bool {
+	return len(parseSeedanceStringSlice(raw)) > 0
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {

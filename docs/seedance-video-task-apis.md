@@ -70,8 +70,7 @@ curl -X POST "{{base_url}}/v1/video/generations" \
 |---|---|---:|---|
 | `model` | string | 是 | 视频模型名称 |
 | `prompt` | string | 是 | 文生视频提示词 |
-| `image` | string | 否 | 单张图片 URL，用于图生视频 |
-| `images` | array[string] | 否 | 多张图片 URL |
+| `images` | array[string] | 否 | 图片引用列表。如果只传一张图，也请放在数组中 |
 | `metadata` | object | 否 | Seedance 扩展参数 |
 
 ## `metadata` 常用字段
@@ -84,11 +83,72 @@ curl -X POST "{{base_url}}/v1/video/generations" \
 | `generate_audio` | bool | 否 | 是否生成音频，模型相关 |
 | `resolution` | string | 否 | 分辨率，模型相关，部分模型或模式不支持 |
 | `service_tier` | string | 否 | 服务等级，模型相关 |
-| `video_url` | string | 否 | 单个参考视频 URL |
-| `audio_url` | string | 否 | 单个参考音频 URL |
-| `videos` | array[string] | 否 | 多个参考视频 URL |
-| `audios` | array[string] | 否 | 多个参考音频 URL |
+| `image_roles` | array[string] | 否 | 与 `images` 按顺序一一对应的图片角色列表。常用值：`reference_image`、`first_frame`、`last_frame` |
+| `videos` | array[string] | 否 | 参考视频 URL 列表，会转换为火山 `content[]`，默认 `role=reference_video`；如果只传一个视频，也请放在数组中 |
+| `audios` | array[string] | 否 | 参考音频 URL 列表，会转换为火山 `content[]`，默认 `role=reference_audio`；如果只传一个音频，也请放在数组中 |
 | `seed` | int | 否 | 随机种子 |
+
+## 图片引用与 role 规则
+
+- 图生视频首帧、图生视频首尾帧、多模态参考视频，这 3 种场景按火山官方约束是互斥的，不建议混用
+- 单图图生视频：
+  - 传 `images`，长度为 1
+  - 当前网关会保持图片项不带 `role`，交给上游按首帧场景处理
+- 多模态参考视频：
+  - 传 `images`、`videos`、`audios`
+  - 当前网关会把图片默认转成 `role=reference_image`
+- 首尾帧视频：
+  - 传 `images`
+  - 同时传 `metadata.image_roles`
+  - 例如：`["first_frame", "last_frame"]`
+
+## 首尾帧请求示例
+
+```json
+{
+  "model": "doubao-seedance-1-5-pro-251215",
+  "prompt": "图中女孩对着镜头说茄子，360度环绕运镜",
+  "images": [
+    "https://ark-project.tos-cn-beijing.volces.com/doc_image/seepro_first_frame.jpeg",
+    "https://ark-project.tos-cn-beijing.volces.com/doc_image/seepro_last_frame.jpeg"
+  ],
+  "metadata": {
+    "image_roles": [
+      "first_frame",
+      "last_frame"
+    ],
+    "generate_audio": true,
+    "ratio": "adaptive",
+    "duration": 5,
+    "watermark": false
+  }
+}
+```
+
+## 多模态参考请求示例
+
+```json
+{
+  "model": "doubao-seedance-2-0-260128",
+  "prompt": "全程使用视频1的第一视角构图，全程使用音频1作为背景音乐。",
+  "images": [
+    "https://ark-project.tos-cn-beijing.volces.com/doc_image/r2v_tea_pic1.jpg",
+    "https://ark-project.tos-cn-beijing.volces.com/doc_image/r2v_tea_pic2.jpg"
+  ],
+  "metadata": {
+    "videos": [
+      "https://ark-project.tos-cn-beijing.volces.com/doc_video/r2v_tea_video1.mp4"
+    ],
+    "audios": [
+      "https://ark-project.tos-cn-beijing.volces.com/doc_audio/r2v_tea_audio1.mp3"
+    ],
+    "generate_audio": true,
+    "ratio": "16:9",
+    "duration": 11,
+    "watermark": false
+  }
+}
+```
 
 ## 成功响应示例
 
