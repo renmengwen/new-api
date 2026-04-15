@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import { Modal } from '@douyinfe/semi-ui';
+import ModalActionFooter, { defaultConfirmIcon } from '../../../common/modals/ModalActionFooter';
 
 const EnableDisableUserModal = ({
   visible,
@@ -35,8 +36,17 @@ const EnableDisableUserModal = ({
       title={isDisable ? t('确定要禁用此用户吗？') : t('确定要启用此用户吗？')}
       visible={visible}
       onCancel={onCancel}
-      onOk={onConfirm}
       type='warning'
+      footer={
+        <ModalActionFooter
+          onConfirm={onConfirm}
+          onCancel={onCancel}
+          confirmText={t('确定')}
+          cancelText={t('取消')}
+          confirmIcon={defaultConfirmIcon}
+          confirmProps={{ type: isDisable ? 'danger' : 'primary' }}
+        />
+      }
     >
       {isDisable ? t('此操作将禁用用户账户') : t('此操作将启用用户账户')}
     </Modal>

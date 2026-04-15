@@ -41,8 +41,12 @@ func TestMain(m *testing.M) {
 		&model.User{},
 		&model.Token{},
 		&model.Log{},
+		&model.QuotaData{},
 		&model.Channel{},
 		&model.UserSubscription{},
+		&model.QuotaAccount{},
+		&model.QuotaTransferOrder{},
+		&model.QuotaLedger{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -57,12 +61,19 @@ func TestMain(m *testing.M) {
 func truncate(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
+		model.CacheQuotaDataLock.Lock()
+		model.CacheQuotaData = make(map[string]*model.QuotaData)
+		model.CacheQuotaDataLock.Unlock()
 		model.DB.Exec("DELETE FROM tasks")
 		model.DB.Exec("DELETE FROM users")
 		model.DB.Exec("DELETE FROM tokens")
 		model.DB.Exec("DELETE FROM logs")
+		model.DB.Exec("DELETE FROM quota_data")
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM user_subscriptions")
+		model.DB.Exec("DELETE FROM quota_ledgers")
+		model.DB.Exec("DELETE FROM quota_transfer_orders")
+		model.DB.Exec("DELETE FROM quota_accounts")
 	})
 }
 
@@ -180,6 +191,20 @@ func countLogs(t *testing.T) int64 {
 	var count int64
 	model.LOG_DB.Model(&model.Log{}).Count(&count)
 	return count
+}
+
+func getQuotaDataSummary(t *testing.T, userId int) (int, int, int) {
+	t.Helper()
+	var summary struct {
+		Count     int
+		Quota     int
+		TokenUsed int
+	}
+	require.NoError(t, model.DB.Table("quota_data").
+		Select("COALESCE(sum(count), 0) as count, COALESCE(sum(quota), 0) as quota, COALESCE(sum(token_used), 0) as token_used").
+		Where("user_id = ?", userId).
+		Scan(&summary).Error)
+	return summary.Count, summary.Quota, summary.TokenUsed
 }
 
 // ===========================================================================
@@ -711,4 +736,66 @@ func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+}
+
+func TestRecalculateTaskQuotaUpdatesQuotaDataWithoutChangingRequestCount(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 33, 33, 33
+	const initQuota, preConsumed = 1000, 200
+	const tokenRemain = 500
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-quota-data-adjust", tokenRemain)
+	seedChannel(t, channelID)
+
+	originalExportEnabled := common.DataExportEnabled
+	common.DataExportEnabled = true
+	defer func() {
+		common.DataExportEnabled = originalExportEnabled
+	}()
+
+	model.LogQuotaData(userID, "test_user", "test-model", preConsumed, common.GetTimestamp(), 0)
+	model.SaveQuotaDataCache()
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	RecalculateTaskQuota(ctx, task, 260, "quota data adjust consume")
+	model.SaveQuotaDataCache()
+
+	count, quota, tokenUsed := getQuotaDataSummary(t, userID)
+	assert.Equal(t, 1, count)
+	assert.Equal(t, 260, quota)
+	assert.Equal(t, 0, tokenUsed)
+}
+
+func TestRefundTaskQuotaUpdatesQuotaDataWithoutChangingRequestCount(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 34, 34, 34
+	const initQuota, preConsumed = 1000, 180
+	const tokenRemain = 500
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-quota-data-refund", tokenRemain)
+	seedChannel(t, channelID)
+
+	originalExportEnabled := common.DataExportEnabled
+	common.DataExportEnabled = true
+	defer func() {
+		common.DataExportEnabled = originalExportEnabled
+	}()
+
+	model.LogQuotaData(userID, "test_user", "test-model", preConsumed, common.GetTimestamp(), 0)
+	model.SaveQuotaDataCache()
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	RefundTaskQuota(ctx, task, "quota data refund")
+	model.SaveQuotaDataCache()
+
+	count, quota, tokenUsed := getQuotaDataSummary(t, userID)
+	assert.Equal(t, 1, count)
+	assert.Equal(t, 0, quota)
+	assert.Equal(t, 0, tokenUsed)
 }

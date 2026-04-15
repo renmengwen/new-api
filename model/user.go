@@ -2,7 +2,6 @@ package model
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -18,16 +17,30 @@ import (
 
 const UserNameMaxLength = 20
 
+type UserPhaseOneMeta struct {
+	InvitedByPromoCodeId int    `json:"invited_by_promo_code_id" gorm:"default:0"`
+	CommissionEnabled    bool   `json:"commission_enabled" gorm:"default:true"`
+	FreezeReason         string `json:"freeze_reason" gorm:"type:varchar(255);default:''"`
+	FreezeAt             int64  `json:"freeze_at" gorm:"bigint;default:0"`
+}
+
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int            `json:"id"`
-	Username         string         `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password         string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	OriginalPassword string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName      string         `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Id               int    `json:"id"`
+	Username         string `json:"username" gorm:"unique;index" validate:"max=20"`
+	Password         string `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	OriginalPassword string `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName      string `json:"display_name" gorm:"index" validate:"max=20"`
+	Role             int    `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status           int    `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	UserType         string `json:"user_type" gorm:"type:varchar(32);default:'end_user';index"`
+	ParentAgentId    int    `json:"parent_agent_id" gorm:"default:0;index"`
+	Phone            string `json:"phone" gorm:"type:varchar(32);default:''"`
+	LastActiveAt     int64  `json:"last_active_at" gorm:"bigint;default:0;index"`
+	RegisterIP       string `json:"register_ip" gorm:"type:varchar(64);default:''"`
+	SourceChannel    string `json:"source_channel" gorm:"type:varchar(64);default:''"`
+	UserPhaseOneMeta `gorm:"embedded"`
 	Email            string         `json:"email" gorm:"index" validate:"max=50"`
 	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
 	DiscordId        string         `json:"discord_id" gorm:"column:discord_id;index"`
@@ -65,6 +78,27 @@ func (user *User) ToBaseUser() *UserBase {
 	return cache
 }
 
+func (user *User) GetUserType() string {
+	switch user.Role {
+	case common.RoleRootUser:
+		return UserTypeRoot
+	case common.RoleAdminUser:
+		if user.UserType == UserTypeAgent {
+			return UserTypeAgent
+		}
+		return UserTypeAdmin
+	default:
+		if user.UserType != "" {
+			return user.UserType
+		}
+		return UserTypeEndUser
+	}
+}
+
+func (user *User) FillUserType() {
+	user.UserType = user.GetUserType()
+}
+
 func (user *User) GetAccessToken() string {
 	if user.AccessToken == nil {
 		return ""
@@ -79,7 +113,7 @@ func (user *User) SetAccessToken(token string) {
 func (user *User) GetSetting() dto.UserSetting {
 	setting := dto.UserSetting{}
 	if user.Setting != "" {
-		err := json.Unmarshal([]byte(user.Setting), &setting)
+		err := common.Unmarshal([]byte(user.Setting), &setting)
 		if err != nil {
 			common.SysLog("failed to unmarshal setting: " + err.Error())
 		}
@@ -88,7 +122,7 @@ func (user *User) GetSetting() dto.UserSetting {
 }
 
 func (user *User) SetSetting(setting dto.UserSetting) {
-	settingBytes, err := json.Marshal(setting)
+	settingBytes, err := common.Marshal(setting)
 	if err != nil {
 		common.SysLog("failed to marshal setting: " + err.Error())
 		return
@@ -149,7 +183,7 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 	// 普通用户不包含admin区域
 
 	// 转换为JSON字符串
-	configBytes, err := json.Marshal(defaultConfig)
+	configBytes, err := common.Marshal(defaultConfig)
 	if err != nil {
 		common.SysLog("生成默认边栏配置失败: " + err.Error())
 		return ""
@@ -201,14 +235,14 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	}()
 
 	// Get total count within transaction
-	err = tx.Unscoped().Model(&User{}).Count(&total).Error
+	err = tx.Model(&User{}).Count(&total).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
 	// Get paginated users within same transaction
-	err = tx.Unscoped().Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
+	err = tx.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -239,7 +273,7 @@ func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, 
 	}()
 
 	// 构建基础查询
-	query := tx.Unscoped().Model(&User{})
+	query := tx.Model(&User{})
 
 	// 构建搜索条件
 	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
@@ -363,17 +397,29 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		return errors.New("邀请额度不足！")
 	}
 
-	// 更新用户额度
+	// 更新邀请额度，并将转出的额度写入主账本
 	user.AffQuota -= quota
+	if err := tx.Model(&User{}).Where("id = ?", user.Id).Update("aff_quota", user.AffQuota).Error; err != nil {
+		return err
+	}
+	if err := applyUserQuotaLedgerTx(tx, userQuotaLedgerInput{
+		UserId:     user.Id,
+		Delta:      quota,
+		EntryType:  LedgerEntryCommission,
+		SourceType: "aff_quota_transfer",
+		SourceId:   user.Id,
+		Reason:     "aff_quota_transfer",
+	}); err != nil {
+		return err
+	}
 	user.Quota += quota
 
-	// 保存用户状态
-	if err := tx.Save(user).Error; err != nil {
+	// 提交事务
+	if err := tx.Commit().Error; err != nil {
 		return err
 	}
 
-	// 提交事务
-	return tx.Commit().Error
+	return updateUserCache(*user)
 }
 
 func (user *User) Insert(inviterId int) error {
@@ -384,6 +430,7 @@ func (user *User) Insert(inviterId int) error {
 			return err
 		}
 	}
+	user.FillUserType()
 	user.Quota = common.QuotaForNewUser
 	//user.SetAccessToken(common.GetUUID())
 	user.AffCode = common.GetRandomString(4)
@@ -398,6 +445,12 @@ func (user *User) Insert(inviterId int) error {
 	result := DB.Create(user)
 	if result.Error != nil {
 		return result.Error
+	}
+	if _, err = InitQuotaAccount(QuotaOwnerTypeUser, user.Id, user.Quota); err != nil {
+		return err
+	}
+	if err = appendUserOpeningQuotaLedger(user.Id, common.QuotaForNewUser, "user_register"); err != nil {
+		return err
 	}
 
 	// 用户创建成功后，根据角色初始化边栏配置
@@ -420,7 +473,17 @@ func (user *User) Insert(inviterId int) error {
 	}
 	if inviterId != 0 {
 		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
+			if err = applyUserQuotaLedger(userQuotaLedgerInput{
+				UserId:     user.Id,
+				Delta:      common.QuotaForInvitee,
+				EntryType:  LedgerEntryReward,
+				SourceType: "invitee_register",
+				SourceId:   user.Id,
+				Reason:     "invitee_register",
+			}); err != nil {
+				return err
+			}
+			user.Quota += common.QuotaForInvitee
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
 		if common.QuotaForInviter > 0 {
@@ -433,9 +496,9 @@ func (user *User) Insert(inviterId int) error {
 }
 
 // InsertWithTx inserts a new user within an existing transaction.
-// This is used for OAuth registration where user creation and binding need to be atomic.
+// openingSourceType controls whether an opening ledger is written in the same transaction.
 // Post-creation tasks (sidebar config, logs, inviter rewards) are handled after the transaction commits.
-func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
+func (user *User) InsertWithTx(tx *gorm.DB, inviterId int, openingSourceType string) error {
 	var err error
 	if user.Password != "" {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -443,6 +506,7 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 			return err
 		}
 	}
+	user.FillUserType()
 	user.Quota = common.QuotaForNewUser
 	user.AffCode = common.GetRandomString(4)
 
@@ -456,8 +520,21 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 	if result.Error != nil {
 		return result.Error
 	}
+	if _, err = InitQuotaAccountTx(tx, QuotaOwnerTypeUser, user.Id, user.Quota); err != nil {
+		return err
+	}
+	if err = AppendUserOpeningQuotaLedgerTx(tx, user.Id, common.QuotaForNewUser, openingSourceType); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+func (user *User) hasOAuthIdentity() (bool, error) {
+	if user == nil {
+		return false, nil
+	}
+	return user.GitHubId != "" || user.DiscordId != "" || user.OidcId != "" || user.WeChatId != "" || user.TelegramId != "" || user.LinuxDOId != "", nil
 }
 
 // FinalizeOAuthUserCreation performs post-transaction tasks for OAuth user creation.
@@ -477,11 +554,19 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	}
 
 	if common.QuotaForNewUser > 0 {
-		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
+			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
 	if inviterId != 0 {
 		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
+			_ = applyUserQuotaLedger(userQuotaLedgerInput{
+				UserId:     user.Id,
+				Delta:      common.QuotaForInvitee,
+				EntryType:  LedgerEntryReward,
+				SourceType: "invitee_register",
+				SourceId:   user.Id,
+				Reason:     "invitee_register",
+			})
+			user.Quota += common.QuotaForInvitee
 			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
 		}
 		if common.QuotaForInviter > 0 {
@@ -871,6 +956,7 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	return userBase.GetSetting(), nil
 }
 
+// IncreaseUserQuota is legacy-only; not strict-ledger-safe. Do not use for new wallet flows.
 func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
@@ -896,6 +982,7 @@ func increaseUserQuota(id int, quota int) (err error) {
 	return err
 }
 
+// DecreaseUserQuota is legacy-only; not strict-ledger-safe. Do not use for new wallet flows.
 func DecreaseUserQuota(id int, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
@@ -921,6 +1008,7 @@ func decreaseUserQuota(id int, quota int) (err error) {
 	return err
 }
 
+// DeltaUpdateUserQuota is legacy-only; not strict-ledger-safe. Do not use for new wallet flows.
 func DeltaUpdateUserQuota(id int, delta int) (err error) {
 	if delta == 0 {
 		return nil

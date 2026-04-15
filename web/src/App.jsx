@@ -54,6 +54,11 @@ const OAuth2Callback = lazy(() => import('./components/auth/OAuth2Callback'));
 const PersonalSetting = lazy(() => import('./components/settings/PersonalSetting'));
 const Setup = lazy(() => import('./pages/Setup'));
 const User = lazy(() => import('./pages/User'));
+const AdminManagers = lazy(() => import('./pages/AdminManagersPageV2'));
+const AdminAgents = lazy(() => import('./pages/AdminAgentsPageV2'));
+const AdminPermissionTemplates = lazy(() => import('./pages/AdminPermissionTemplatesPageV2'));
+const AdminUserPermissions = lazy(() => import('./pages/AdminUserPermissionsPage'));
+const AdminQuotaLedger = lazy(() => import('./pages/AdminQuotaLedgerPageV2'));
 
 function DynamicOAuth2Callback() {
   const { provider } = useParams();
@@ -165,9 +170,49 @@ function App() {
         <Route
           path='/console/user'
           element={
-            <AdminRoute>
+            <PrivateRoute>
               <Suspense fallback={<Loading />}><User /></Suspense>
-            </AdminRoute>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/admin-users'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading />}><AdminManagers /></Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/agents'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading />}><AdminAgents /></Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/permission-templates'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading />}><AdminPermissionTemplates /></Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/user-permissions'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading />}><AdminUserPermissions /></Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/quota-ledger'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading />}><AdminQuotaLedger /></Suspense>
+            </PrivateRoute>
           }
         />
         <Route

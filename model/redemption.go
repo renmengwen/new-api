@@ -9,10 +9,105 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ErrRedeemFailed is returned when redemption fails due to database error
 var ErrRedeemFailed = errors.New("redeem.failed")
+
+func redemptionUserForUpdateQuery(tx *gorm.DB, userId int) *gorm.DB {
+	return tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "quota").Where("id = ?", userId)
+}
+
+func redemptionQuotaAccountForUpdateQuery(tx *gorm.DB, ownerType string, ownerId int) *gorm.DB {
+	return tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("owner_type = ? AND owner_id = ?", ownerType, ownerId)
+}
+
+func applyRedemptionRechargeTx(tx *gorm.DB, redemption *Redemption, userId int) error {
+	if redemption == nil || userId == 0 || redemption.Quota <= 0 {
+		return errors.New("invalid redemption recharge payload")
+	}
+
+	user := &User{}
+	if err := redemptionUserForUpdateQuery(tx, userId).First(user).Error; err != nil {
+		return err
+	}
+
+	account := &QuotaAccount{}
+	err := redemptionQuotaAccountForUpdateQuery(tx, QuotaOwnerTypeUser, userId).First(account).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		account, err = InitQuotaAccountTx(tx, QuotaOwnerTypeUser, userId, user.Quota)
+	}
+	if err != nil {
+		return err
+	}
+
+	now := common.GetTimestamp()
+	if account.Balance != user.Quota {
+		reconcileDelta := user.Quota - account.Balance
+		reconcileLedger := &QuotaLedger{
+			BizNo:         fmt.Sprintf("ql_%d_%d", now, common.GetRandomInt(1000000)),
+			AccountId:     account.Id,
+			EntryType:     LedgerEntryAdjust,
+			Direction:     LedgerDirectionIn,
+			Amount:        absInt(reconcileDelta),
+			BalanceBefore: account.Balance,
+			BalanceAfter:  user.Quota,
+			SourceType:    "quota_reconcile",
+			SourceId:      user.Id,
+			Reason:        "sync_with_user_quota",
+			CreatedAtTs:   now,
+		}
+		accountUpdates := map[string]interface{}{
+			"balance":    user.Quota,
+			"version":    gorm.Expr("version + 1"),
+			"updated_at": now,
+		}
+		if reconcileDelta < 0 {
+			reconcileLedger.Direction = LedgerDirectionOut
+			accountUpdates["total_adjusted_out"] = gorm.Expr("total_adjusted_out + ?", -reconcileDelta)
+		} else {
+			accountUpdates["total_adjusted_in"] = gorm.Expr("total_adjusted_in + ?", reconcileDelta)
+		}
+		if err := tx.Create(reconcileLedger).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&QuotaAccount{}).Where("id = ?", account.Id).Updates(accountUpdates).Error; err != nil {
+			return err
+		}
+		account.Balance = user.Quota
+	}
+
+	before := account.Balance
+	after := before + redemption.Quota
+	ledger := &QuotaLedger{
+		BizNo:         fmt.Sprintf("ql_%d_%d", now, common.GetRandomInt(1000000)),
+		AccountId:     account.Id,
+		EntryType:     LedgerEntryRecharge,
+		Direction:     LedgerDirectionIn,
+		Amount:        redemption.Quota,
+		BalanceBefore: before,
+		BalanceAfter:  after,
+		SourceType:    "redemption_recharge",
+		SourceId:      redemption.Id,
+		Reason:        "redemption",
+		CreatedAtTs:   now,
+	}
+	if err := tx.Create(ledger).Error; err != nil {
+		return err
+	}
+
+	if err := tx.Model(&QuotaAccount{}).Where("id = ?", account.Id).Updates(map[string]interface{}{
+		"balance":         after,
+		"version":         gorm.Expr("version + 1"),
+		"updated_at":      now,
+		"total_recharged": gorm.Expr("total_recharged + ?", redemption.Quota),
+	}).Error; err != nil {
+		return err
+	}
+
+	return tx.Model(&User{}).Where("id = ?", user.Id).Update("quota", after).Error
+}
 
 type Redemption struct {
 	Id           int            `json:"id"`
@@ -130,7 +225,7 @@ func Redeem(key string, userId int) (quota int, err error) {
 	}
 	common.RandomSleep()
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(keyCol+" = ?", key).First(redemption).Error
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(keyCol+" = ?", key).First(redemption).Error
 		if err != nil {
 			return errors.New("无效的兑换码")
 		}
@@ -140,15 +235,13 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if redemption.ExpiredTime != 0 && redemption.ExpiredTime < common.GetTimestamp() {
 			return errors.New("该兑换码已过期")
 		}
-		err = tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
-		if err != nil {
+		if err := applyRedemptionRechargeTx(tx, redemption, userId); err != nil {
 			return err
 		}
 		redemption.RedeemedTime = common.GetTimestamp()
 		redemption.Status = common.RedemptionCodeStatusUsed
 		redemption.UsedUserId = userId
-		err = tx.Save(redemption).Error
-		return err
+		return tx.Save(redemption).Error
 	})
 	if err != nil {
 		common.SysError("redemption failed: " + err.Error())

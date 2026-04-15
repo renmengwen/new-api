@@ -1,4 +1,4 @@
-/*
+﻿/*
 Copyright (C) 2025 QuantumNous
 
 This program is free software: you can redistribute it and/or modify
@@ -16,35 +16,36 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { API } from '../../helpers';
+import {
+  isPermissionSidebarModuleAllowed,
+  isPermissionSidebarSectionAllowed,
+} from './sidebarPermissionSnapshot.js';
 
 /**
- * 用户权限钩子 - 从后端获取用户权限，替代前端角色判断
- * 确保权限控制的安全性，防止前端绕过
+ * 用户权限 Hook。
+ * 从后端读取动作权限和侧边栏权限，避免仅依赖前端角色判断。
  */
 export const useUserPermissions = () => {
   const [permissions, setPermissions] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // 加载用户权限（从用户信息接口获取）
   const loadPermissions = async () => {
     try {
       setLoading(true);
       setError(null);
       const res = await API.get('/api/user/self');
       if (res.data.success) {
-        const userPermissions = res.data.data.permissions;
-        setPermissions(userPermissions);
-        console.log('用户权限加载成功:', userPermissions);
+        setPermissions(res.data.data.permissions);
       } else {
         setError(res.data.message || '获取权限失败');
         console.error('获取权限失败:', res.data.message);
       }
-    } catch (error) {
+    } catch (requestError) {
       setError('网络错误，请重试');
-      console.error('加载用户权限异常:', error);
+      console.error('加载用户权限异常:', requestError);
     } finally {
       setLoading(false);
     }
@@ -54,33 +55,37 @@ export const useUserPermissions = () => {
     loadPermissions();
   }, []);
 
-  // 检查是否有边栏设置权限
   const hasSidebarSettingsPermission = () => {
     return permissions?.sidebar_settings === true;
   };
 
-  // 检查是否允许访问特定的边栏区域
+  const hasActionPermission = (resourceKey, actionKey) => {
+    const actions = permissions?.actions;
+    if (!actions) return false;
+    return actions[`${resourceKey}.${actionKey}`] === true;
+  };
+
+  const hasAnyActionPermission = (requiredActions = []) => {
+    return requiredActions.some(({ resource, action }) =>
+      hasActionPermission(resource, action),
+    );
+  };
+
   const isSidebarSectionAllowed = (sectionKey) => {
-    if (!permissions?.sidebar_modules) return true;
-    const sectionPerms = permissions.sidebar_modules[sectionKey];
-    return sectionPerms !== false;
+    return isPermissionSidebarSectionAllowed(
+      permissions?.sidebar_modules,
+      sectionKey,
+    );
   };
 
-  // 检查是否允许访问特定的边栏模块
   const isSidebarModuleAllowed = (sectionKey, moduleKey) => {
-    if (!permissions?.sidebar_modules) return true;
-    const sectionPerms = permissions.sidebar_modules[sectionKey];
-
-    // 如果整个区域被禁用
-    if (sectionPerms === false) return false;
-
-    // 如果区域存在但模块被禁用
-    if (sectionPerms && sectionPerms[moduleKey] === false) return false;
-
-    return true;
+    return isPermissionSidebarModuleAllowed(
+      permissions?.sidebar_modules,
+      sectionKey,
+      moduleKey,
+    );
   };
 
-  // 获取允许的边栏区域列表
   const getAllowedSidebarSections = () => {
     if (!permissions?.sidebar_modules) return [];
 
@@ -89,7 +94,6 @@ export const useUserPermissions = () => {
     );
   };
 
-  // 获取特定区域允许的模块列表
   const getAllowedSidebarModules = (sectionKey) => {
     if (!permissions?.sidebar_modules) return [];
     const sectionPerms = permissions.sidebar_modules[sectionKey];
@@ -107,8 +111,11 @@ export const useUserPermissions = () => {
     permissions,
     loading,
     error,
+    actionPermissions: permissions?.actions || {},
     loadPermissions,
     hasSidebarSettingsPermission,
+    hasActionPermission,
+    hasAnyActionPermission,
     isSidebarSectionAllowed,
     isSidebarModuleAllowed,
     getAllowedSidebarSections,

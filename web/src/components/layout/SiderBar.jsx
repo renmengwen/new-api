@@ -1,4 +1,4 @@
-/*
+﻿/*
 Copyright (C) 2025 QuantumNous
 
 This program is free software: you can redistribute it and/or modify
@@ -37,6 +37,11 @@ const routerMap = {
   redemption: '/console/redemption',
   topup: '/console/topup',
   user: '/console/user',
+  'admin-users': '/console/admin-users',
+  agents: '/console/agents',
+  'permission-templates': '/console/permission-templates',
+  'user-permissions': '/console/user-permissions',
+  'quota-ledger': '/console/quota-ledger',
   subscription: '/console/subscription',
   log: '/console/log',
   midjourney: '/console/midjourney',
@@ -67,7 +72,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   const [openedKeys, setOpenedKeys] = useState([]);
   const location = useLocation();
   const [routerMapState, setRouterMapState] = useState(routerMap);
-
   const workspaceItems = useMemo(() => {
     const items = [
       {
@@ -151,37 +155,56 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('渠道管理'),
         itemKey: 'channel',
         to: '/channel',
-        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('订阅管理'),
         itemKey: 'subscription',
         to: '/subscription',
-        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('模型管理'),
         itemKey: 'models',
         to: '/console/models',
-        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('模型部署'),
         itemKey: 'deployment',
         to: '/deployment',
-        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('兑换码管理'),
         itemKey: 'redemption',
         to: '/redemption',
-        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('用户管理'),
         itemKey: 'user',
         to: '/user',
-        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('管理员管理'),
+        itemKey: 'admin-users',
+        to: '/console/admin-users',
+      },
+      {
+        text: t('代理商管理'),
+        itemKey: 'agents',
+        to: '/console/agents',
+      },
+      {
+        text: t('权限模板管理'),
+        itemKey: 'permission-templates',
+        to: '/console/permission-templates',
+      },
+      {
+        text: t('用户权限管理'),
+        itemKey: 'user-permissions',
+        to: '/console/user-permissions',
+      },
+      {
+        text: t('额度流水'),
+        itemKey: 'quota-ledger',
+        to: '/console/quota-ledger',
       },
       {
         text: t('系统设置'),
@@ -198,7 +221,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     });
 
     return filteredItems;
-  }, [isAdmin(), isRoot(), t, isModuleVisible]);
+  }, [isRoot(), t, isModuleVisible]);
 
   const chatMenuItems = useMemo(() => {
     const items = [
@@ -223,7 +246,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     return filteredItems;
   }, [chatItems, t, isModuleVisible]);
 
-  // 更新路由映射，添加聊天路由
+  // 更新路由映射，补充聊天路由
   const updateRouterMapWithChats = (chats) => {
     const newRouterMap = { ...routerMap };
 
@@ -237,7 +260,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     return newRouterMap;
   };
 
-  // 加载聊天项
+  // 加载聊天页
   useEffect(() => {
     let chats = localStorage.getItem('chats');
     if (chats) {
@@ -288,13 +311,13 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       }
     }
 
-    // 如果找到匹配的键，更新选中的键
+    // 如果找到匹配的键，则更新选中的键
     if (matchingKey) {
       setSelectedKeys([matchingKey]);
     }
   }, [location.pathname, routerMapState]);
 
-  // 监控折叠状态变化以更新 body class
+  // 监听折叠状态变化并同步 body class
   useEffect(() => {
     if (collapsed) {
       document.body.classList.add('sidebar-collapsed');
@@ -303,12 +326,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     }
   }, [collapsed]);
 
-  // 选中高亮颜色（统一）
+  // 选中高亮颜色
   const SELECTED_COLOR = 'var(--semi-color-primary)';
 
   // 渲染自定义菜单项
   const renderNavItem = (item) => {
-    // 跳过隐藏的项目
+    // 跳过隐藏项
     if (item.className === 'tableHiddle') return null;
 
     const isSelected = selectedKeys.includes(item.itemKey);
@@ -413,7 +436,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             const to =
               routerMapState[props.itemKey] || routerMap[props.itemKey];
 
-            // 如果没有路由，直接返回元素
+            // 没有路由时直接返回原元素
             if (!to) return itemElement;
 
             return (
@@ -427,7 +450,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             );
           }}
           onSelect={(key) => {
-            // 如果点击的是已经展开的子菜单的父项，则收起子菜单
+            // 如果点击的是已展开子菜单的父项，则收起子菜单
             if (openedKeys.includes(key.itemKey)) {
               setOpenedKeys(openedKeys.filter((k) => k !== key.itemKey));
             }
@@ -475,13 +498,13 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             </>
           )}
 
-          {/* 管理员区域 - 只在管理员时显示且配置允许时显示 */}
-          {isAdmin() && hasSectionVisibleModules('admin') && (
+          {/* 运营后台区域，仅在管理员或代理商且配置允许时显示 */}
+          {hasSectionVisibleModules('admin') && (
             <>
               <Divider className='sidebar-divider' />
               <div>
                 {!collapsed && (
-                  <div className='sidebar-group-label'>{t('管理员')}</div>
+                  <div className='sidebar-group-label'>{t('运营后台')}</div>
                 )}
                 {adminItems.map((item) => renderNavItem(item))}
               </div>
@@ -530,3 +553,4 @@ const SiderBar = ({ onNavigate = () => {} }) => {
 };
 
 export default SiderBar;
+

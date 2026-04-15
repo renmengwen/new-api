@@ -19,8 +19,29 @@ import (
 // @Failure 401 {object} dto.OpenAIError "未授权"
 // @Failure 403 {object} dto.OpenAIError "无权限"
 // @Failure 500 {object} dto.OpenAIError "服务器内部错误"
+// @Success 200 {object} dto.SeedanceVideoTaskCreateResponse "Task created"
 // @Router /v1/video/generations [post]
 func VideoGenerations(c *gin.Context) {
+}
+
+// VideoGenerationsList
+// @Summary List video tasks
+// @Description Query the current user's Seedance video generation task list
+// @Tags Video
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param page_num query int false "Page number" default(1)
+// @Param page_size query int false "Page size" default(10)
+// @Param filter.status query string false "Task status: pending/processing/succeeded/failed"
+// @Param filter.task_ids query []string false "Task IDs" collectionFormat(multi)
+// @Success 200 {object} dto.SeedanceVideoTaskListResponse "Task list"
+// @Failure 400 {object} dto.TaskError "Bad request"
+// @Failure 401 {object} dto.TaskError "Unauthorized"
+// @Failure 403 {object} dto.TaskError "Forbidden"
+// @Failure 500 {object} dto.TaskError "Internal server error"
+// @Router /v1/video/generations [get]
+func VideoGenerationsList(c *gin.Context) {
 }
 
 // VideoGenerationsTaskId
@@ -31,13 +52,30 @@ func VideoGenerations(c *gin.Context) {
 // @Produce json
 // @Security BearerAuth
 // @Param task_id path string true "Task ID"
-// @Success 200 {object} dto.VideoTaskResponse "任务状态和结果"
+// @Success 200 {object} dto.SeedanceVideoTask "任务状态和结果"
 // @Failure 400 {object} dto.OpenAIError "请求参数错误"
 // @Failure 401 {object} dto.OpenAIError "未授权"
 // @Failure 403 {object} dto.OpenAIError "无权限"
 // @Failure 500 {object} dto.OpenAIError "服务器内部错误"
 // @Router /v1/video/generations/{task_id} [get]
 func VideoGenerationsTaskId(c *gin.Context) {
+}
+
+// VideoGenerationsDelete
+// @Summary Delete video task
+// @Description Cancel or delete a Seedance video generation task by task ID
+// @Tags Video
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param task_id path string true "Task ID"
+// @Success 200 {object} dto.SeedanceVideoTaskDeleteResponse "Delete success"
+// @Failure 400 {object} dto.TaskError "Bad request"
+// @Failure 401 {object} dto.TaskError "Unauthorized"
+// @Failure 403 {object} dto.TaskError "Forbidden"
+// @Failure 500 {object} dto.TaskError "Internal server error"
+// @Router /v1/video/generations/{task_id} [delete]
+func VideoGenerationsDelete(c *gin.Context) {
 }
 
 // KlingText2VideoGenerations

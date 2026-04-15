@@ -31,6 +31,7 @@ const UsersFilters = ({
   groupOptions,
   loading,
   searching,
+  showGroupFilter = true,
   t,
 }) => {
   const formApiRef = useRef(null);
@@ -71,12 +72,12 @@ const UsersFilters = ({
             size='small'
           />
         </div>
-        <div className='w-full md:w-48'>
+        {showGroupFilter ? <div className='w-full md:w-48'>
           <Form.Select
             field='searchGroup'
             placeholder={t('选择分组')}
             optionList={groupOptions}
-            onChange={(value) => {
+            onChange={() => {
               // Group change triggers automatic search
               setTimeout(() => {
                 searchUsers(1, pageSize);
@@ -87,7 +88,7 @@ const UsersFilters = ({
             pure
             size='small'
           />
-        </div>
+        </div> : null}
         <div className='flex gap-2 w-full md:w-auto'>
           <Button
             type='tertiary'

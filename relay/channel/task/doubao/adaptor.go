@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -26,14 +27,24 @@ import (
 // ============================
 
 type ContentItem struct {
-	Type     string          `json:"type"`                // "text", "image_url" or "video"
+	Type     string          `json:"type"`                // "text", "image_url", "video_url", "audio_url"
 	Text     string          `json:"text,omitempty"`      // for text type
 	ImageURL *ImageURL       `json:"image_url,omitempty"` // for image_url type
-	Video    *VideoReference `json:"video,omitempty"`     // for video (sample) type
-	Role     string          `json:"role,omitempty"`      // reference_image / first_frame / last_frame
+	VideoURL *VideoURL       `json:"video_url,omitempty"` // for video_url type (Seedance 2.0)
+	AudioURL *AudioURL       `json:"audio_url,omitempty"` // for audio_url type (Seedance 2.0)
+	Video    *VideoReference `json:"video,omitempty"`     // for video (sample) type (旧版兼容)
+	Role     string          `json:"role,omitempty"`      // reference_image / first_frame / last_frame / reference_video / reference_audio
 }
 
 type ImageURL struct {
+	URL string `json:"url"`
+}
+
+type VideoURL struct {
+	URL string `json:"url"`
+}
+
+type AudioURL struct {
 	URL string `json:"url"`
 }
 
@@ -169,13 +180,16 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 
-	ov := dto.NewOpenAIVideo()
-	ov.ID = info.PublicTaskID
-	ov.TaskID = info.PublicTaskID
-	ov.CreatedAt = time.Now().Unix()
-	ov.Model = info.OriginModelName
-
-	c.JSON(http.StatusOK, ov)
+	if strings.HasPrefix(c.Request.URL.Path, "/v1/videos") {
+		ov := dto.NewOpenAIVideo()
+		ov.ID = info.PublicTaskID
+		ov.TaskID = info.PublicTaskID
+		ov.CreatedAt = time.Now().Unix()
+		ov.Model = info.OriginModelName
+		c.JSON(http.StatusOK, ov)
+	} else {
+		c.JSON(http.StatusOK, dto.SeedanceVideoTaskCreateResponse{ID: info.PublicTaskID})
+	}
 	return dResp.ID, responseBody, nil
 }
 
@@ -189,6 +203,28 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	uri := fmt.Sprintf("%s/api/v3/contents/generations/tasks/%s", baseUrl, taskID)
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+key)
+
+	client, err := service.GetHttpClientWithProxy(proxy)
+	if err != nil {
+		return nil, fmt.Errorf("new proxy http client failed: %w", err)
+	}
+	return client.Do(req)
+}
+
+func (a *TaskAdaptor) DeleteTask(baseUrl, key, taskID, proxy string) (*http.Response, error) {
+	if strings.TrimSpace(taskID) == "" {
+		return nil, fmt.Errorf("invalid task_id")
+	}
+
+	uri := fmt.Sprintf("%s/api/v3/contents/generations/tasks/%s", baseUrl, taskID)
+	req, err := http.NewRequest(http.MethodDelete, uri, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -228,14 +264,36 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 
 	// Add images if present
 	if req.HasImage() {
+		imageRoles := parseSeedanceStringSlice(req.Metadata["image_roles"])
+		hasMultimodalReferences := hasSeedanceReferenceURLs(req.Metadata["videos"]) ||
+			hasSeedanceReferenceURLs(req.Metadata["video_url"]) ||
+			hasSeedanceReferenceURLs(req.Metadata["audios"]) ||
+			hasSeedanceReferenceURLs(req.Metadata["audio_url"])
 		for _, imgURL := range req.Images {
+			role := "reference_image"
+			if len(imageRoles) > 0 {
+				role = imageRoles[0]
+				imageRoles = imageRoles[1:]
+			} else if len(req.Images) == 1 && !hasMultimodalReferences {
+				role = ""
+			}
+
 			r.Content = append(r.Content, ContentItem{
 				Type: "image_url",
 				ImageURL: &ImageURL{
 					URL: imgURL,
 				},
+				Role: role,
 			})
 		}
+	}
+
+	// Add video references from metadata (Seedance 2.0 支持)
+	if req.Metadata != nil {
+		r.Content = appendSeedanceReferenceContents(r.Content, req.Metadata["videos"], "video_url", "reference_video")
+		r.Content = appendSeedanceReferenceContents(r.Content, req.Metadata["video_url"], "video_url", "reference_video")
+		r.Content = appendSeedanceReferenceContents(r.Content, req.Metadata["audios"], "audio_url", "reference_audio")
+		r.Content = appendSeedanceReferenceContents(r.Content, req.Metadata["audio_url"], "audio_url", "reference_audio")
 	}
 
 	metadata := req.Metadata
@@ -244,6 +302,77 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	}
 
 	return &r, nil
+}
+
+func appendSeedanceReferenceContents(content []ContentItem, raw any, contentType, role string) []ContentItem {
+	appendURL := func(url string) {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			return
+		}
+
+		item := ContentItem{
+			Type: contentType,
+			Role: role,
+		}
+		switch contentType {
+		case "video_url":
+			item.VideoURL = &VideoURL{URL: url}
+		case "audio_url":
+			item.AudioURL = &AudioURL{URL: url}
+		default:
+			return
+		}
+		content = append(content, item)
+	}
+
+	switch value := raw.(type) {
+	case string:
+		appendURL(value)
+	case []string:
+		for _, url := range value {
+			appendURL(url)
+		}
+	case []interface{}:
+		for _, item := range value {
+			if url, ok := item.(string); ok {
+				appendURL(url)
+			}
+		}
+	}
+
+	return content
+}
+
+func parseSeedanceStringSlice(raw any) []string {
+	values := make([]string, 0)
+	appendValue := func(value string) {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			values = append(values, value)
+		}
+	}
+
+	switch value := raw.(type) {
+	case string:
+		appendValue(value)
+	case []string:
+		for _, item := range value {
+			appendValue(item)
+		}
+	case []interface{}:
+		for _, item := range value {
+			if str, ok := item.(string); ok {
+				appendValue(str)
+			}
+		}
+	}
+
+	return values
+}
+
+func hasSeedanceReferenceURLs(raw any) bool {
+	return len(parseSeedanceStringSlice(raw)) > 0
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {

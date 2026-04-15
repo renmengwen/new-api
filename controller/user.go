@@ -22,6 +22,7 @@ import (
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 )
 
 type LoginRequest struct {
@@ -35,7 +36,7 @@ func Login(c *gin.Context) {
 		return
 	}
 	var loginRequest LoginRequest
-	err := json.NewDecoder(c.Request.Body).Decode(&loginRequest)
+	err := common.DecodeJson(c.Request.Body, &loginRequest)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -90,6 +91,7 @@ func setupLogin(user *model.User, c *gin.Context) {
 	session.Set("id", user.Id)
 	session.Set("username", user.Username)
 	session.Set("role", user.Role)
+	session.Set("user_type", user.GetUserType())
 	session.Set("status", user.Status)
 	session.Set("group", user.Group)
 	err := session.Save()
@@ -105,6 +107,7 @@ func setupLogin(user *model.User, c *gin.Context) {
 			"username":     user.Username,
 			"display_name": user.DisplayName,
 			"role":         user.Role,
+			"user_type":    user.GetUserType(),
 			"status":       user.Status,
 			"group":        user.Group,
 		},
@@ -138,7 +141,7 @@ func Register(c *gin.Context) {
 		return
 	}
 	var user model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&user)
+	err := common.DecodeJson(c.Request.Body, &user)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -179,6 +182,7 @@ func Register(c *gin.Context) {
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
 	}
+	cleanUser.UserType = model.UserTypeEndUser
 	if err := cleanUser.Insert(inviterId); err != nil {
 		common.ApiError(c, err)
 		return
@@ -377,7 +381,7 @@ func GetSelf(c *gin.Context) {
 	user.Remark = ""
 
 	// 计算用户权限信息
-	permissions := calculateUserPermissions(userRole)
+	permissions := service.BuildUserPermissions(id, userRole)
 
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
@@ -388,6 +392,7 @@ func GetSelf(c *gin.Context) {
 		"username":          user.Username,
 		"display_name":      user.DisplayName,
 		"role":              user.Role,
+		"user_type":         user.GetUserType(),
 		"status":            user.Status,
 		"email":             user.Email,
 		"github_id":         user.GitHubId,
@@ -558,7 +563,7 @@ func GetUserModels(c *gin.Context) {
 
 func UpdateUser(c *gin.Context) {
 	var updatedUser model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&updatedUser)
+	err := common.DecodeJson(c.Request.Body, &updatedUser)
 	if err != nil || updatedUser.Id == 0 {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -567,7 +572,7 @@ func UpdateUser(c *gin.Context) {
 		updatedUser.Password = "$I_LOVE_U" // make Validator happy :)
 	}
 	if err := common.Validate.Struct(&updatedUser); err != nil {
-		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
+		common.ApiErrorMsg(c, mapUserValidationError(err))
 		return
 	}
 	originUser, err := model.GetUserById(updatedUser.Id, false)
@@ -588,11 +593,31 @@ func UpdateUser(c *gin.Context) {
 		updatedUser.Password = "" // rollback to what it should be
 	}
 	updatePassword := updatedUser.Password != ""
+	targetQuota := updatedUser.Quota
+	quotaChanged := originUser.Quota != targetQuota
+	if quotaChanged {
+		updatedUser.Quota = originUser.Quota
+	}
 	if err := updatedUser.Edit(updatePassword); err != nil {
-		common.ApiError(c, err)
+		apiUserInputError(c, err)
 		return
 	}
-	if originUser.Quota != updatedUser.Quota {
+	if quotaChanged {
+		_, err = service.AdjustUserQuotaForTarget(service.AdjustUserQuotaRequest{
+			OperatorUserId: c.GetInt("id"),
+			OperatorRole:   c.GetInt("role"),
+			TargetUserId:   originUser.Id,
+			Delta:          targetQuota - originUser.Quota,
+			Reason:         "manual_adjust",
+			IP:             c.ClientIP(),
+		}, originUser)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		updatedUser.Quota = targetQuota
+	}
+	if quotaChanged {
 		model.RecordLog(originUser.Id, model.LogTypeManage, fmt.Sprintf("管理员将用户额度从 %s修改为 %s", logger.LogQuota(originUser.Quota), logger.LogQuota(updatedUser.Quota)))
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -819,16 +844,61 @@ func DeleteSelf(c *gin.Context) {
 	return
 }
 
+func mapUserValidationError(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	var validationErrs validator.ValidationErrors
+	if errors.As(err, &validationErrs) {
+		for _, fieldErr := range validationErrs {
+			switch fieldErr.Field() {
+			case "Password":
+				if fieldErr.Tag() == "min" || fieldErr.Tag() == "max" {
+					return "密码长度需为 8 到 20 位"
+				}
+			case "Username":
+				if fieldErr.Tag() == "max" {
+					return "用户名长度不能超过 20 位"
+				}
+			}
+		}
+		return "用户信息填写不正确，请检查后重试"
+	}
+
+	lowerErr := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(lowerErr, "users.username"),
+		strings.Contains(lowerErr, "duplicate entry"),
+		strings.Contains(lowerErr, "key (username)"),
+		strings.Contains(lowerErr, "duplicate key value"):
+		return "用户名已存在，请更换后重试"
+	case strings.Contains(lowerErr, "users.email"),
+		strings.Contains(lowerErr, "key (email)"):
+		return "邮箱已存在，请更换后重试"
+	default:
+		return ""
+	}
+}
+
+func apiUserInputError(c *gin.Context, err error) {
+	if msg := mapUserValidationError(err); msg != "" {
+		common.ApiErrorMsg(c, msg)
+		return
+	}
+	common.ApiError(c, err)
+}
+
 func CreateUser(c *gin.Context) {
 	var user model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&user)
+	err := common.DecodeJson(c.Request.Body, &user)
 	user.Username = strings.TrimSpace(user.Username)
 	if err != nil || user.Username == "" || user.Password == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	if err := common.Validate.Struct(&user); err != nil {
-		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
+		common.ApiErrorMsg(c, mapUserValidationError(err))
 		return
 	}
 	if user.DisplayName == "" {
@@ -847,7 +917,7 @@ func CreateUser(c *gin.Context) {
 		Role:        user.Role, // 保持管理员设置的角色
 	}
 	if err := cleanUser.Insert(0); err != nil {
-		common.ApiError(c, err)
+		apiUserInputError(c, err)
 		return
 	}
 

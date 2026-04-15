@@ -259,6 +259,81 @@ func SetApiRouter(router *gin.Engine) {
 			tokenRoute.POST("/batch", controller.DeleteTokenBatch)
 		}
 
+		adminPermissionRoute := apiRouter.Group("/admin/permission")
+		adminPermissionRoute.Use(middleware.AdminPlatformAuth())
+		{
+			adminPermissionRoute.GET("/profiles", controller.GetPermissionProfiles)
+			adminPermissionRoute.GET("/users", controller.GetPermissionUsers)
+			adminPermissionRoute.PUT("/users/:id", controller.UpdateUserPermissionBinding)
+		}
+
+		adminPermissionTemplateRoute := apiRouter.Group("/admin/permission-templates")
+		adminPermissionTemplateRoute.Use(middleware.AdminPlatformAuth())
+		{
+			adminPermissionTemplateRoute.GET("", controller.GetPermissionTemplates)
+			adminPermissionTemplateRoute.GET("/:id", controller.GetPermissionTemplate)
+			adminPermissionTemplateRoute.POST("", controller.CreatePermissionTemplate)
+			adminPermissionTemplateRoute.PUT("/:id", controller.UpdatePermissionTemplate)
+		}
+
+		adminUserPermissionRoute := apiRouter.Group("/admin/user-permissions")
+		adminUserPermissionRoute.Use(middleware.AdminPlatformAuth())
+		{
+			adminUserPermissionRoute.GET("/users", controller.GetUserPermissionTargets)
+			adminUserPermissionRoute.GET("/users/:id", controller.GetUserPermissionDetail)
+			adminUserPermissionRoute.PUT("/users/:id/template", controller.UpdateUserPermissionTemplate)
+			adminUserPermissionRoute.PUT("/users/:id/overrides", controller.UpdateUserPermissionOverrides)
+		}
+
+		adminAgentRoute := apiRouter.Group("/admin/agents")
+		adminAgentRoute.Use(middleware.AdminPlatformAuth())
+		{
+			adminAgentRoute.GET("", controller.GetAgents)
+			adminAgentRoute.POST("", controller.CreateAgent)
+			adminAgentRoute.GET("/:id", controller.GetAgent)
+			adminAgentRoute.PUT("/:id", controller.UpdateAgent)
+			adminAgentRoute.POST("/:id/enable", controller.EnableAgent)
+			adminAgentRoute.POST("/:id/disable", controller.DisableAgent)
+		}
+
+		adminManagerRoute := apiRouter.Group("/admin/admin-users")
+		adminManagerRoute.Use(middleware.AdminPlatformAuth())
+		{
+			adminManagerRoute.GET("", controller.GetAdminManagers)
+			adminManagerRoute.POST("", controller.CreateAdminManager)
+			adminManagerRoute.GET("/:id", controller.GetAdminManager)
+			adminManagerRoute.PUT("/:id", controller.UpdateAdminManager)
+			adminManagerRoute.POST("/:id/enable", controller.EnableAdminManager)
+			adminManagerRoute.POST("/:id/disable", controller.DisableAdminManager)
+		}
+
+		adminUserRoute := apiRouter.Group("/admin/users")
+		adminUserRoute.Use(middleware.AdminPlatformAuth())
+		{
+			adminUserRoute.GET("", controller.GetAdminUsers)
+			adminUserRoute.POST("", controller.CreateAdminUser)
+			adminUserRoute.GET("/:id", controller.GetAdminUser)
+			adminUserRoute.PUT("/:id", controller.UpdateAdminUser)
+			adminUserRoute.DELETE("/:id", controller.DeleteAdminUser)
+			adminUserRoute.POST("/:id/enable", controller.EnableAdminUser)
+			adminUserRoute.POST("/:id/disable", controller.DisableAdminUser)
+			adminUserRoute.GET("/:id/quota-summary", controller.GetUserQuotaSummary)
+		}
+
+		adminQuotaRoute := apiRouter.Group("/admin/quota")
+		adminQuotaRoute.Use(middleware.AdminPlatformAuth())
+		{
+			adminQuotaRoute.POST("/adjust", controller.AdjustUserQuota)
+			adminQuotaRoute.POST("/adjust/batch", controller.AdjustUserQuotaBatch)
+			adminQuotaRoute.GET("/ledger", controller.GetQuotaLedger)
+		}
+
+		adminAuditRoute := apiRouter.Group("/admin/audit-logs")
+		adminAuditRoute.Use(middleware.AdminPlatformAuth())
+		{
+			adminAuditRoute.GET("", controller.GetAdminAuditLogs)
+		}
+
 		usageRoute := apiRouter.Group("/usage")
 		usageRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{

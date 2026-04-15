@@ -37,6 +37,11 @@ import {
   verifyJSON,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
+import {
+  CHAT_COMPLETIONS_TO_RESPONSES_POLICY_ALL_CHANNELS_EXAMPLE,
+  CHAT_COMPLETIONS_TO_RESPONSES_POLICY_TEMPLATE,
+  DEFAULT_GLOBAL_SETTING_INPUTS,
+} from './globalModelDefaults';
 
 const thinkingExample = JSON.stringify(
   ['moonshotai/kimi-k2-thinking', 'kimi-k2-thinking'],
@@ -44,43 +49,13 @@ const thinkingExample = JSON.stringify(
   2,
 );
 
-const chatCompletionsToResponsesPolicyExample = JSON.stringify(
-  {
-    enabled: true,
-    all_channels: false,
-    channel_ids: [1, 2],
-    channel_types: [1],
-    model_patterns: ['^gpt-4o.*$', '^gpt-5.*$'],
-  },
-  null,
-  2,
-);
-
-const chatCompletionsToResponsesPolicyAllChannelsExample = JSON.stringify(
-  {
-    enabled: true,
-    all_channels: true,
-    model_patterns: ['^gpt-4o.*$', '^gpt-5.*$'],
-  },
-  null,
-  2,
-);
-
-const defaultGlobalSettingInputs = {
-  'global.pass_through_request_enabled': false,
-  'global.thinking_model_blacklist': '[]',
-  'global.chat_completions_to_responses_policy': '{}',
-  'general_setting.ping_interval_enabled': false,
-  'general_setting.ping_interval_seconds': 60,
-};
-
 export default function SettingGlobalModel(props) {
   const { t } = useTranslation();
 
   const [loading, setLoading] = useState(false);
-  const [inputs, setInputs] = useState(defaultGlobalSettingInputs);
+  const [inputs, setInputs] = useState(DEFAULT_GLOBAL_SETTING_INPUTS);
   const refForm = useRef();
-  const [inputsRow, setInputsRow] = useState(defaultGlobalSettingInputs);
+  const [inputsRow, setInputsRow] = useState(DEFAULT_GLOBAL_SETTING_INPUTS);
   const chatCompletionsToResponsesPolicyKey =
     'global.chat_completions_to_responses_policy';
 
@@ -143,7 +118,7 @@ export default function SettingGlobalModel(props) {
 
   useEffect(() => {
     const currentInputs = {};
-    for (const key of Object.keys(defaultGlobalSettingInputs)) {
+    for (const key of Object.keys(DEFAULT_GLOBAL_SETTING_INPUTS)) {
       if (props.options[key] !== undefined) {
         let value = props.options[key];
         if (key === 'global.thinking_model_blacklist') {
@@ -151,9 +126,9 @@ export default function SettingGlobalModel(props) {
             value =
               value && String(value).trim() !== ''
                 ? JSON.stringify(JSON.parse(value), null, 2)
-                : defaultGlobalSettingInputs[key];
+                : DEFAULT_GLOBAL_SETTING_INPUTS[key];
           } catch (error) {
-            value = defaultGlobalSettingInputs[key];
+            value = DEFAULT_GLOBAL_SETTING_INPUTS[key];
           }
         }
         if (key === 'global.chat_completions_to_responses_policy') {
@@ -161,14 +136,14 @@ export default function SettingGlobalModel(props) {
             value =
               value && String(value).trim() !== ''
                 ? JSON.stringify(JSON.parse(value), null, 2)
-                : defaultGlobalSettingInputs[key];
+                : DEFAULT_GLOBAL_SETTING_INPUTS[key];
           } catch (error) {
-            value = defaultGlobalSettingInputs[key];
+            value = DEFAULT_GLOBAL_SETTING_INPUTS[key];
           }
         }
         currentInputs[key] = value;
       } else {
-        currentInputs[key] = defaultGlobalSettingInputs[key];
+        currentInputs[key] = DEFAULT_GLOBAL_SETTING_INPUTS[key];
       }
     }
 
@@ -272,11 +247,11 @@ export default function SettingGlobalModel(props) {
                     placeholder={
                       t('例如（指定渠道）：') +
                       '\n' +
-                      chatCompletionsToResponsesPolicyExample +
+                      CHAT_COMPLETIONS_TO_RESPONSES_POLICY_TEMPLATE +
                       '\n\n' +
                       t('例如（全渠道）：') +
                       '\n' +
-                      chatCompletionsToResponsesPolicyAllChannelsExample
+                      CHAT_COMPLETIONS_TO_RESPONSES_POLICY_ALL_CHANNELS_EXAMPLE
                     }
                     rows={8}
                     rules={[
@@ -313,7 +288,7 @@ export default function SettingGlobalModel(props) {
                       size='small'
                       onClick={() =>
                         setChatCompletionsToResponsesPolicyValue(
-                          chatCompletionsToResponsesPolicyExample,
+                          CHAT_COMPLETIONS_TO_RESPONSES_POLICY_TEMPLATE,
                         )
                       }
                     >
@@ -324,7 +299,7 @@ export default function SettingGlobalModel(props) {
                       size='small'
                       onClick={() =>
                         setChatCompletionsToResponsesPolicyValue(
-                          chatCompletionsToResponsesPolicyAllChannelsExample,
+                          CHAT_COMPLETIONS_TO_RESPONSES_POLICY_ALL_CHANNELS_EXAMPLE,
                         )
                       }
                     >

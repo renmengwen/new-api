@@ -20,6 +20,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func refundMidjourneyQuota(task *model.Midjourney) error {
+	if task == nil || task.Quota <= 0 {
+		return nil
+	}
+	return service.ApplyUserQuotaLedgerEntry(service.UserQuotaLedgerEntryInput{
+		UserId:     task.UserId,
+		Delta:      task.Quota,
+		EntryType:  model.LedgerEntryRefund,
+		SourceType: "midjourney_refund",
+		SourceId:   task.Id,
+		Reason:     "midjourney_refund",
+	})
+}
+
 func UpdateMidjourneyTaskBulk() {
 	//imageModel := "midjourney"
 	ctx := context.TODO()
@@ -177,9 +191,9 @@ func UpdateMidjourneyTaskBulk() {
 				if err != nil {
 					logger.LogError(ctx, "UpdateMidjourneyTask task error: "+err.Error())
 				} else if won && shouldReturnQuota {
-					err = model.IncreaseUserQuota(task.UserId, task.Quota, false)
+					err = refundMidjourneyQuota(task)
 					if err != nil {
-						logger.LogError(ctx, "fail to increase user quota: "+err.Error())
+						logger.LogError(ctx, "fail to refund midjourney quota: "+err.Error())
 					}
 					model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 						UserId:    task.UserId,

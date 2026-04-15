@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type Setup struct {
@@ -114,12 +115,24 @@ func PostSetup(c *gin.Context) {
 			Username:    req.Username,
 			Password:    hashedPassword,
 			Role:        common.RoleRootUser,
+			UserType:    model.UserTypeRoot,
 			Status:      common.UserStatusEnabled,
 			DisplayName: "Root User",
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		err = model.DB.Create(&rootUser).Error
+		err = model.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Create(&rootUser).Error; err != nil {
+				return err
+			}
+			if _, err := model.InitQuotaAccountTx(tx, model.QuotaOwnerTypeUser, rootUser.Id, rootUser.Quota); err != nil {
+				return err
+			}
+			if err := model.AppendUserOpeningQuotaLedgerTx(tx, rootUser.Id, rootUser.Quota, "root_bootstrap"); err != nil {
+				return err
+			}
+			return nil
+		})
 		if err != nil {
 			c.JSON(200, gin.H{
 				"success": false,

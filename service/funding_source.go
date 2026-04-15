@@ -37,7 +37,14 @@ func (w *WalletFunding) PreConsume(amount int) error {
 	if amount <= 0 {
 		return nil
 	}
-	if err := model.DecreaseUserQuota(w.userId, amount); err != nil {
+	if err := applyQuotaLedgerEntry(quotaLedgerEntryInput{
+		UserId:     w.userId,
+		Delta:      -amount,
+		EntryType:  model.LedgerEntryConsume,
+		SourceType: "wallet_preconsume",
+		SourceId:   w.userId,
+		Reason:     "wallet_preconsume",
+	}); err != nil {
 		return err
 	}
 	w.consumed = amount
@@ -49,18 +56,49 @@ func (w *WalletFunding) Settle(delta int) error {
 		return nil
 	}
 	if delta > 0 {
-		return model.DecreaseUserQuota(w.userId, delta)
+		return applyQuotaLedgerEntry(quotaLedgerEntryInput{
+			UserId:     w.userId,
+			Delta:      -delta,
+			EntryType:  model.LedgerEntryConsume,
+			SourceType: "wallet_settle",
+			SourceId:   w.userId,
+			Reason:     "wallet_settle_consume",
+		})
 	}
-	return model.IncreaseUserQuota(w.userId, -delta, false)
+	return applyQuotaLedgerEntry(quotaLedgerEntryInput{
+		UserId:     w.userId,
+		Delta:      -delta,
+		EntryType:  model.LedgerEntryRefund,
+		SourceType: "wallet_settle",
+		SourceId:   w.userId,
+		Reason:     "wallet_settle_refund",
+	})
 }
 
 func (w *WalletFunding) Refund() error {
 	if w.consumed <= 0 {
 		return nil
 	}
-	// IncreaseUserQuota 是 quota += N 的非幂等操作，不能重试，否则会多退额度。
-	// 订阅的 RefundSubscriptionPreConsume 有 requestId 幂等保护所以可以重试。
-	return model.IncreaseUserQuota(w.userId, w.consumed, false)
+	return applyQuotaLedgerEntry(quotaLedgerEntryInput{
+		UserId:     w.userId,
+		Delta:      w.consumed,
+		EntryType:  model.LedgerEntryRefund,
+		SourceType: "wallet_refund",
+		SourceId:   w.userId,
+		Reason:     "wallet_refund",
+	})
+	/*
+		// IncreaseUserQuota 是 quota += N 的非幂等操作，不能重试，否则会多退额度。
+		// 订阅的 RefundSubscriptionPreConsume 有 requestId 幂等保护所以可以重试。
+		return applyQuotaLedgerEntry(quotaLedgerEntryInput{
+			UserId:     w.userId,
+			Delta:      w.consumed,
+			EntryType:  model.LedgerEntryRefund,
+			SourceType: "wallet_refund",
+			SourceId:   w.userId,
+			Reason:     "wallet_refund",
+		})
+	*/
 }
 
 // ---------------------------------------------------------------------------

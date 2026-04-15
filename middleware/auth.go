@@ -30,12 +30,13 @@ func validUserInfo(username string, role int) bool {
 	return true
 }
 
-func authHelper(c *gin.Context, minRole int) {
+func authHelper(c *gin.Context, authorize func(role int, userType string) bool) {
 	session := sessions.Default(c)
 	username := session.Get("username")
 	role := session.Get("role")
 	id := session.Get("id")
 	status := session.Get("status")
+	userType := session.Get("user_type")
 	useAccessToken := false
 	if username == nil {
 		// Check access token
@@ -63,6 +64,7 @@ func authHelper(c *gin.Context, minRole int) {
 			role = user.Role
 			id = user.Id
 			status = user.Status
+			userType = user.GetUserType()
 			useAccessToken = true
 		} else {
 			c.JSON(http.StatusOK, gin.H{
@@ -109,7 +111,11 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	if role.(int) < minRole {
+	resolvedUserType, _ := userType.(string)
+	if resolvedUserType == "" {
+		resolvedUserType = service.UserTypeFromRole(role.(int))
+	}
+	if !authorize(role.(int), resolvedUserType) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "无权进行此操作，权限不足",
@@ -130,6 +136,7 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Set("username", username)
 	c.Set("role", role)
 	c.Set("id", id)
+	c.Set("user_type", resolvedUserType)
 	c.Set("group", session.Get("group"))
 	c.Set("user_group", session.Get("group"))
 	c.Set("use_access_token", useAccessToken)
@@ -150,19 +157,33 @@ func TryUserAuth() func(c *gin.Context) {
 
 func UserAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		authHelper(c, common.RoleCommonUser)
+		authHelper(c, func(role int, userType string) bool {
+			return role >= common.RoleCommonUser
+		})
 	}
 }
 
 func AdminAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		authHelper(c, common.RoleAdminUser)
+		authHelper(c, func(role int, userType string) bool {
+			return role >= common.RoleAdminUser
+		})
 	}
 }
 
 func RootAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		authHelper(c, common.RoleRootUser)
+		authHelper(c, func(role int, userType string) bool {
+			return role >= common.RoleRootUser
+		})
+	}
+}
+
+func AdminPlatformAuth() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		authHelper(c, func(role int, userType string) bool {
+			return role >= common.RoleCommonUser
+		})
 	}
 }
 

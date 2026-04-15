@@ -78,12 +78,21 @@ func createRootAccountIfNeed() error {
 			Username:    "root",
 			Password:    hashedPassword,
 			Role:        common.RoleRootUser,
+			UserType:    UserTypeRoot,
 			Status:      common.UserStatusEnabled,
 			DisplayName: "Root User",
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		DB.Create(&rootUser)
+		if err := DB.Create(&rootUser).Error; err != nil {
+			return err
+		}
+		if _, err := InitQuotaAccount(QuotaOwnerTypeUser, rootUser.Id, rootUser.Quota); err != nil {
+			return err
+		}
+		if err := appendUserOpeningQuotaLedger(rootUser.Id, rootUser.Quota, "root_bootstrap"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -259,6 +268,22 @@ func migrateDB() error {
 		&Channel{},
 		&Token{},
 		&User{},
+		&PermissionProfile{},
+		&PermissionProfileItem{},
+		&UserPermissionBinding{},
+		&UserPermissionOverride{},
+		&UserMenuOverride{},
+		&UserDataScopeOverride{},
+		&UserDataScope{},
+		&AgentProfile{},
+		&AgentUserRelation{},
+		&AgentQuotaPolicy{},
+		&QuotaAccount{},
+		&QuotaTransferOrder{},
+		&QuotaLedger{},
+		&QuotaAdjustmentBatch{},
+		&QuotaAdjustmentBatchItem{},
+		&AdminAuditLog{},
 		&PasskeyCredential{},
 		&Option{},
 		&Redemption{},
@@ -307,6 +332,22 @@ func migrateDBFast() error {
 		{&Channel{}, "Channel"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
+		{&PermissionProfile{}, "PermissionProfile"},
+		{&PermissionProfileItem{}, "PermissionProfileItem"},
+		{&UserPermissionBinding{}, "UserPermissionBinding"},
+		{&UserPermissionOverride{}, "UserPermissionOverride"},
+		{&UserMenuOverride{}, "UserMenuOverride"},
+		{&UserDataScopeOverride{}, "UserDataScopeOverride"},
+		{&UserDataScope{}, "UserDataScope"},
+		{&AgentProfile{}, "AgentProfile"},
+		{&AgentUserRelation{}, "AgentUserRelation"},
+		{&AgentQuotaPolicy{}, "AgentQuotaPolicy"},
+		{&QuotaAccount{}, "QuotaAccount"},
+		{&QuotaTransferOrder{}, "QuotaTransferOrder"},
+		{&QuotaLedger{}, "QuotaLedger"},
+		{&QuotaAdjustmentBatch{}, "QuotaAdjustmentBatch"},
+		{&QuotaAdjustmentBatchItem{}, "QuotaAdjustmentBatchItem"},
+		{&AdminAuditLog{}, "AdminAuditLog"},
 		{&PasskeyCredential{}, "PasskeyCredential"},
 		{&Option{}, "Option"},
 		{&Redemption{}, "Redemption"},
