@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
@@ -106,28 +108,161 @@ func TestExportAdminAuditLogsServiceHelperCapsLimit(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 	seedAuditLogs(t, db, 2050, "quota", 9001)
 
-	items, _, err := service.ListAdminAuditLogsForExport("quota", 9001, 5000)
+	items, total, err := service.ListAdminAuditLogsForExport("quota", 9001, 5000)
 	require.NoError(t, err)
 	require.Len(t, items, 2000)
+	require.Zero(t, total)
 	require.True(t, items[0].Id > items[len(items)-1].Id)
 
-	items, _, err = service.ListAdminAuditLogsForExport("quota", 9001, 123)
+	items, total, err = service.ListAdminAuditLogsForExport("quota", 9001, 123)
 	require.NoError(t, err)
 	require.Len(t, items, 123)
+	require.Zero(t, total)
 }
 
 func TestExportQuotaLedgerServiceHelperCapsLimit(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 	seedQuotaLedgerRows(t, db, 2088, model.LedgerEntryAdjust)
 
-	items, _, err := service.ListQuotaLedgerForExport(9001, common.RoleRootUser, 2001, 9001, model.LedgerEntryAdjust, 5000)
+	items, total, err := service.ListQuotaLedgerForExport(9001, common.RoleRootUser, 2001, 9001, model.LedgerEntryAdjust, 5000)
 	require.NoError(t, err)
 	require.Len(t, items, 2000)
+	require.Zero(t, total)
 	require.True(t, items[0].Id > items[len(items)-1].Id)
 
-	items, _, err = service.ListQuotaLedgerForExport(9001, common.RoleRootUser, 2001, 9001, model.LedgerEntryAdjust, 321)
+	items, total, err = service.ListQuotaLedgerForExport(9001, common.RoleRootUser, 2001, 9001, model.LedgerEntryAdjust, 321)
 	require.NoError(t, err)
 	require.Len(t, items, 321)
+	require.Zero(t, total)
+}
+
+func TestExportAdminAuditLogsDeniesAgentEvenWithReadGrant(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+
+	agent := testListExportUser(9101, "audit_agent", "Audit Agent", common.RoleAdminUser, model.UserTypeAgent)
+	require.NoError(t, db.Create(&agent).Error)
+	grantPermissionActions(t, db, agent.Id, "agent",
+		permissionGrant{Resource: service.ResourceAuditManagement, Action: service.ActionRead},
+	)
+
+	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/admin/audit-logs/export", map[string]any{
+		"action_module":    "quota",
+		"operator_user_id": 9001,
+		"limit":            10,
+	}, agent.Id, common.RoleAdminUser)
+
+	ExportAdminAuditLogs(ctx)
+
+	var response settingAuditResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+	require.Equal(t, "permission denied", response.Message)
+	require.NotEqual(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
+}
+
+func TestExportQuotaLedgerRequiresLedgerReadPermission(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+
+	admin := testListExportUser(9102, "quota_admin", "Quota Admin", common.RoleAdminUser, model.UserTypeAdmin)
+	require.NoError(t, db.Create(&admin).Error)
+
+	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/admin/quota/ledger/export", map[string]any{
+		"limit": 10,
+	}, admin.Id, common.RoleAdminUser)
+
+	ExportQuotaLedger(ctx)
+
+	var response settingAuditResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+	require.Equal(t, "permission denied", response.Message)
+	require.NotEqual(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
+}
+
+func TestExportQuotaLedgerAgentOnlyExportsSelfAndManagedRows(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+
+	agent := testListExportUser(9201, "export_agent", "Export Agent", common.RoleAdminUser, model.UserTypeAgent)
+	ownedUser := testListExportUser(9202, "managed_user", "Managed User", common.RoleCommonUser, model.UserTypeEndUser)
+	unownedUser := testListExportUser(9203, "unmanaged_user", "Unmanaged User", common.RoleCommonUser, model.UserTypeEndUser)
+	require.NoError(t, db.Create(&[]model.User{agent, ownedUser, unownedUser}).Error)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", ownedUser.Id).Update("parent_agent_id", agent.Id).Error)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   ownedUser.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, "agent",
+		permissionGrant{Resource: service.ResourceQuotaManagement, Action: service.ActionLedgerRead},
+	)
+
+	agentAccount := seedListExportQuotaAccount(t, db, agent.Id, 300)
+	ownedAccount := seedListExportQuotaAccount(t, db, ownedUser.Id, 200)
+	unownedAccount := seedListExportQuotaAccount(t, db, unownedUser.Id, 400)
+
+	selfLedger := seedListExportLedger(t, db, model.QuotaLedger{
+		BizNo:            "agent_scope_self",
+		AccountId:        agentAccount.Id,
+		EntryType:        model.LedgerEntryAdjust,
+		Direction:        model.LedgerDirectionOut,
+		Amount:           20,
+		BalanceBefore:    300,
+		BalanceAfter:     280,
+		SourceType:       "admin_quota_adjust",
+		SourceId:         agent.Id,
+		OperatorUserId:   agent.Id,
+		OperatorUserType: model.UserTypeAgent,
+		CreatedAtTs:      1810000101,
+	})
+	ownedLedger := seedListExportLedger(t, db, model.QuotaLedger{
+		BizNo:            "agent_scope_owned",
+		AccountId:        ownedAccount.Id,
+		EntryType:        model.LedgerEntryAdjust,
+		Direction:        model.LedgerDirectionIn,
+		Amount:           30,
+		BalanceBefore:    200,
+		BalanceAfter:     230,
+		SourceType:       "admin_quota_adjust",
+		SourceId:         ownedUser.Id,
+		OperatorUserId:   agent.Id,
+		OperatorUserType: model.UserTypeAgent,
+		CreatedAtTs:      1810000102,
+	})
+	unownedLedger := seedListExportLedger(t, db, model.QuotaLedger{
+		BizNo:            "agent_scope_unowned",
+		AccountId:        unownedAccount.Id,
+		EntryType:        model.LedgerEntryAdjust,
+		Direction:        model.LedgerDirectionIn,
+		Amount:           40,
+		BalanceBefore:    400,
+		BalanceAfter:     440,
+		SourceType:       "admin_quota_adjust",
+		SourceId:         unownedUser.Id,
+		OperatorUserId:   agent.Id,
+		OperatorUserType: model.UserTypeAgent,
+		CreatedAtTs:      1810000103,
+	})
+
+	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/admin/quota/ledger/export", map[string]any{
+		"entry_type": model.LedgerEntryAdjust,
+		"limit":      10,
+	}, agent.Id, common.RoleAdminUser)
+
+	ExportQuotaLedger(ctx)
+
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	rows, err := workbook.GetRows("额度流水")
+	require.NoError(t, err)
+	require.Len(t, rows, 3)
+
+	dataRows := rows[1:]
+	exportedIDs := sheetColumnValues(dataRows, 0)
+	require.ElementsMatch(t, []string{strconv.Itoa(selfLedger.Id), strconv.Itoa(ownedLedger.Id)}, exportedIDs)
+	require.NotContains(t, exportedIDs, strconv.Itoa(unownedLedger.Id))
+	requireStrictlyDescendingIDs(t, exportedIDs)
 }
 
 func setupListExcelExportTestDB(t *testing.T) *gorm.DB {
@@ -136,6 +271,13 @@ func setupListExcelExportTestDB(t *testing.T) *gorm.DB {
 	db := setupSettingAuditTestDB(t)
 	require.NoError(t, db.AutoMigrate(
 		&model.User{},
+		&model.PermissionProfile{},
+		&model.PermissionProfileItem{},
+		&model.UserPermissionBinding{},
+		&model.UserPermissionOverride{},
+		&model.UserMenuOverride{},
+		&model.UserDataScopeOverride{},
+		&model.AgentUserRelation{},
 		&model.QuotaAccount{},
 		&model.QuotaLedger{},
 	))
@@ -348,6 +490,15 @@ func testListExportUser(id int, username string, displayName string, role int, u
 	}
 }
 
+func newListExcelExportContextWithOperator(t *testing.T, method string, target string, body any, operatorID int, role int) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+
+	ctx, recorder := newSettingAuditContext(t, method, target, body)
+	ctx.Set("id", operatorID)
+	ctx.Set("role", role)
+	return ctx, recorder
+}
+
 func sheetColumnValues(rows [][]string, column int) []string {
 	values := make([]string, 0, len(rows))
 	for _, row := range rows {
@@ -374,4 +525,29 @@ func requireStrictlyDescendingIDs(t *testing.T, ids []string) {
 		require.Less(t, currentID, previousID)
 		previousID = currentID
 	}
+}
+
+func seedListExportQuotaAccount(t *testing.T, db *gorm.DB, ownerID int, balance int) *model.QuotaAccount {
+	t.Helper()
+
+	account := &model.QuotaAccount{
+		OwnerType:        model.QuotaOwnerTypeUser,
+		OwnerId:          ownerID,
+		Balance:          balance,
+		TotalRecharged:   balance,
+		TotalAdjustedIn:  0,
+		TotalAdjustedOut: 0,
+		Status:           model.CommonStatusEnabled,
+		CreatedAtTs:      common.GetTimestamp(),
+		UpdatedAtTs:      common.GetTimestamp(),
+	}
+	require.NoError(t, db.Create(account).Error)
+	return account
+}
+
+func seedListExportLedger(t *testing.T, db *gorm.DB, ledger model.QuotaLedger) model.QuotaLedger {
+	t.Helper()
+
+	require.NoError(t, db.Create(&ledger).Error)
+	return ledger
 }

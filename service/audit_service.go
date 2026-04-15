@@ -63,9 +63,36 @@ func createAdminAuditLogWithDB(db *gorm.DB, input AuditLogInput) error {
 }
 
 func ListAdminAuditLogs(pageInfo *common.PageInfo, actionModule string, operatorUserId int) ([]AdminAuditLogListItem, int64, error) {
-	var logs []AdminAuditLogListItem
 	var total int64
 
+	query := buildAdminAuditLogsQuery(actionModule, operatorUserId)
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	logs, err := fetchAdminAuditLogs(query, pageInfo.GetPageSize(), pageInfo.GetStartIdx())
+	if err != nil {
+		return nil, 0, err
+	}
+	return logs, total, nil
+}
+
+func ListAdminAuditLogsForExport(actionModule string, operatorUserId int, limit int) ([]AdminAuditLogListItem, int64, error) {
+	logs, err := fetchAdminAuditLogs(buildAdminAuditLogsQuery(actionModule, operatorUserId), clampExportQueryLimit(limit), 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	return logs, 0, nil
+}
+
+func clampExportQueryLimit(limit int) int {
+	if limit <= 0 || limit > exportQueryLimitMax {
+		return exportQueryLimitMax
+	}
+	return limit
+}
+
+func buildAdminAuditLogsQuery(actionModule string, operatorUserId int) *gorm.DB {
 	query := model.DB.Model(&model.AdminAuditLog{}).
 		Select("admin_audit_logs.id, admin_audit_logs.operator_user_id, admin_audit_logs.operator_user_type, admin_audit_logs.action_module, admin_audit_logs.action_type, admin_audit_logs.target_type, admin_audit_logs.target_id, admin_audit_logs.ip, admin_audit_logs.created_at, operator_users.username AS operator_username, operator_users.display_name AS operator_display_name, target_users.username AS target_username, target_users.display_name AS target_display_name").
 		Joins("LEFT JOIN users AS operator_users ON operator_users.id = admin_audit_logs.operator_user_id").
@@ -76,26 +103,13 @@ func ListAdminAuditLogs(pageInfo *common.PageInfo, actionModule string, operator
 	if operatorUserId > 0 {
 		query = query.Where("operator_user_id = ?", operatorUserId)
 	}
-
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	if err := query.Order("admin_audit_logs.id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&logs).Error; err != nil {
-		return nil, 0, err
-	}
-	return logs, total, nil
+	return query
 }
 
-func ListAdminAuditLogsForExport(actionModule string, operatorUserId int, limit int) ([]AdminAuditLogListItem, int64, error) {
-	pageInfo := &common.PageInfo{Page: 1, PageSize: clampExportQueryLimit(limit)}
-	return ListAdminAuditLogs(pageInfo, actionModule, operatorUserId)
-}
-
-func clampExportQueryLimit(limit int) int {
-	if limit <= 0 || limit > exportQueryLimitMax {
-		return exportQueryLimitMax
-	}
-	return limit
+func fetchAdminAuditLogs(query *gorm.DB, limit int, offset int) ([]AdminAuditLogListItem, error) {
+	var logs []AdminAuditLogListItem
+	err := query.Order("admin_audit_logs.id desc").Limit(limit).Offset(offset).Find(&logs).Error
+	return logs, err
 }
 
 func UserTypeFromRole(role int) string {
