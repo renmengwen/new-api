@@ -47,15 +47,16 @@ export const formatAuditIdentity = (identity = {}) => {
   const userId = getPreferredValue(identity, ['userId', 'user_id', 'id']);
   const username = getPreferredValue(identity, ['username']);
   const displayName = getPreferredValue(identity, ['displayName', 'display_name']);
+  const primaryName = username || displayName;
 
-  if (!username) {
-    return '-';
+  if (!primaryName) {
+    return hasValue(userId) ? `#${userId}` : '-';
   }
 
-  const displayNamePart = displayName && displayName !== username ? `（${displayName}）` : '';
+  const displayNamePart = username && displayName && displayName !== username ? `（${displayName}）` : '';
   const idPart = hasValue(userId) ? ` #${userId}` : '';
 
-  return `${username}${displayNamePart}${idPart}`;
+  return `${primaryName}${displayNamePart}${idPart}`;
 };
 
 export const formatAuditTarget = (target = {}) => {
@@ -69,8 +70,9 @@ export const formatAuditTarget = (target = {}) => {
     username: targetUsername,
     displayName: targetDisplayName,
   });
+  const hasTargetIdentity = hasValue(targetUsername) || hasValue(targetDisplayName);
 
-  if (identity !== '-') {
+  if (hasTargetIdentity && identity !== '-') {
     return identity;
   }
 

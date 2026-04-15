@@ -29,6 +29,10 @@ test('AdminAuditLogsPageV1 renders enriched audit log display fields through dis
   assert.match(pageSource, /getAuditLogActionLabel/);
   assert.match(pageSource, /formatAuditIdentity/);
   assert.match(pageSource, /formatAuditTarget/);
+  assert.match(pageSource, /title: t\('操作人'\)/);
+  assert.match(pageSource, /title: t\('目标'\)/);
+  assert.equal(/title: t\('操作人 ID'\)/.test(pageSource), false);
+  assert.equal(/title: t\('目标 ID'\)/.test(pageSource), false);
   assert.match(pageSource, /operator_username/);
   assert.match(pageSource, /operator_display_name/);
   assert.match(pageSource, /target_username/);

@@ -42,11 +42,11 @@ test('formatAuditIdentity renders username plus optional display name plus id', 
 
   assert.equal(
     formatAuditIdentity({
-      userId: 0,
+      userId: 42,
       username: '',
       displayName: '',
     }),
-    '-',
+    '#42',
   );
 });
 
@@ -69,6 +69,16 @@ test('formatAuditTarget prefers user identity and otherwise falls back to target
       targetId: 42,
     }),
     'batch #42',
+  );
+
+  assert.equal(
+    formatAuditTarget({
+      targetType: 'user',
+      targetId: 42,
+      targetUsername: '',
+      targetDisplayName: '',
+    }),
+    'user #42',
   );
 });
 
