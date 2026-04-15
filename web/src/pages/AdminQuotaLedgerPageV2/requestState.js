@@ -73,3 +73,17 @@ export const changeCommittedPageSize = (state, nextPageSize) => ({
     pageSize: nextPageSize,
   }),
 });
+
+export const createRequestSequenceTracker = (initialRequestId = 0) => {
+  let latestRequestId = initialRequestId;
+
+  return {
+    issue() {
+      latestRequestId += 1;
+      return latestRequestId;
+    },
+    shouldAccept(requestId) {
+      return requestId === latestRequestId;
+    },
+  };
+};

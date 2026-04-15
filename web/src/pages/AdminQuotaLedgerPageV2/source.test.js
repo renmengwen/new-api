@@ -38,11 +38,16 @@ test('AdminQuotaLedgerPageV2 formats ledger quota amounts with six decimal place
 test('AdminQuotaLedgerPageV2 uses committed request state and wires Excel export from committed filters', () => {
   assert.match(pageSource, /from '\.\/requestState'/);
   assert.match(pageSource, /createQuotaLedgerQueryState/);
+  assert.match(pageSource, /createRequestSequenceTracker/);
   assert.match(pageSource, /commitQuotaLedgerFilters/);
   assert.match(pageSource, /changeCommittedPage/);
   assert.match(pageSource, /changeCommittedPageSize/);
+  assert.match(pageSource, /useRef/);
   assert.match(pageSource, /const \[queryState, setQueryState\] = useState\(\(\) => createQuotaLedgerQueryState\(\)\)/);
   assert.match(pageSource, /const \{ draftFilters, committedRequest \} = queryState/);
+  assert.match(pageSource, /requestTrackerRef\.current = createRequestSequenceTracker\(\)/);
+  assert.match(pageSource, /const requestId = requestTrackerRef\.current\.issue\(\)/);
+  assert.match(pageSource, /requestTrackerRef\.current\.shouldAccept\(requestId\)/);
   assert.match(pageSource, /downloadExcelBlob/);
   assert.match(pageSource, /\/api\/admin\/quota\/ledger\/export/);
   assert.match(pageSource, /payload:\s*\{/);
@@ -52,8 +57,10 @@ test('AdminQuotaLedgerPageV2 uses committed request state and wires Excel export
   assert.match(pageSource, /if \(!\/\^\[\+-\]\?\\d\+\$\/\.test\(normalizedValue\)\)/);
   assert.doesNotMatch(pageSource, /Number\.parseInt\(value,\s*10\)/);
   assert.match(pageSource, /limit:\s*MAX_EXCEL_EXPORT_ROWS/);
+  assert.match(pageSource, /if \(loading\) \{\s*return;\s*\}/);
   assert.match(pageSource, /showInfo\(t\('无可导出数据'\)\)/);
   assert.match(pageSource, /Modal\.confirm/);
+  assert.match(pageSource, /<Button[\s\S]*onClick=\{exportLedger\}[\s\S]*disabled=\{loading\}/);
   assert.match(pageSource, /导出 Excel/);
 });
 

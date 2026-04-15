@@ -157,6 +157,10 @@ const AdminAuditLogsPageV1 = () => {
   };
 
   const exportAuditLogs = async () => {
+    if (loading) {
+      return;
+    }
+
     if (!total) {
       showInfo(t('无可导出数据'));
       return;
@@ -266,7 +270,7 @@ const AdminAuditLogsPageV1 = () => {
         }
         actionsArea={
           <div className='flex flex-wrap items-center gap-2'>
-            <Button size='small' type='tertiary' onClick={exportAuditLogs}>
+            <Button size='small' type='tertiary' onClick={exportAuditLogs} disabled={loading}>
               {t('导出 Excel')}
             </Button>
             <Button

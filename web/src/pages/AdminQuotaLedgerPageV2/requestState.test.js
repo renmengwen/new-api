@@ -113,3 +113,18 @@ test('quota ledger reset clears both draft and committed filters while preservin
     entryType: '',
   });
 });
+
+test('quota ledger request sequence tracker rejects stale responses and accepts only the latest request', () => {
+  assert.equal(typeof requestStateHelpers.createRequestSequenceTracker, 'function');
+
+  const tracker = requestStateHelpers.createRequestSequenceTracker();
+  const slowRequestId = tracker.issue();
+  const fastRequestId = tracker.issue();
+
+  assert.equal(tracker.shouldAccept(slowRequestId), false);
+  assert.equal(tracker.shouldAccept(fastRequestId), true);
+
+  const latestRequestId = tracker.issue();
+  assert.equal(tracker.shouldAccept(fastRequestId), false);
+  assert.equal(tracker.shouldAccept(latestRequestId), true);
+});

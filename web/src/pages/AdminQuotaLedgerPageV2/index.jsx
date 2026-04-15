@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Banner, Button, Empty, Input, Modal, Select, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import CardPro from '../../components/common/ui/CardPro';
@@ -26,6 +26,7 @@ import {
   changeCommittedPageSize,
   commitQuotaLedgerFilters,
   createQuotaLedgerQueryState,
+  createRequestSequenceTracker,
   getRefreshRequestState,
   resetDraftAndCommittedFilters,
   updateDraftFilters,
@@ -54,6 +55,11 @@ const AdminQuotaLedgerPageV2 = () => {
   const [listError, setListError] = useState('');
   const [queryState, setQueryState] = useState(() => createQuotaLedgerQueryState());
   const [total, setTotal] = useState(0);
+  const requestTrackerRef = useRef(null);
+
+  if (!requestTrackerRef.current) {
+    requestTrackerRef.current = createRequestSequenceTracker();
+  }
 
   const { draftFilters, committedRequest } = queryState;
   const { userId, entryType } = draftFilters;
@@ -65,6 +71,7 @@ const AdminQuotaLedgerPageV2 = () => {
     }
 
     const requestState = getRefreshRequestState(nextQueryState);
+    const requestId = requestTrackerRef.current.issue();
 
     setLoading(true);
     setListError('');
@@ -81,6 +88,9 @@ const AdminQuotaLedgerPageV2 = () => {
       }
 
       const res = await API.get(`/api/admin/quota/ledger?${params.toString()}`);
+      if (!requestTrackerRef.current.shouldAccept(requestId)) {
+        return;
+      }
       if (!res.data.success) {
         setItems([]);
         setTotal(0);
@@ -100,12 +110,17 @@ const AdminQuotaLedgerPageV2 = () => {
       }));
       setTotal(data.total || 0);
     } catch (error) {
+      if (!requestTrackerRef.current.shouldAccept(requestId)) {
+        return;
+      }
       setItems([]);
       setTotal(0);
       setListError(t('加载额度流水失败，请稍后重试'));
       showError(error);
     } finally {
-      setLoading(false);
+      if (requestTrackerRef.current.shouldAccept(requestId)) {
+        setLoading(false);
+      }
     }
   };
 
@@ -132,6 +147,10 @@ const AdminQuotaLedgerPageV2 = () => {
   };
 
   const exportLedger = async () => {
+    if (loading) {
+      return;
+    }
+
     if (!total) {
       showInfo(t('无可导出数据'));
       return;
@@ -259,7 +278,7 @@ const AdminQuotaLedgerPageV2 = () => {
         }
         actionsArea={
           <div className='flex flex-wrap items-center gap-2'>
-            <Button size='small' type='tertiary' onClick={exportLedger}>
+            <Button size='small' type='tertiary' onClick={exportLedger} disabled={loading}>
               {t('导出 Excel')}
             </Button>
             <Button size='small' type='tertiary' onClick={() => loadLedger(queryState)}>

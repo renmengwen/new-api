@@ -59,8 +59,10 @@ test('AdminAuditLogsPageV1 wires Excel export from the committed request and gua
   assert.match(pageSource, /if \(!\/\^\[\+-\]\?\\d\+\$\/\.test\(normalizedValue\)\)/);
   assert.doesNotMatch(pageSource, /Number\.parseInt\(value,\s*10\)/);
   assert.match(pageSource, /limit:\s*MAX_EXCEL_EXPORT_ROWS/);
+  assert.match(pageSource, /if \(loading\) \{\s*return;\s*\}/);
   assert.match(pageSource, /showInfo\(t\('无可导出数据'\)\)/);
   assert.match(pageSource, /Modal\.confirm/);
+  assert.match(pageSource, /<Button[\s\S]*onClick=\{exportAuditLogs\}[\s\S]*disabled=\{loading\}/);
   assert.match(pageSource, /导出 Excel/);
 });
 
