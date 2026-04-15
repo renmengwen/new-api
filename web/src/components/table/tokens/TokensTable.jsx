@@ -111,6 +111,7 @@ const TokensTable = (tokensData) => {
         onPageChange: handlePageChange,
       }}
       hidePagination={true}
+      bordered
       loading={loading}
       rowSelection={rowSelection}
       onRow={handleRow}
@@ -124,7 +125,7 @@ const TokensTable = (tokensData) => {
           style={{ padding: 30 }}
         />
       }
-      className='rounded-xl overflow-hidden'
+      className='grid-bordered-table rounded-xl overflow-hidden'
       size='middle'
     />
   );

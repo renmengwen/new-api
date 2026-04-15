@@ -549,6 +549,37 @@ html.dark .sbg-variant-green {
   background: transparent;
 }
 
+.semi-table-wrapper .semi-table-container {
+  border: 1px solid #34353A;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.semi-table-wrapper .semi-table-container > .semi-table-header {
+  border-bottom: 1px solid #34353A !important;
+}
+
+.semi-table-wrapper .semi-table-container > .semi-table-body
+  > .semi-table
+  > .semi-table-thead
+  > .semi-table-row
+  > .semi-table-row-head,
+.semi-table-wrapper .semi-table-container > .semi-table-body
+  > .semi-table
+  > .semi-table-tbody
+  > .semi-table-row
+  > .semi-table-row-cell,
+.semi-table-wrapper .semi-table-container > .semi-table-header
+  > .semi-table
+  > .semi-table-thead
+  > .semi-table-row
+  > .semi-table-row-head,
+.semi-table-wrapper .semi-table-container > .semi-table-body
+  > .semi-table-placeholder {
+  border-right: 1px solid #34353A !important;
+  border-bottom: 1px solid #34353A !important;
+}
+
 /* 侧边抽屉滚动条样式 */
 .semi-sidesheet-body::-webkit-scrollbar {
   width: 6px;
