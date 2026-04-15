@@ -160,6 +160,26 @@ func TestExportAdminAuditLogsDeniesAgentEvenWithReadGrant(t *testing.T) {
 	require.NotEqual(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
 }
 
+func TestExportAdminAuditLogsRequiresReadPermission(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+
+	admin := testListExportUser(9104, "audit_admin", "Audit Admin", common.RoleAdminUser, model.UserTypeAdmin)
+	require.NoError(t, db.Create(&admin).Error)
+
+	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/admin/audit-logs/export", map[string]any{
+		"action_module": "quota",
+		"limit":         10,
+	}, admin.Id, common.RoleAdminUser)
+
+	ExportAdminAuditLogs(ctx)
+
+	var response settingAuditResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+	require.Equal(t, "permission denied", response.Message)
+	require.NotEqual(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
+}
+
 func TestExportQuotaLedgerRequiresLedgerReadPermission(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 
