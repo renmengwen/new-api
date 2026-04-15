@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/stretchr/testify/require"
 	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
@@ -56,6 +57,7 @@ func TestExportAdminAuditLogsUsesFiltersAndCap(t *testing.T) {
 	require.Equal(t, "adjust", dataRows[0][3])
 	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.ModuleMismatch.Id))
 	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.OperatorMismatch.Id))
+	requireStrictlyDescendingIDs(t, exportedIDs)
 
 	for _, row := range dataRows {
 		require.Equal(t, "quota", row[2])
@@ -91,12 +93,41 @@ func TestExportQuotaLedgerUsesEntryTypeFilterAndCap(t *testing.T) {
 	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.EntryTypeMismatch.Id))
 	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.UserMismatch.Id))
 	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.OperatorMismatch.Id))
+	requireStrictlyDescendingIDs(t, exportedIDs)
 
 	for _, row := range dataRows {
 		require.Equal(t, "quota_user", row[1])
 		require.Contains(t, row[2], "[ID:9001]")
 		require.Equal(t, model.LedgerEntryAdjust, row[3])
 	}
+}
+
+func TestExportAdminAuditLogsServiceHelperCapsLimit(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	seedAuditLogs(t, db, 2050, "quota", 9001)
+
+	items, _, err := service.ListAdminAuditLogsForExport("quota", 9001, 5000)
+	require.NoError(t, err)
+	require.Len(t, items, 2000)
+	require.True(t, items[0].Id > items[len(items)-1].Id)
+
+	items, _, err = service.ListAdminAuditLogsForExport("quota", 9001, 123)
+	require.NoError(t, err)
+	require.Len(t, items, 123)
+}
+
+func TestExportQuotaLedgerServiceHelperCapsLimit(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	seedQuotaLedgerRows(t, db, 2088, model.LedgerEntryAdjust)
+
+	items, _, err := service.ListQuotaLedgerForExport(9001, common.RoleRootUser, 2001, 9001, model.LedgerEntryAdjust, 5000)
+	require.NoError(t, err)
+	require.Len(t, items, 2000)
+	require.True(t, items[0].Id > items[len(items)-1].Id)
+
+	items, _, err = service.ListQuotaLedgerForExport(9001, common.RoleRootUser, 2001, 9001, model.LedgerEntryAdjust, 321)
+	require.NoError(t, err)
+	require.Len(t, items, 321)
 }
 
 func setupListExcelExportTestDB(t *testing.T) *gorm.DB {
@@ -327,4 +358,20 @@ func sheetColumnValues(rows [][]string, column int) []string {
 		values = append(values, row[column])
 	}
 	return values
+}
+
+func requireStrictlyDescendingIDs(t *testing.T, ids []string) {
+	t.Helper()
+
+	require.NotEmpty(t, ids)
+
+	previousID, err := strconv.Atoi(ids[0])
+	require.NoError(t, err)
+
+	for _, rawID := range ids[1:] {
+		currentID, err := strconv.Atoi(rawID)
+		require.NoError(t, err)
+		require.Less(t, currentID, previousID)
+		previousID = currentID
+	}
 }

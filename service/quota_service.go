@@ -792,7 +792,7 @@ func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRo
 }
 
 func ListQuotaLedgerForExport(requesterUserId int, requesterRole int, userId int, operatorUserId int, entryType string, limit int) ([]QuotaLedgerListItem, int64, error) {
-	pageInfo := &common.PageInfo{Page: 1, PageSize: limit}
+	pageInfo := &common.PageInfo{Page: 1, PageSize: clampExportQueryLimit(limit)}
 	return ListQuotaLedger(pageInfo, requesterUserId, requesterRole, userId, operatorUserId, entryType)
 }
 

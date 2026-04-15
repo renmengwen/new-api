@@ -35,6 +35,8 @@ type AdminAuditLogListItem struct {
 	TargetDisplayName   string `json:"target_display_name" gorm:"column:target_display_name"`
 }
 
+const exportQueryLimitMax = 2000
+
 func CreateAdminAuditLog(input AuditLogInput) error {
 	return createAdminAuditLogWithDB(model.DB, input)
 }
@@ -85,8 +87,15 @@ func ListAdminAuditLogs(pageInfo *common.PageInfo, actionModule string, operator
 }
 
 func ListAdminAuditLogsForExport(actionModule string, operatorUserId int, limit int) ([]AdminAuditLogListItem, int64, error) {
-	pageInfo := &common.PageInfo{Page: 1, PageSize: limit}
+	pageInfo := &common.PageInfo{Page: 1, PageSize: clampExportQueryLimit(limit)}
 	return ListAdminAuditLogs(pageInfo, actionModule, operatorUserId)
+}
+
+func clampExportQueryLimit(limit int) int {
+	if limit <= 0 || limit > exportQueryLimitMax {
+		return exportQueryLimitMax
+	}
+	return limit
 }
 
 func UserTypeFromRole(role int) string {
