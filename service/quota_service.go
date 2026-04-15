@@ -361,7 +361,13 @@ func applyAgentQuotaTransferTx(tx *gorm.DB, operator *model.User, targetUser *mo
 			return nil, errors.New("agent recharge user is disabled")
 		}
 		if agentAccount.Balance < amount {
-			return nil, errors.New("insufficient agent quota balance")
+			shortfall := amount - agentAccount.Balance
+			return nil, fmt.Errorf(
+				"insufficient agent quota balance: available %s, required %s, shortfall %s",
+				formatQuotaUSD(agentAccount.Balance),
+				formatQuotaUSD(amount),
+				formatQuotaUSD(shortfall),
+			)
 		}
 		agentAfter -= amount
 		targetAfter += amount
@@ -984,6 +990,13 @@ func absInt(v int) int {
 		return -v
 	}
 	return v
+}
+
+func formatQuotaUSD(amount int) string {
+	if common.QuotaPerUnit <= 0 {
+		return fmt.Sprintf("$%d", amount)
+	}
+	return fmt.Sprintf("$%.6f", float64(amount)/common.QuotaPerUnit)
 }
 
 func batchOperationType(delta int) string {

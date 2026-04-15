@@ -444,6 +444,9 @@ func TestAgentAdjustUserQuotaRejectsWhenRechargeExceedsAgentBalance(t *testing.T
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.False(t, response.Success)
 	require.Contains(t, response.Message, "insufficient agent quota balance")
+	require.Contains(t, response.Message, "available $0.000160")
+	require.Contains(t, response.Message, "required $0.000200")
+	require.Contains(t, response.Message, "shortfall $0.000040")
 }
 
 func TestAgentAdjustUserQuotaTransfersBalanceAndCreatesDualLedger(t *testing.T) {

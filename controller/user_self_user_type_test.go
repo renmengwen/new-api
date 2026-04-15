@@ -204,10 +204,7 @@ func TestGetSelfReturnsCompleteSidebarPermissionsForAgentTemplate(t *testing.T) 
 	require.Equal(t, true, personalSection["enabled"])
 	require.Equal(t, true, personalSection["personal"])
 
-	adminSection, ok := sidebar["admin"].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, false, adminSection["enabled"])
-	require.Equal(t, false, adminSection["user"])
+	require.Equal(t, false, sidebar["admin"])
 }
 
 func TestGetSelfAppliesTemplateMenuVisibilityDefaults(t *testing.T) {
@@ -346,4 +343,27 @@ func TestGetSelfTreatsLegacyRootUserTypeAsRoot(t *testing.T) {
 	permissions, ok := response.Data["permissions"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, model.UserTypeRoot, permissions["profile_type"])
+
+	sidebar, ok := permissions["sidebar_modules"].(map[string]any)
+	require.True(t, ok)
+
+	chatSection, ok := sidebar["chat"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, chatSection["enabled"])
+	require.Equal(t, true, chatSection["chat"])
+
+	consoleSection, ok := sidebar["console"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, consoleSection["enabled"])
+	require.Equal(t, true, consoleSection["token"])
+
+	personalSection, ok := sidebar["personal"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, personalSection["enabled"])
+	require.Equal(t, true, personalSection["personal"])
+
+	adminSection, ok := sidebar["admin"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, adminSection["enabled"])
+	require.Equal(t, true, adminSection["setting"])
 }

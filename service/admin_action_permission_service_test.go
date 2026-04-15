@@ -169,6 +169,116 @@ func TestBuildUserPermissionsKeepsBaseSidebarWhenTemplateHasNoMenuItems(t *testi
 	require.Equal(t, false, adminSection["setting"])
 }
 
+func TestBuildUserPermissionsExpandsAdminSidebarSnapshotForLegacyAdmins(t *testing.T) {
+	db := setupAdminPermissionServiceTestDB(t)
+
+	user := model.User{
+		Username: "permission_explicit_sidebar_admin",
+		Password: "hashed-password",
+		Role:     common.RoleAdminUser,
+		Status:   common.UserStatusEnabled,
+		UserType: model.UserTypeAdmin,
+		Group:    "default",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	permissions := BuildUserPermissions(user.Id, user.Role)
+	sidebar, ok := permissions["sidebar_modules"].(map[string]any)
+	require.True(t, ok)
+
+	chatSection, ok := sidebar["chat"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, chatSection["enabled"])
+	require.Equal(t, true, chatSection["playground"])
+	require.Equal(t, true, chatSection["chat"])
+
+	consoleSection, ok := sidebar["console"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, consoleSection["enabled"])
+	require.Equal(t, true, consoleSection["detail"])
+	require.Equal(t, true, consoleSection["token"])
+	require.Equal(t, true, consoleSection["log"])
+	require.Equal(t, true, consoleSection["midjourney"])
+	require.Equal(t, true, consoleSection["task"])
+
+	personalSection, ok := sidebar["personal"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, personalSection["enabled"])
+	require.Equal(t, true, personalSection["topup"])
+	require.Equal(t, true, personalSection["personal"])
+
+	adminSection, ok := sidebar["admin"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, adminSection["enabled"])
+	require.Equal(t, true, adminSection["channel"])
+	require.Equal(t, true, adminSection["subscription"])
+	require.Equal(t, true, adminSection["models"])
+	require.Equal(t, true, adminSection["deployment"])
+	require.Equal(t, true, adminSection["redemption"])
+	require.Equal(t, true, adminSection["user"])
+	require.Equal(t, true, adminSection["admin-users"])
+	require.Equal(t, true, adminSection["agents"])
+	require.Equal(t, true, adminSection["permission-templates"])
+	require.Equal(t, true, adminSection["user-permissions"])
+	require.Equal(t, true, adminSection["quota-ledger"])
+	require.Equal(t, false, adminSection["setting"])
+}
+
+func TestBuildUserPermissionsExpandsAdminSidebarSnapshotForRootUsers(t *testing.T) {
+	db := setupAdminPermissionServiceTestDB(t)
+
+	user := model.User{
+		Username: "permission_explicit_sidebar_root",
+		Password: "hashed-password",
+		Role:     common.RoleRootUser,
+		Status:   common.UserStatusEnabled,
+		UserType: model.UserTypeRoot,
+		Group:    "default",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	permissions := BuildUserPermissions(user.Id, user.Role)
+	sidebar, ok := permissions["sidebar_modules"].(map[string]any)
+	require.True(t, ok)
+
+	chatSection, ok := sidebar["chat"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, chatSection["enabled"])
+	require.Equal(t, true, chatSection["playground"])
+	require.Equal(t, true, chatSection["chat"])
+
+	consoleSection, ok := sidebar["console"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, consoleSection["enabled"])
+	require.Equal(t, true, consoleSection["detail"])
+	require.Equal(t, true, consoleSection["token"])
+	require.Equal(t, true, consoleSection["log"])
+	require.Equal(t, true, consoleSection["midjourney"])
+	require.Equal(t, true, consoleSection["task"])
+
+	personalSection, ok := sidebar["personal"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, personalSection["enabled"])
+	require.Equal(t, true, personalSection["topup"])
+	require.Equal(t, true, personalSection["personal"])
+
+	adminSection, ok := sidebar["admin"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, adminSection["enabled"])
+	require.Equal(t, true, adminSection["channel"])
+	require.Equal(t, true, adminSection["subscription"])
+	require.Equal(t, true, adminSection["models"])
+	require.Equal(t, true, adminSection["deployment"])
+	require.Equal(t, true, adminSection["redemption"])
+	require.Equal(t, true, adminSection["user"])
+	require.Equal(t, true, adminSection["admin-users"])
+	require.Equal(t, true, adminSection["agents"])
+	require.Equal(t, true, adminSection["permission-templates"])
+	require.Equal(t, true, adminSection["user-permissions"])
+	require.Equal(t, true, adminSection["quota-ledger"])
+	require.Equal(t, true, adminSection["setting"])
+}
+
 func TestRequirePermissionActionRespectsDenyOverride(t *testing.T) {
 	db := setupAdminPermissionServiceTestDB(t)
 

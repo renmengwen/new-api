@@ -71,6 +71,25 @@ var adminSidebarModuleCatalog = map[string][]string{
 	},
 }
 
+var permissionSidebarModuleCatalog = map[string][]string{
+	"chat": {
+		"playground",
+		"chat",
+	},
+	"console": {
+		"detail",
+		"token",
+		"log",
+		"midjourney",
+		"task",
+	},
+	"personal": {
+		"topup",
+		"personal",
+	},
+	"admin": adminSidebarModuleCatalog["admin"],
+}
+
 type permissionProfileDataScope struct {
 	ScopeType  string
 	ScopeValue []int
@@ -116,6 +135,8 @@ func BuildUserPermissions(userId int, userRole int) map[string]any {
 			}
 		}
 		permissions["actions"] = actions
+		sidebarModules, _ := permissions["sidebar_modules"].(map[string]any)
+		permissions["sidebar_modules"] = normalizePermissionSidebarModules(sidebarModules, operator.Role)
 		permissions["profile_type"] = model.UserTypeRoot
 		return permissions
 	}
@@ -131,7 +152,7 @@ func BuildUserPermissions(userId int, userRole int) map[string]any {
 		}
 	}
 	permissions["actions"] = actions
-	permissions["sidebar_modules"] = sidebarModules
+	permissions["sidebar_modules"] = normalizePermissionSidebarModules(sidebarModules, operator.Role)
 	if profile != nil {
 		permissions["profile_id"] = profile.Id
 		permissions["profile_name"] = profile.ProfileName
@@ -244,12 +265,12 @@ func buildSidebarModulesBase(user *model.User) map[string]any {
 
 	userSetting := user.GetSetting()
 	if sidebarModules := parseSidebarModules(userSetting.SidebarModules); len(sidebarModules) > 0 {
-		return sidebarModules
+		return applyProtectedSidebarPermissionBase(sidebarModules, user)
 	}
 
 	if user.GetUserType() == model.UserTypeAgent {
 		if sidebarModules := parseSidebarModules(buildAgentSidebarModules()); len(sidebarModules) > 0 {
-			return sidebarModules
+			return applyProtectedSidebarPermissionBase(sidebarModules, user)
 		}
 	}
 
@@ -259,6 +280,30 @@ func buildSidebarModulesBase(user *model.User) map[string]any {
 		return map[string]any{}
 	}
 	return cloneSidebarModules(sidebarModules)
+}
+
+func applyProtectedSidebarPermissionBase(sidebarModules map[string]any, user *model.User) map[string]any {
+	protected := cloneSidebarModules(sidebarModules)
+	baseSidebar := buildLegacySidebarPermissions(user.Role)
+	baseSidebarModules, _ := baseSidebar["sidebar_modules"].(map[string]any)
+	if baseSidebarModules == nil {
+		delete(protected, "admin")
+		return protected
+	}
+
+	adminValue, ok := baseSidebarModules["admin"]
+	if !ok {
+		delete(protected, "admin")
+		return protected
+	}
+
+	if adminSection, ok := adminValue.(map[string]any); ok {
+		protected["admin"] = cloneSidebarModules(map[string]any{"admin": adminSection})["admin"]
+		return protected
+	}
+
+	protected["admin"] = adminValue
+	return protected
 }
 
 func parseSidebarModules(raw string) map[string]any {
@@ -350,6 +395,83 @@ func mergeMenuOverrides(sidebarModules map[string]any, overrides []model.UserMen
 		}
 	}
 	return merged
+}
+
+func normalizePermissionSidebarModules(sidebarModules map[string]any, userRole int) map[string]any {
+	normalized := cloneSidebarModules(sidebarModules)
+	for sectionKey, knownModules := range permissionSidebarModuleCatalog {
+		baselineSection, hasBaseline := buildPermissionSidebarSectionBaseline(sectionKey, userRole)
+		currentValue, hasCurrent := normalized[sectionKey]
+		if hasCurrent && currentValue == false {
+			continue
+		}
+		if !hasCurrent && !hasBaseline {
+			normalized[sectionKey] = false
+			continue
+		}
+
+		sectionMap, ok := currentValue.(map[string]any)
+		if !ok {
+			if !hasBaseline {
+				normalized[sectionKey] = false
+				continue
+			}
+			sectionMap = map[string]any{}
+		} else {
+			sectionMap = cloneSidebarModules(map[string]any{"section": sectionMap})["section"].(map[string]any)
+		}
+
+		enabled, _ := sectionMap["enabled"].(bool)
+		if !enabled && hasBaseline {
+			if baselineEnabled, ok := baselineSection["enabled"].(bool); ok {
+				enabled = baselineEnabled
+			}
+		}
+
+		for _, moduleKey := range knownModules {
+			if _, ok := sectionMap[moduleKey]; !ok {
+				if hasBaseline {
+					sectionMap[moduleKey] = baselineSection[moduleKey]
+				} else {
+					sectionMap[moduleKey] = false
+				}
+			}
+			if allowed, ok := sectionMap[moduleKey].(bool); ok && allowed {
+				enabled = true
+			}
+		}
+
+		sectionMap["enabled"] = enabled
+		normalized[sectionKey] = sectionMap
+	}
+	return normalized
+}
+
+func buildPermissionSidebarSectionBaseline(sectionKey string, userRole int) (map[string]any, bool) {
+	section := map[string]any{
+		"enabled": true,
+	}
+	switch sectionKey {
+	case "chat", "console", "personal":
+		for _, moduleKey := range permissionSidebarModuleCatalog[sectionKey] {
+			section[moduleKey] = true
+		}
+		return section, true
+	case "admin":
+		if userRole < common.RoleAdminUser {
+			return nil, false
+		}
+	default:
+		return nil, false
+	}
+
+	for _, moduleKey := range permissionSidebarModuleCatalog[sectionKey] {
+		section[moduleKey] = true
+	}
+	if userRole < common.RoleRootUser {
+		section["setting"] = false
+	}
+	return section, true
 }
 
 func cloneSidebarModules(sidebarModules map[string]any) map[string]any {

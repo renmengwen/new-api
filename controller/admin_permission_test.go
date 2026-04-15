@@ -181,7 +181,7 @@ func TestUpdateUserPermissionBindingRejectsMismatchedProfileType(t *testing.T) {
 	require.Zero(t, bindingCount)
 }
 
-func TestUpdateUserPermissionBindingRejectsEndUserTarget(t *testing.T) {
+func TestUpdateUserPermissionBindingSupportsEndUserTargetWithMatchingProfileType(t *testing.T) {
 	db := setupAdminPermissionTestDB(t)
 
 	user := model.User{
@@ -196,8 +196,8 @@ func TestUpdateUserPermissionBindingRejectsEndUserTarget(t *testing.T) {
 	require.NoError(t, db.Create(&user).Error)
 
 	profile := model.PermissionProfile{
-		ProfileName: "Agent Ops",
-		ProfileType: "agent",
+		ProfileName: "End User Ops",
+		ProfileType: model.UserTypeEndUser,
 		Status:      model.CommonStatusEnabled,
 	}
 	require.NoError(t, db.Create(&profile).Error)
@@ -211,8 +211,11 @@ func TestUpdateUserPermissionBindingRejectsEndUserTarget(t *testing.T) {
 
 	var response adminPermissionAPIResponse
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
-	require.False(t, response.Success)
-	require.Contains(t, response.Message, "unsupported user_type")
+	require.True(t, response.Success, response.Message)
+
+	var binding model.UserPermissionBinding
+	require.NoError(t, db.Where("user_id = ? AND status = ?", user.Id, model.CommonStatusEnabled).First(&binding).Error)
+	require.Equal(t, profile.Id, binding.ProfileId)
 }
 
 func TestGetPermissionUsersIncludesCurrentProfile(t *testing.T) {

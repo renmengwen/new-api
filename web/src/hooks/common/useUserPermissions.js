@@ -18,6 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useState } from 'react';
 import { API } from '../../helpers';
+import {
+  isPermissionSidebarModuleAllowed,
+  isPermissionSidebarSectionAllowed,
+} from './sidebarPermissionSnapshot.js';
 
 /**
  * 用户权限 Hook。
@@ -68,19 +72,18 @@ export const useUserPermissions = () => {
   };
 
   const isSidebarSectionAllowed = (sectionKey) => {
-    if (!permissions?.sidebar_modules) return true;
-    const sectionPerms = permissions.sidebar_modules[sectionKey];
-    return sectionPerms !== false;
+    return isPermissionSidebarSectionAllowed(
+      permissions?.sidebar_modules,
+      sectionKey,
+    );
   };
 
   const isSidebarModuleAllowed = (sectionKey, moduleKey) => {
-    if (!permissions?.sidebar_modules) return true;
-    const sectionPerms = permissions.sidebar_modules[sectionKey];
-
-    if (sectionPerms === false) return false;
-    if (sectionPerms && sectionPerms[moduleKey] === false) return false;
-
-    return true;
+    return isPermissionSidebarModuleAllowed(
+      permissions?.sidebar_modules,
+      sectionKey,
+      moduleKey,
+    );
   };
 
   const getAllowedSidebarSections = () => {
