@@ -34,11 +34,11 @@ func UpdateQuotaData() {
 var CacheQuotaData = make(map[string]*QuotaData)
 var CacheQuotaDataLock = sync.Mutex{}
 
-func logQuotaDataCache(userId int, username string, modelName string, quota int, createdAt int64, tokenUsed int) {
+func logQuotaDataCache(userId int, username string, modelName string, quota int, createdAt int64, tokenUsed int, count int) {
 	key := fmt.Sprintf("%d-%s-%s-%d", userId, username, modelName, createdAt)
 	quotaData, ok := CacheQuotaData[key]
 	if ok {
-		quotaData.Count += 1
+		quotaData.Count += count
 		quotaData.Quota += quota
 		quotaData.TokenUsed += tokenUsed
 	} else {
@@ -47,7 +47,7 @@ func logQuotaDataCache(userId int, username string, modelName string, quota int,
 			Username:  username,
 			ModelName: modelName,
 			CreatedAt: createdAt,
-			Count:     1,
+			Count:     count,
 			Quota:     quota,
 			TokenUsed: tokenUsed,
 		}
@@ -61,7 +61,15 @@ func LogQuotaData(userId int, username string, modelName string, quota int, crea
 
 	CacheQuotaDataLock.Lock()
 	defer CacheQuotaDataLock.Unlock()
-	logQuotaDataCache(userId, username, modelName, quota, createdAt, tokenUsed)
+	logQuotaDataCache(userId, username, modelName, quota, createdAt, tokenUsed, 1)
+}
+
+func LogQuotaDataDelta(userId int, username string, modelName string, quota int, createdAt int64, tokenUsed int, count int) {
+	createdAt = createdAt - (createdAt % 3600)
+
+	CacheQuotaDataLock.Lock()
+	defer CacheQuotaDataLock.Unlock()
+	logQuotaDataCache(userId, username, modelName, quota, createdAt, tokenUsed, count)
 }
 
 func SaveQuotaDataCache() {

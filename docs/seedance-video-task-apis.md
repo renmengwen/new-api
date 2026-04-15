@@ -27,6 +27,7 @@ Content-Type: application/json
   - `pending`
   - `processing`
   - `succeeded`
+  - `cancelled`
   - `failed`
 
 ### 测试环境变量示例
@@ -228,13 +229,25 @@ curl "{{base_url}}/v1/video/generations/{{task_id}}" \
 }
 ```
 
+## 已取消响应示例
+
+```json
+{
+  "id": "task_01jsk2v8m4m4g9m2v7n3x8q1af",
+  "model": "doubao-seedance-2-0-260128",
+  "status": "cancelled",
+  "created_at": 1713088800,
+  "updated_at": 1713088820
+}
+```
+
 ## 响应字段说明
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `id` | string | 任务 ID |
 | `model` | string | 模型名称 |
-| `status` | string | 任务状态：`pending` / `processing` / `succeeded` / `failed` |
+| `status` | string | 任务状态：`pending` / `processing` / `succeeded` / `cancelled` / `failed` |
 | `content.video_url` | string | 视频结果地址，成功时通常有值 |
 | `seed` | int | 随机种子，若上游返回则透出 |
 | `resolution` | string | 分辨率 |
@@ -278,6 +291,7 @@ curl "{{base_url}}/v1/video/generations?page_num=1&page_size=10&filter.status=pr
 - `pending`
 - `processing`
 - `succeeded`
+- `cancelled`
 - `failed`
 
 ## 请求示例：按任务 ID 查询
@@ -363,6 +377,10 @@ curl -X DELETE "{{base_url}}/v1/video/generations/{{task_id}}" \
 ## 响应说明
 
 - 当前删除成功返回空对象 `{}`
+- 火山官方 `DELETE` 语义是：
+  - `queued`：取消排队，后续任务状态会变成 `cancelled`
+  - `running`：不支持删除，会上游返回 `409 Conflict`
+  - `succeeded` / `failed` / `expired`：删除任务记录，后续不再支持查询
 
 ---
 

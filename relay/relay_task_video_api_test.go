@@ -89,6 +89,25 @@ func TestBuildSeedanceVideoTaskFromSubmitSnapshot(t *testing.T) {
 	require.Nil(t, got.Content)
 }
 
+func TestBuildSeedanceVideoTaskMapsCancelledFailureToCancelled(t *testing.T) {
+	task := &model.Task{
+		TaskID:     "task_cancelled_x",
+		Platform:   constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeVolcEngine)),
+		Status:     model.TaskStatusFailure,
+		FailReason: "cancelled by user",
+		CreatedAt:  1710000000,
+		UpdatedAt:  1710000001,
+		Properties: model.Properties{
+			OriginModelName: "doubao-seedance-2-0-260128",
+		},
+	}
+
+	got, err := buildSeedanceVideoTask(task)
+	require.NoError(t, err)
+	require.Equal(t, task.TaskID, got.ID)
+	require.Equal(t, "cancelled", got.Status)
+}
+
 func TestDoubaoDoResponseReturnsSeedanceCreateResponseForOfficialAPI(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -312,7 +331,7 @@ func TestRelayTaskFetchVideoListReturnsSeedancePage(t *testing.T) {
 	require.Equal(t, "pending", got.Items[0].Status)
 }
 
-func TestRelayTaskFetchVideoDeleteMarksRunningSeedanceTaskAsCancelled(t *testing.T) {
+func TestRelayTaskFetchVideoDeleteMarksQueuedSeedanceTaskAsCancelled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	initRelayTaskVideoListTestDB(t)
 	service.InitHttpClient()
@@ -321,7 +340,7 @@ func TestRelayTaskFetchVideoDeleteMarksRunningSeedanceTaskAsCancelled(t *testing
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		deleteCalls++
 		require.Equal(t, http.MethodDelete, r.Method)
-		require.Equal(t, "/api/v3/contents/generations/tasks/upstream_running_x", r.URL.Path)
+		require.Equal(t, "/api/v3/contents/generations/tasks/upstream_queued_x", r.URL.Path)
 		require.Equal(t, "Bearer delete-key", r.Header.Get("Authorization"))
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -334,9 +353,67 @@ func TestRelayTaskFetchVideoDeleteMarksRunningSeedanceTaskAsCancelled(t *testing
 		BaseURL: &server.URL,
 	})
 	insertRelayVideoTask(t, &model.Task{
-		TaskID:    "task_running_x",
+		TaskID:    "task_queued_x",
 		UserId:    7,
 		ChannelId: 301,
+		Platform:  constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeVolcEngine)),
+		Status:    model.TaskStatusQueued,
+		Progress:  "20%",
+		Quota:     0,
+		PrivateData: model.TaskPrivateData{
+			UpstreamTaskID: "upstream_queued_x",
+		},
+	})
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/v1/video/generations/task_queued_x", nil)
+	c.Params = gin.Params{{Key: "task_id", Value: "task_queued_x"}}
+	c.Set("id", 7)
+
+	taskErr := RelayTaskFetch(c, relayconstant.RelayModeVideoDelete)
+	require.Nil(t, taskErr)
+	require.JSONEq(t, `{}`, recorder.Body.String())
+	require.Equal(t, 1, deleteCalls)
+
+	reloaded, exist, err := model.GetByTaskId(7, "task_queued_x")
+	require.NoError(t, err)
+	require.True(t, exist)
+	require.Equal(t, model.TaskStatus(model.TaskStatusFailure), reloaded.Status)
+	require.Equal(t, "100%", reloaded.Progress)
+	require.Equal(t, "cancelled by user", reloaded.FailReason)
+	require.NotZero(t, reloaded.FinishTime)
+
+	seedanceTask, err := buildSeedanceVideoTask(reloaded)
+	require.NoError(t, err)
+	require.Equal(t, "cancelled", seedanceTask.Status)
+}
+
+func TestRelayTaskFetchVideoDeleteRejectsRunningSeedanceTaskWithConflict(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	initRelayTaskVideoListTestDB(t)
+	service.InitHttpClient()
+
+	deleteCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		deleteCalls++
+		require.Equal(t, http.MethodDelete, r.Method)
+		require.Equal(t, "/api/v3/contents/generations/tasks/upstream_running_x", r.URL.Path)
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"error":{"code":"InvalidAction.RunningTaskDeletion","message":"Cannot delete running task","type":"Conflict"}}`))
+	}))
+	defer server.Close()
+
+	insertRelayVideoChannel(t, &model.Channel{
+		Id:      311,
+		Type:    constant.ChannelTypeVolcEngine,
+		Key:     "delete-key",
+		BaseURL: &server.URL,
+	})
+	insertRelayVideoTask(t, &model.Task{
+		TaskID:    "task_running_x",
+		UserId:    7,
+		ChannelId: 311,
 		Platform:  constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeVolcEngine)),
 		Status:    model.TaskStatusInProgress,
 		Progress:  "50%",
@@ -353,17 +430,67 @@ func TestRelayTaskFetchVideoDeleteMarksRunningSeedanceTaskAsCancelled(t *testing
 	c.Set("id", 7)
 
 	taskErr := RelayTaskFetch(c, relayconstant.RelayModeVideoDelete)
-	require.Nil(t, taskErr)
-	require.JSONEq(t, `{}`, recorder.Body.String())
+	require.NotNil(t, taskErr)
+	require.Equal(t, http.StatusConflict, taskErr.StatusCode)
+	require.Equal(t, "fail_to_delete_task", taskErr.Code)
+	require.Contains(t, taskErr.Message, "InvalidAction.RunningTaskDeletion")
 	require.Equal(t, 1, deleteCalls)
 
 	reloaded, exist, err := model.GetByTaskId(7, "task_running_x")
 	require.NoError(t, err)
 	require.True(t, exist)
-	require.Equal(t, model.TaskStatus(model.TaskStatusFailure), reloaded.Status)
-	require.Equal(t, "100%", reloaded.Progress)
-	require.Equal(t, "cancelled by user", reloaded.FailReason)
-	require.NotZero(t, reloaded.FinishTime)
+	require.Equal(t, model.TaskStatus(model.TaskStatusInProgress), reloaded.Status)
+	require.Equal(t, "50%", reloaded.Progress)
+	require.Empty(t, reloaded.FailReason)
+}
+
+func TestRelayTaskFetchVideoListSupportsCancelledFilter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	initRelayTaskVideoListTestDB(t)
+
+	insertRelayVideoTask(t, &model.Task{
+		TaskID:     "task_cancelled_x",
+		UserId:     7,
+		Platform:   constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeVolcEngine)),
+		Status:     model.TaskStatusFailure,
+		FailReason: "cancelled by user",
+		CreatedAt:  1710000001,
+		UpdatedAt:  1710000101,
+		Properties: model.Properties{
+			OriginModelName: "doubao-seedance-2-0-260128",
+		},
+	})
+	insertRelayVideoTask(t, &model.Task{
+		TaskID:     "task_failed_x",
+		UserId:     7,
+		Platform:   constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDoubaoVideo)),
+		Status:     model.TaskStatusFailure,
+		FailReason: "upstream failed",
+		CreatedAt:  1710000002,
+		UpdatedAt:  1710000102,
+		Properties: model.Properties{
+			OriginModelName: "doubao-seedance-1-5-pro-251215",
+		},
+	})
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(
+		http.MethodGet,
+		"/v1/video/generations?page_num=1&page_size=10&filter.status=cancelled",
+		nil,
+	)
+	c.Set("id", 7)
+
+	taskErr := RelayTaskFetch(c, relayconstant.RelayModeVideoFetchList)
+	require.Nil(t, taskErr)
+
+	var got dto.SeedanceVideoTaskListResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &got))
+	require.EqualValues(t, 1, got.Total)
+	require.Len(t, got.Items, 1)
+	require.Equal(t, "task_cancelled_x", got.Items[0].ID)
+	require.Equal(t, "cancelled", got.Items[0].Status)
 }
 
 func TestRelayTaskFetchVideoDeleteRemovesTerminalSeedanceTask(t *testing.T) {

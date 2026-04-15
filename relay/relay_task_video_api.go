@@ -80,14 +80,16 @@ func buildSeedanceVideoTask(task *model.Task) (*dto.SeedanceVideoTask, error) {
 
 	seedanceTask := &dto.SeedanceVideoTask{}
 	raw := bytes.TrimSpace(task.Data)
+	cancelledFromSnapshot := false
 	if len(raw) > 0 && !bytes.Equal(raw, []byte("null")) {
 		if err := common.Unmarshal(raw, seedanceTask); err != nil {
 			return nil, err
 		}
+		cancelledFromSnapshot = strings.EqualFold(strings.TrimSpace(seedanceTask.Status), "cancelled")
 	}
 
 	seedanceTask.ID = task.TaskID
-	seedanceTask.Status = mapTaskStatusToSeedance(task.Status)
+	seedanceTask.Status = mapTaskStatusToSeedance(task, cancelledFromSnapshot)
 
 	if task.Properties.OriginModelName != "" {
 		seedanceTask.Model = task.Properties.OriginModelName
@@ -128,11 +130,15 @@ func videoFetchListRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	userID := c.GetInt("id")
 	pageNum := parseSeedanceVideoPageParam(c.Query("page_num"), 1)
 	pageSize := parseSeedanceVideoPageParam(c.Query("page_size"), 10)
+	rawStatus := c.Query("filter.status")
 
 	queryParams := model.SyncTaskQueryParams{
 		Platforms: seedanceVideoTaskPlatforms(),
 		TaskIDs:   parseSeedanceVideoTaskIDs(c),
-		Statuses:  parseSeedanceVideoTaskStatuses(c.Query("filter.status")),
+		Statuses:  parseSeedanceVideoTaskStatuses(rawStatus),
+	}
+	if isSeedanceCancelledStatus(rawStatus) {
+		queryParams.FailReasonContains = "cancelled"
 	}
 
 	startIdx := (pageNum - 1) * pageSize
@@ -244,8 +250,12 @@ func shouldTryRealtimeVideoTaskFetch(task *model.Task) bool {
 		task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeGemini))
 }
 
-func mapTaskStatusToSeedance(status model.TaskStatus) string {
-	switch status {
+func mapTaskStatusToSeedance(task *model.Task, cancelledFromSnapshot bool) string {
+	if isCancelledSeedanceTask(task, cancelledFromSnapshot) {
+		return "cancelled"
+	}
+
+	switch task.Status {
 	case model.TaskStatusSubmitted, model.TaskStatusQueued:
 		return "pending"
 	case model.TaskStatusInProgress:
@@ -257,6 +267,21 @@ func mapTaskStatusToSeedance(status model.TaskStatus) string {
 	default:
 		return "processing"
 	}
+}
+
+func isCancelledSeedanceTask(task *model.Task, cancelledFromSnapshot bool) bool {
+	if task == nil {
+		return false
+	}
+	if cancelledFromSnapshot {
+		return true
+	}
+	return task.Status == model.TaskStatusFailure &&
+		strings.Contains(strings.ToLower(strings.TrimSpace(task.FailReason)), "cancelled")
+}
+
+func isSeedanceCancelledStatus(raw string) bool {
+	return strings.EqualFold(strings.TrimSpace(raw), "cancelled")
 }
 
 func parseSeedanceVideoPageParam(raw string, defaultValue int) int {
@@ -302,6 +327,8 @@ func parseSeedanceVideoTaskStatuses(raw string) []model.TaskStatus {
 	case "succeeded":
 		return []model.TaskStatus{model.TaskStatusSuccess}
 	case "failed":
+		return []model.TaskStatus{model.TaskStatusFailure}
+	case "cancelled":
 		return []model.TaskStatus{model.TaskStatusFailure}
 	default:
 		return []model.TaskStatus{model.TaskStatus(strings.ToUpper(strings.TrimSpace(raw)))}

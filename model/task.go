@@ -159,18 +159,19 @@ func (p TaskPrivateData) Value() (driver.Value, error) {
 
 // SyncTaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段
 type SyncTaskQueryParams struct {
-	Platform       constant.TaskPlatform
-	Platforms      []constant.TaskPlatform
-	ChannelID      string
-	TaskID         string
-	TaskIDs        []string
-	UserID         string
-	Action         string
-	Status         string
-	Statuses       []TaskStatus
-	StartTimestamp int64
-	EndTimestamp   int64
-	UserIDs        []int
+	Platform           constant.TaskPlatform
+	Platforms          []constant.TaskPlatform
+	ChannelID          string
+	TaskID             string
+	TaskIDs            []string
+	UserID             string
+	Action             string
+	Status             string
+	Statuses           []TaskStatus
+	FailReasonContains string
+	StartTimestamp     int64
+	EndTimestamp       int64
+	UserIDs            []int
 }
 
 func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) *Task {
@@ -241,9 +242,10 @@ func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQ
 
 	// 获取数据
 	query = applySyncTaskQueryFilters(query, SyncTaskQueryParams{
-		Platforms: queryParams.Platforms,
-		TaskIDs:   queryParams.TaskIDs,
-		Statuses:  queryParams.Statuses,
+		Platforms:          queryParams.Platforms,
+		TaskIDs:            queryParams.TaskIDs,
+		Statuses:           queryParams.Statuses,
+		FailReasonContains: queryParams.FailReasonContains,
 	})
 	err = query.Omit("channel_id").Order("id desc").Limit(num).Offset(startIdx).Find(&tasks).Error
 	if err != nil {
@@ -291,9 +293,10 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 
 	// 获取数据
 	query = applySyncTaskQueryFilters(query, SyncTaskQueryParams{
-		Platforms: queryParams.Platforms,
-		TaskIDs:   queryParams.TaskIDs,
-		Statuses:  queryParams.Statuses,
+		Platforms:          queryParams.Platforms,
+		TaskIDs:            queryParams.TaskIDs,
+		Statuses:           queryParams.Statuses,
+		FailReasonContains: queryParams.FailReasonContains,
 	})
 	err = query.Order("id desc").Limit(num).Offset(startIdx).Find(&tasks).Error
 	if err != nil {
@@ -481,9 +484,10 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
 	}
 	query = applySyncTaskQueryFilters(query, SyncTaskQueryParams{
-		Platforms: queryParams.Platforms,
-		TaskIDs:   queryParams.TaskIDs,
-		Statuses:  queryParams.Statuses,
+		Platforms:          queryParams.Platforms,
+		TaskIDs:            queryParams.TaskIDs,
+		Statuses:           queryParams.Statuses,
+		FailReasonContains: queryParams.FailReasonContains,
 	})
 	_ = query.Count(&total).Error
 	return total
@@ -512,9 +516,10 @@ func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
 	}
 	query = applySyncTaskQueryFilters(query, SyncTaskQueryParams{
-		Platforms: queryParams.Platforms,
-		TaskIDs:   queryParams.TaskIDs,
-		Statuses:  queryParams.Statuses,
+		Platforms:          queryParams.Platforms,
+		TaskIDs:            queryParams.TaskIDs,
+		Statuses:           queryParams.Statuses,
+		FailReasonContains: queryParams.FailReasonContains,
 	})
 	_ = query.Count(&total).Error
 	return total
@@ -529,6 +534,9 @@ func applySyncTaskQueryFilters(query *gorm.DB, queryParams SyncTaskQueryParams) 
 	}
 	if len(queryParams.Statuses) > 0 {
 		query = query.Where("status IN ?", queryParams.Statuses)
+	}
+	if queryParams.FailReasonContains != "" {
+		query = query.Where("fail_reason LIKE ?", "%"+queryParams.FailReasonContains+"%")
 	}
 	return query
 }
