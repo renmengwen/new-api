@@ -282,6 +282,7 @@ const ChannelSelectorModal = forwardRef(
             columns={columns}
             dataSource={paginatedData}
             rowKey='key'
+            className='grid-bordered-table'
             rowSelection={rowSelection}
             pagination={{
               currentPage: currentPage,

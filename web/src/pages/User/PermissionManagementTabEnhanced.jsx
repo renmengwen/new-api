@@ -193,6 +193,7 @@ const PermissionManagementTabEnhanced = ({ t, canBindProfile }) => {
       ) : null}
 
       <Table
+        className='grid-bordered-table'
         columns={columns}
         dataSource={users}
         loading={loading}

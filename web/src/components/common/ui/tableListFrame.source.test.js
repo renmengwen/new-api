@@ -31,21 +31,66 @@ test('token, channel and quota ledger tables keep native bordered props without 
   assert.match(tokensTableSource, /<CardTable[\s\S]*\bbordered\b/);
   assert.match(channelsTableSource, /<CardTable[\s\S]*\bbordered\b/);
   assert.match(quotaLedgerSource, /<Table[\s\S]*\bbordered\b/);
-  assert.ok(tokensTableSource.includes("className='grid-bordered-table rounded-xl overflow-hidden'"));
-  assert.ok(channelsTableSource.includes("className='grid-bordered-table rounded-xl overflow-hidden'"));
-  assert.match(quotaLedgerSource, /<Table[\s\S]*className='grid-bordered-table'/);
+  assert.match(tokensTableSource, /<CardTable[\s\S]*className=['"][^'"]*\bgrid-bordered-table\b[^'"]*['"]/);
+  assert.match(channelsTableSource, /<CardTable[\s\S]*className=['"][^'"]*\bgrid-bordered-table\b[^'"]*['"]/);
+  assert.match(quotaLedgerSource, /<Table[\s\S]*className=['"][^'"]*\bgrid-bordered-table\b[^'"]*['"]/);
+  assert.doesNotMatch(quotaLedgerSource, /<Table[\s\S]*className=['"][^'"]*\bquota-ledger-table\b[^'"]*['"]/);
   assert.doesNotMatch(quotaLedgerSource, /quota-ledger-debug-table/);
 });
 
-test('shared table border style uses the unified #34353A color without debug hooks', () => {
+test('CardTable desktop bordered path opts into grid-bordered-table by default', () => {
+  assert.match(cardTableSource, /const \{ bordered = true, \.\.\.desktopTableProps \} = finalTableProps;/);
+  assert.match(
+    cardTableSource,
+    /<Table[\s\S]*\bclassName=(?:\{[\s\S]*\bgrid-bordered-table\b[\s\S]*\}|['"][^'"]*\bgrid-bordered-table\b[^'"]*['"])/,
+  );
+});
+
+test('shared table border style uses the softened list contract without debug hooks', () => {
   assert.doesNotMatch(tokensTableSource, /table-list-frame/);
   assert.doesNotMatch(channelsTableSource, /table-list-frame/);
   assert.doesNotMatch(quotaLedgerSource, /table-list-frame/);
   assert.doesNotMatch(indexCssSource, /\.table-list-frame/);
   assert.doesNotMatch(indexCssSource, /\.quota-ledger-debug-table/);
-  assert.match(indexCssSource, /\.semi-table-wrapper \.semi-table-container\s*\{[\s\S]*border:\s*1px solid #34353A;/);
-  assert.match(indexCssSource, /\.semi-table-wrapper \.semi-table-container > \.semi-table-header\s*\{/);
-  assert.match(indexCssSource, /\.semi-table-wrapper \.semi-table-container > \.semi-table-body[\s\S]*> \.semi-table-thead/);
-  assert.match(indexCssSource, /\.semi-table-wrapper \.semi-table-container > \.semi-table-body/);
-  assert.match(indexCssSource, /\.semi-table-wrapper \.semi-table-container > \.semi-table-header/);
+  assert.doesNotMatch(indexCssSource, /(?:^|\r?\n)\.semi-table-wrapper \.semi-table-container\s*\{/);
+  assert.match(
+    indexCssSource,
+    /\.grid-bordered-table\.semi-table-wrapper \.semi-table-container\s*\{[\s\S]*border:\s*0;[\s\S]*background:\s*transparent;[\s\S]*border-radius:\s*16px;/,
+  );
+  assert.match(
+    indexCssSource,
+    /\.grid-bordered-table\.semi-table-wrapper \.semi-table-container > \.semi-table-header,[\s\S]*background:\s*transparent;/,
+  );
+  assert.match(
+    indexCssSource,
+    /\.grid-bordered-table\.semi-table-wrapper[\s\S]*> \.semi-table-row-head[\s\S]*border-right:\s*0 !important;[\s\S]*border-bottom:\s*1px solid #EDEDEE !important;/,
+  );
+  assert.match(
+    indexCssSource,
+    /\.grid-bordered-table\.semi-table-wrapper[\s\S]*> \.semi-table-row-cell[\s\S]*border-right:\s*0 !important;[\s\S]*border-bottom:\s*1px solid #EDEDEE !important;/,
+  );
+  assert.match(
+    indexCssSource,
+    /html\.dark \.grid-bordered-table\.semi-table-wrapper \.semi-table-container\s*\{[\s\S]*border:\s*1px solid rgba\(255,\s*255,\s*255,\s*0\.06\);[\s\S]*background:\s*rgba\(24,\s*27,\s*32,\s*0\.88\);/,
+  );
+  assert.match(
+    indexCssSource,
+    /html\.dark \.grid-bordered-table\.semi-table-wrapper[\s\S]*> \.semi-table-row-head[\s\S]*border-bottom:\s*1px solid #34353A !important;/,
+  );
+  assert.match(
+    indexCssSource,
+    /html\.dark \.grid-bordered-table\.semi-table-wrapper[\s\S]*> \.semi-table-row-cell[\s\S]*border-bottom:\s*1px solid #34353A !important;/,
+  );
+  assert.match(
+    indexCssSource,
+    /\.grid-bordered-table\.semi-table-wrapper[\s\S]*> \.semi-table-row:hover[\s\S]*> \.semi-table-row-cell\s*\{[\s\S]*background:\s*rgba\(15,\s*23,\s*42,\s*0\.03\);/,
+  );
+  assert.match(
+    indexCssSource,
+    /html\.dark \.grid-bordered-table\.semi-table-wrapper[\s\S]*> \.semi-table-row:hover[\s\S]*> \.semi-table-row-cell\s*\{[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.04\);/,
+  );
+  assert.doesNotMatch(
+    indexCssSource,
+    /\.grid-bordered-table\.semi-table-wrapper[\s\S]*> \.semi-table-row-(?:head|cell)[\s\S]*border-right:\s*1px solid/,
+  );
 });

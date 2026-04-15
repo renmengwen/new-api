@@ -71,6 +71,13 @@ const CardTable = ({
         rowKey={rowKey}
         bordered={bordered}
         {...desktopTableProps}
+        className={
+          bordered
+            ? ['grid-bordered-table', desktopTableProps.className]
+                .filter(Boolean)
+                .join(' ')
+            : desktopTableProps.className
+        }
       />
     );
   }

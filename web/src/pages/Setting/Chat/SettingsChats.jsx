@@ -464,6 +464,7 @@ export default function SettingsChats(props) {
               </Space>
 
               <Table
+                className='grid-bordered-table'
                 columns={columns}
                 dataSource={filteredConfigs}
                 rowKey='id'

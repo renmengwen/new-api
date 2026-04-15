@@ -264,6 +264,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         dataSource={topups}
         loading={loading}
         rowKey='id'
+        className='grid-bordered-table'
         pagination={{
           currentPage: page,
           pageSize: pageSize,

@@ -371,6 +371,7 @@ const ManagedUsersTabEnhanced = ({
       ) : null}
 
       <Table
+        className='grid-bordered-table'
         rowSelection={rowSelection}
         columns={columns}
         dataSource={users}

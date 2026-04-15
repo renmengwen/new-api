@@ -154,6 +154,7 @@ const QuotaLedgerTabEnhanced = ({ t }) => {
       ) : null}
 
       <Table
+        className='grid-bordered-table'
         columns={columns}
         dataSource={items}
         loading={loading}

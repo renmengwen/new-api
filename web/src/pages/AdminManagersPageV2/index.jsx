@@ -552,6 +552,7 @@ const AdminManagersPageV2 = () => {
           </div>
         ) : null}
         <Table
+          className='grid-bordered-table'
           size='small'
           loading={loading}
           columns={columns}

@@ -496,6 +496,7 @@ export default function SettingsPaymentGatewayWaffo(props) {
           </Button>
         </div>
         <Table
+          className='grid-bordered-table'
           columns={payMethodColumns}
           dataSource={waffoPayMethods}
           rowKey={(record, index) => index}

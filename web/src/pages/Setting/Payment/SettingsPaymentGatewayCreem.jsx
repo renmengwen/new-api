@@ -310,6 +310,7 @@ export default function SettingsPaymentGatewayCreem(props) {
             </div>
 
             <Table
+              className='grid-bordered-table'
               columns={columns}
               dataSource={products}
               pagination={false}

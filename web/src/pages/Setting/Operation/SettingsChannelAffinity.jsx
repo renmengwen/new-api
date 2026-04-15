@@ -1015,6 +1015,7 @@ export default function SettingsChannelAffinity(props) {
 
             {editMode === 'visual' ? (
               <Table
+                className='grid-bordered-table'
                 columns={ruleColumns}
                 dataSource={rules}
                 rowKey='id'
@@ -1301,6 +1302,7 @@ export default function SettingsChannelAffinity(props) {
           </div>
 
           <Table
+            className='grid-bordered-table'
             columns={[
               {
                 title: t('类型'),

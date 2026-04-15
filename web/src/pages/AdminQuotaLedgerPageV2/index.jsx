@@ -245,7 +245,7 @@ const AdminQuotaLedgerPageV2 = () => {
         ) : null}
         <Table
           className='grid-bordered-table'
-          size='small'
+          size='default'
           bordered={true}
           columns={columns}
           dataSource={items}

@@ -89,6 +89,7 @@ function ConflictConfirmModal({ t, visible, items, onOk, onCancel }) {
       size={isMobile ? 'full-width' : 'large'}
     >
       <Table
+        className='grid-bordered-table'
         columns={columns}
         dataSource={items}
         pagination={false}
@@ -815,6 +816,7 @@ export default function UpstreamRatioSync(props) {
 
     return (
       <Table
+        className='grid-bordered-table'
         columns={columns}
         dataSource={getCurrentPageData(filteredDataSource)}
         pagination={{

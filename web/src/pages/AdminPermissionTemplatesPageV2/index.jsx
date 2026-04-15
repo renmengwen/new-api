@@ -588,6 +588,7 @@ const AdminPermissionTemplatesPageV2 = () => {
           </div>
         ) : null}
         <Table
+          className='grid-bordered-table'
           size='small'
           columns={columns}
           dataSource={templates}

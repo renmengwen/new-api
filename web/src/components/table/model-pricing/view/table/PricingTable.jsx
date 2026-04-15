@@ -100,6 +100,7 @@ const PricingTable = ({
           columns={processedColumns}
           dataSource={filteredModels}
           loading={loading}
+          className='grid-bordered-table'
           rowSelection={rowSelection}
           scroll={compactMode ? undefined : { x: 'max-content' }}
           onRow={(record) => ({
