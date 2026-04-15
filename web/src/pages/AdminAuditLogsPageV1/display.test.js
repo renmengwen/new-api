@@ -24,20 +24,29 @@ test('formatAuditIdentity renders username plus optional display name plus id', 
 
   assert.equal(
     formatAuditIdentity({
-      userId: 23,
+      userId: 18,
       username: 'alice',
-      displayName: '爱丽丝',
+      displayName: 'Alice',
     }),
-    'alice（爱丽丝）#23',
+    'alice（Alice） #18',
   );
 
   assert.equal(
     formatAuditIdentity({
-      userId: 23,
-      username: 'alice',
-      displayName: 'alice',
+      userId: 7,
+      username: 'bob',
+      displayName: 'bob',
     }),
-    'alice#23',
+    'bob #7',
+  );
+
+  assert.equal(
+    formatAuditIdentity({
+      userId: 0,
+      username: '',
+      displayName: '',
+    }),
+    '-',
   );
 });
 
@@ -51,26 +60,26 @@ test('formatAuditTarget prefers user identity and otherwise falls back to target
       targetUsername: 'bob',
       targetDisplayName: '鲍勃',
     }),
-    'bob（鲍勃）#42',
+    'bob（鲍勃） #42',
   );
 
   assert.equal(
     formatAuditTarget({
-      targetType: 'quota_adjustment',
-      targetId: 99,
+      targetType: 'batch',
+      targetId: 42,
     }),
-    'quota_adjustment#99',
+    'batch #42',
   );
 });
 
 test('AUDIT_LOG_COVERAGE exactly enumerates the current write points', async () => {
   const { AUDIT_LOG_COVERAGE } = await loadDisplayHelpers();
 
-  assert.deepEqual(AUDIT_LOG_COVERAGE, {
-    admin_management: ['create', 'update', 'enable', 'disable'],
-    agent: ['create', 'update', 'enable', 'disable'],
-    user_management: ['create', 'update', 'enable', 'disable', 'delete'],
-    permission: ['bind_profile', 'clear_profile'],
-    quota: ['adjust', 'adjust_batch'],
-  });
+  assert.deepEqual(AUDIT_LOG_COVERAGE, [
+    { module: 'admin_management', actions: ['create', 'update', 'enable', 'disable'] },
+    { module: 'agent', actions: ['create', 'update', 'enable', 'disable'] },
+    { module: 'user_management', actions: ['create', 'update', 'enable', 'disable', 'delete'] },
+    { module: 'permission', actions: ['bind_profile', 'clear_profile'] },
+    { module: 'quota', actions: ['adjust', 'adjust_batch'] },
+  ]);
 });

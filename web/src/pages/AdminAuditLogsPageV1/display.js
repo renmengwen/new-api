@@ -18,13 +18,13 @@ export const AUDIT_LOG_ACTION_LABELS = {
   adjust_batch: '批量额度调整',
 };
 
-export const AUDIT_LOG_COVERAGE = {
-  admin_management: ['create', 'update', 'enable', 'disable'],
-  agent: ['create', 'update', 'enable', 'disable'],
-  user_management: ['create', 'update', 'enable', 'disable', 'delete'],
-  permission: ['bind_profile', 'clear_profile'],
-  quota: ['adjust', 'adjust_batch'],
-};
+export const AUDIT_LOG_COVERAGE = [
+  { module: 'admin_management', actions: ['create', 'update', 'enable', 'disable'] },
+  { module: 'agent', actions: ['create', 'update', 'enable', 'disable'] },
+  { module: 'user_management', actions: ['create', 'update', 'enable', 'disable', 'delete'] },
+  { module: 'permission', actions: ['bind_profile', 'clear_profile'] },
+  { module: 'quota', actions: ['adjust', 'adjust_batch'] },
+];
 
 const hasValue = (value) => value !== null && value !== undefined && value !== '';
 
@@ -49,11 +49,11 @@ export const formatAuditIdentity = (identity = {}) => {
   const displayName = getPreferredValue(identity, ['displayName', 'display_name']);
 
   if (!username) {
-    return '';
+    return '-';
   }
 
   const displayNamePart = displayName && displayName !== username ? `（${displayName}）` : '';
-  const idPart = hasValue(userId) ? `#${userId}` : '';
+  const idPart = hasValue(userId) ? ` #${userId}` : '';
 
   return `${username}${displayNamePart}${idPart}`;
 };
@@ -70,13 +70,13 @@ export const formatAuditTarget = (target = {}) => {
     displayName: targetDisplayName,
   });
 
-  if (identity) {
+  if (identity !== '-') {
     return identity;
   }
 
   if (!hasValue(targetType)) {
-    return hasValue(targetId) ? `#${targetId}` : '';
+    return hasValue(targetId) ? `#${targetId}` : '-';
   }
 
-  return hasValue(targetId) ? `${targetType}#${targetId}` : targetType;
+  return hasValue(targetId) ? `${targetType} #${targetId}` : targetType;
 };
