@@ -158,22 +158,22 @@ func UpdatePermissionTemplate(profileId int, req PermissionTemplateUpsertRequest
 }
 
 func DeletePermissionTemplate(profileId int) error {
-	var profile model.PermissionProfile
-	if err := model.DB.First(&profile, profileId).Error; err != nil {
-		return err
-	}
-
-	var activeBindingCount int64
-	if err := model.DB.Model(&model.UserPermissionBinding{}).
-		Where("profile_id = ? AND status = ?", profileId, model.CommonStatusEnabled).
-		Count(&activeBindingCount).Error; err != nil {
-		return err
-	}
-	if activeBindingCount > 0 {
-		return fmt.Errorf("该模板正在被 %d 个账号使用，无法删除", activeBindingCount)
-	}
-
 	return model.DB.Transaction(func(tx *gorm.DB) error {
+		var profile model.PermissionProfile
+		if err := permissionProfileForUpdateQuery(tx, profileId).First(&profile).Error; err != nil {
+			return err
+		}
+
+		var activeBindingCount int64
+		if err := tx.Model(&model.UserPermissionBinding{}).
+			Where("profile_id = ? AND status = ?", profileId, model.CommonStatusEnabled).
+			Count(&activeBindingCount).Error; err != nil {
+			return err
+		}
+		if activeBindingCount > 0 {
+			return fmt.Errorf("该模板正在被 %d 个账号使用，无法删除", activeBindingCount)
+		}
+
 		if err := tx.Where("profile_id = ?", profileId).Delete(&model.PermissionProfileItem{}).Error; err != nil {
 			return err
 		}

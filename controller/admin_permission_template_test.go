@@ -227,7 +227,7 @@ func TestDeletePermissionTemplateRejectsActiveBinding(t *testing.T) {
 	var response adminPermissionAPIResponse
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.False(t, response.Success)
-	require.Contains(t, response.Message, "无法删除")
+	require.Equal(t, "该模板正在被 1 个账号使用，无法删除", response.Message)
 
 	var profileCount int64
 	require.NoError(t, db.Model(&model.PermissionProfile{}).Where("id = ?", profile.Id).Count(&profileCount).Error)
