@@ -6,12 +6,14 @@ import {
   Empty,
   Input,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Table,
   Tag,
   Typography,
 } from '@douyinfe/semi-ui';
+import { IconDelete } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import ModalActionFooter from '../../components/common/modals/ModalActionFooter';
 import CardPro from '../../components/common/ui/CardPro';
@@ -223,6 +225,21 @@ const AdminPermissionTemplatesPageV2 = () => {
     }
   };
 
+  const handleDelete = async (templateId) => {
+    try {
+      const res = await API.delete(`/api/admin/permission-templates/${templateId}`);
+      if (!res.data.success) {
+        showError(res.data.message || t('删除权限模板失败'));
+        return;
+      }
+
+      showSuccess(t('权限模板已删除'));
+      await loadTemplates(page, pageSize, profileTypeFilter, keyword);
+    } catch (error) {
+      showError(error?.response?.data?.message || error?.message || t('删除权限模板失败'));
+    }
+  };
+
   const handleActionToggle = (resourceKey, actionKey, checked) => {
     setFormState((prev) => ({
       ...prev,
@@ -347,18 +364,35 @@ const AdminPermissionTemplatesPageV2 = () => {
       {
         title: t('操作'),
         dataIndex: 'operate',
-        width: 100,
+        width: 180,
         render: (_, record) =>
           canEdit ? (
-            <Button
-              size='small'
-              theme='borderless'
-              type='tertiary'
-              style={actionLinkStyle}
-              onClick={() => openEditModal(record)}
-            >
-              {t('编辑')}
-            </Button>
+            <Space spacing={12}>
+              <Button
+                size='small'
+                theme='borderless'
+                type='tertiary'
+                style={actionLinkStyle}
+                onClick={() => openEditModal(record)}
+              >
+                {t('编辑')}
+              </Button>
+              <Popconfirm
+                title={t('确定要删除此权限模板吗？')}
+                content={t('删除后不可恢复；如果模板仍被当前生效账号引用，系统会阻止删除。')}
+                onConfirm={() => handleDelete(record.id)}
+              >
+                <Button
+                  icon={<IconDelete />}
+                  size='small'
+                  theme='borderless'
+                  type='danger'
+                  style={actionLinkStyle}
+                >
+                  {t('删除')}
+                </Button>
+              </Popconfirm>
+            </Space>
           ) : null,
       },
     ],
