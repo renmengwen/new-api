@@ -32,7 +32,6 @@ import {
   Tag,
   Typography,
 } from '@douyinfe/semi-ui';
-import { IconDelete } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import ModalActionFooter from '../../components/common/modals/ModalActionFooter';
 import CardPro from '../../components/common/ui/CardPro';
@@ -64,11 +63,6 @@ const sectionStyle = {
   borderRadius: 12,
   padding: 16,
   background: 'var(--semi-color-bg-0)',
-};
-
-const actionLinkStyle = {
-  paddingLeft: 0,
-  paddingRight: 0,
 };
 
 const buildTemplateItemsPayload = (selectedActions) => {
@@ -388,12 +382,10 @@ const AdminPermissionTemplatesPageV2 = () => {
         width: 180,
         render: (_, record) =>
           canEdit ? (
-            <Space spacing={12}>
+            <Space>
               <Button
                 size='small'
-                theme='borderless'
                 type='tertiary'
-                style={actionLinkStyle}
                 onClick={() => openEditModal(record)}
               >
                 {t('编辑')}
@@ -404,11 +396,9 @@ const AdminPermissionTemplatesPageV2 = () => {
                 onConfirm={() => handleDelete(record.id)}
               >
                 <Button
-                  icon={<IconDelete />}
                   size='small'
-                  theme='borderless'
+                  theme='solid'
                   type='danger'
-                  style={actionLinkStyle}
                 >
                   {t('删除')}
                 </Button>

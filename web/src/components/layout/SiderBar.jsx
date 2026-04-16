@@ -431,6 +431,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       >
         <Nav
           className='sidebar-nav'
+          style={{ width: '100%', minWidth: 0, maxWidth: '100%' }}
           defaultIsCollapsed={collapsed}
           isCollapsed={collapsed}
           onCollapseChange={toggleCollapsed}

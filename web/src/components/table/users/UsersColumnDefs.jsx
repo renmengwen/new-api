@@ -247,6 +247,7 @@ const renderOperations = (
           <Button
             type='danger'
             size='small'
+            theme='solid'
             onClick={() => showEnableDisableModal(record, 'disable')}
           >
             {t('禁用')}

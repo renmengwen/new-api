@@ -78,11 +78,6 @@ const fieldStyle = {
   gap: 6,
 };
 
-const actionLinkStyle = {
-  paddingLeft: 0,
-  paddingRight: 0,
-};
-
 const AdminAgentsPageV2 = () => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
@@ -368,12 +363,10 @@ const AdminAgentsPageV2 = () => {
         dataIndex: 'operate',
         width: 220,
         render: (_, record) => (
-          <Space spacing={12}>
+          <Space>
             <Button
               size='small'
-              theme='borderless'
               type='tertiary'
-              style={actionLinkStyle}
               onClick={() => loadAgentDetail(record.id)}
             >
               {t('详情')}
@@ -381,9 +374,7 @@ const AdminAgentsPageV2 = () => {
             {canUpdate ? (
               <Button
                 size='small'
-                theme='borderless'
                 type='tertiary'
-                style={actionLinkStyle}
                 onClick={() => openEditModal(record)}
               >
                 {t('编辑')}
@@ -392,9 +383,8 @@ const AdminAgentsPageV2 = () => {
             {canUpdateStatus ? (
               <Button
                 size='small'
-                theme='borderless'
+                theme={record.status === 1 ? 'solid' : 'light'}
                 type={record.status === 1 ? 'danger' : 'primary'}
-                style={actionLinkStyle}
                 onClick={() => handleStatusUpdate(record, record.status !== 1)}
               >
                 {record.status === 1 ? t('停用') : t('启用')}
