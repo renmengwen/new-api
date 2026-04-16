@@ -298,3 +298,56 @@ func TestDeletePermissionTemplateAllowsHistoricalBindingOnly(t *testing.T) {
 	require.NoError(t, db.Model(&model.PermissionProfileItem{}).Where("profile_id = ?", profile.Id).Count(&itemCount).Error)
 	require.Zero(t, itemCount)
 }
+
+func TestDeletePermissionTemplateAllowsRecreateWithSameNameAndType(t *testing.T) {
+	db := setupAdminPermissionTestDB(t)
+
+	createBody := map[string]any{
+		"profile_name": "Reusable Template",
+		"profile_type": model.UserTypeAgent,
+		"description":  "template that should be reusable after delete",
+		"status":       model.CommonStatusEnabled,
+		"items": []map[string]any{
+			{
+				"resource_key": "user_management",
+				"action_key":   "read",
+				"allowed":      true,
+			},
+		},
+	}
+
+	createCtx, createRecorder := newAdminPermissionContext(t, http.MethodPost, "/api/admin/permission-templates", createBody)
+	CreatePermissionTemplate(createCtx)
+
+	var createResponse adminPermissionAPIResponse
+	require.NoError(t, common.Unmarshal(createRecorder.Body.Bytes(), &createResponse))
+	require.True(t, createResponse.Success, createResponse.Message)
+
+	var profile model.PermissionProfile
+	require.NoError(t, db.Where("profile_name = ? AND profile_type = ?", "Reusable Template", model.UserTypeAgent).First(&profile).Error)
+
+	deleteCtx, deleteRecorder := newAdminPermissionContext(
+		t,
+		http.MethodDelete,
+		"/api/admin/permission-templates/"+strconv.Itoa(profile.Id),
+		nil,
+	)
+	deleteCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(profile.Id)}}
+
+	DeletePermissionTemplate(deleteCtx)
+
+	var deleteResponse adminPermissionAPIResponse
+	require.NoError(t, common.Unmarshal(deleteRecorder.Body.Bytes(), &deleteResponse))
+	require.True(t, deleteResponse.Success, deleteResponse.Message)
+
+	recreateCtx, recreateRecorder := newAdminPermissionContext(t, http.MethodPost, "/api/admin/permission-templates", createBody)
+	CreatePermissionTemplate(recreateCtx)
+
+	var recreateResponse adminPermissionAPIResponse
+	require.NoError(t, common.Unmarshal(recreateRecorder.Body.Bytes(), &recreateResponse))
+	require.True(t, recreateResponse.Success, recreateResponse.Message)
+
+	var profileCount int64
+	require.NoError(t, db.Model(&model.PermissionProfile{}).Where("profile_name = ? AND profile_type = ?", "Reusable Template", model.UserTypeAgent).Count(&profileCount).Error)
+	require.Equal(t, int64(1), profileCount)
+}

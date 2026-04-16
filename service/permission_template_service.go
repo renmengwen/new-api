@@ -177,7 +177,8 @@ func DeletePermissionTemplate(profileId int) error {
 		if err := tx.Where("profile_id = ?", profileId).Delete(&model.PermissionProfileItem{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Delete(&profile).Error; err != nil {
+		// Hard delete releases the unique (profile_name, profile_type) slot for template reuse.
+		if err := tx.Unscoped().Delete(&profile).Error; err != nil {
 			return err
 		}
 		return nil
