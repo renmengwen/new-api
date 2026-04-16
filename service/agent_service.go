@@ -54,6 +54,12 @@ func CreateAgentWithOperator(req CreateAgentRequest, operatorUserId int, operato
 		Phone:       strings.TrimSpace(req.ContactPhone),
 	}
 
+	inviterId := 0
+	if operatorUserId > 0 && (operatorUserType == model.UserTypeRoot || operatorUserType == model.UserTypeAdmin) {
+		inviterId = operatorUserId
+		user.InviterId = inviterId
+	}
+
 	tx := model.DB.Begin()
 	if tx.Error != nil {
 		return nil, tx.Error
@@ -64,7 +70,7 @@ func CreateAgentWithOperator(req CreateAgentRequest, operatorUserId int, operato
 		}
 	}()
 
-	if err := user.InsertWithTx(tx, 0, "agent_create"); err != nil {
+	if err := user.InsertWithTx(tx, inviterId, "agent_create"); err != nil {
 		tx.Rollback()
 		return nil, err
 	}

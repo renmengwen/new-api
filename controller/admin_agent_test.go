@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -150,6 +151,78 @@ func TestCreateAgentPersistsRequestedGroup(t *testing.T) {
 	var user model.User
 	require.NoError(t, db.Where("username = ?", "agent_group_1").First(&user).Error)
 	require.Equal(t, "EZModel", user.Group)
+}
+
+func TestCreateAgentSetsRootCreatorAsInviter(t *testing.T) {
+	db := setupAdminAgentTestDB(t)
+
+	root := model.User{
+		Id:          999,
+		Username:    "root_creator_agent",
+		Password:    "hashed-password",
+		DisplayName: "Root Creator",
+		Role:        common.RoleRootUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeRoot,
+		Group:       "default",
+		AffCode:     "rootcreatoragent",
+	}
+	require.NoError(t, db.Create(&root).Error)
+
+	ctx, recorder := newAdminAgentContext(t, http.MethodPost, "/api/admin/agents", map[string]any{
+		"username":      "agent_invited_by_root",
+		"password":      "12345678",
+		"agent_name":    "Root Invited Agent",
+		"company_name":  "Shenzhou",
+		"contact_phone": "13800000000",
+	})
+	CreateAgent(ctx)
+
+	var response adminAgentAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var user model.User
+	require.NoError(t, db.Where("username = ?", "agent_invited_by_root").First(&user).Error)
+	require.Equal(t, root.Id, user.InviterId)
+}
+
+func TestCreateAgentSetsAdminCreatorAsInviter(t *testing.T) {
+	db := setupAdminAgentTestDB(t)
+
+	admin := model.User{
+		Username:    "admin_creator_agent",
+		Password:    "hashed-password",
+		DisplayName: "Admin Creator",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAdmin,
+		Group:       "default",
+		AffCode:     "admincreatoragent",
+	}
+	require.NoError(t, db.Create(&admin).Error)
+	grantPermissionActions(t, db, admin.Id, model.UserTypeAdmin,
+		permissionGrant{Resource: service.ResourceAgentManagement, Action: service.ActionCreate},
+	)
+
+	ctx, recorder := newAdminAgentContext(t, http.MethodPost, "/api/admin/agents", map[string]any{
+		"username":      "agent_invited_by_admin",
+		"password":      "12345678",
+		"agent_name":    "Admin Invited Agent",
+		"company_name":  "Shenzhou",
+		"contact_phone": "13800000000",
+	})
+	ctx.Set("id", admin.Id)
+	ctx.Set("role", admin.Role)
+	CreateAgent(ctx)
+
+	var response adminAgentAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var user model.User
+	require.NoError(t, db.Where("username = ?", "agent_invited_by_admin").First(&user).Error)
+	require.Equal(t, admin.Id, user.InviterId)
 }
 
 func TestGetAgentsReturnsCreatedAgent(t *testing.T) {

@@ -528,6 +528,31 @@ func TestExportQuotaLedgerUsesEntryTypeFilterAndCap(t *testing.T) {
 	}
 }
 
+func TestExportQuotaLedgerFormatsQuotaColumnsAsUSD(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	fixture := seedQuotaLedgerRows(t, db, 1, model.LedgerEntryAdjust)
+
+	ctx, recorder := newSettingAuditContext(t, http.MethodPost, "/api/admin/quota/ledger/export", map[string]any{
+		"user_id":          2001,
+		"operator_user_id": 9001,
+		"entry_type":       model.LedgerEntryAdjust,
+		"limit":            10,
+	})
+
+	ExportQuotaLedger(ctx)
+
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	rows, err := workbook.GetRows(workbook.GetSheetName(0))
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+
+	dataRow := rows[1]
+	require.Equal(t, strconv.Itoa(fixture.LatestMatching.Id), dataRow[0])
+	require.Equal(t, "$0.000002", dataRow[5])
+	require.Equal(t, "$0.200000", dataRow[6])
+	require.Equal(t, "$0.200002", dataRow[7])
+}
+
 func TestExportAdminAuditLogsServiceHelperCapsLimit(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 	seedAuditLogs(t, db, 2050, "quota", 9001)
