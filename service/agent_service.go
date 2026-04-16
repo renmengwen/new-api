@@ -15,6 +15,7 @@ type CreateAgentRequest struct {
 	AgentName    string `json:"agent_name"`
 	CompanyName  string `json:"company_name"`
 	ContactPhone string `json:"contact_phone"`
+	Group        string `json:"group"`
 	Remark       string `json:"remark"`
 }
 
@@ -49,8 +50,14 @@ func CreateAgentWithOperator(req CreateAgentRequest, operatorUserId int, operato
 		Role:        common.RoleCommonUser,
 		Status:      common.UserStatusEnabled,
 		UserType:    model.UserTypeAgent,
-		Group:       "default",
+		Group:       firstNonEmpty(strings.TrimSpace(req.Group), "default"),
 		Phone:       strings.TrimSpace(req.ContactPhone),
+	}
+
+	inviterId := 0
+	if operatorUserId > 0 && (operatorUserType == model.UserTypeRoot || operatorUserType == model.UserTypeAdmin) {
+		inviterId = operatorUserId
+		user.InviterId = inviterId
 	}
 
 	tx := model.DB.Begin()
@@ -63,7 +70,7 @@ func CreateAgentWithOperator(req CreateAgentRequest, operatorUserId int, operato
 		}
 	}()
 
-	if err := user.InsertWithTx(tx, 0, "agent_create"); err != nil {
+	if err := user.InsertWithTx(tx, inviterId, "agent_create"); err != nil {
 		tx.Rollback()
 		return nil, err
 	}

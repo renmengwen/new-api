@@ -32,9 +32,10 @@ import { IconMore } from '@douyinfe/semi-icons';
 import { renderGroup, renderNumber, renderQuota } from '../../../helpers';
 import { isUserDeleted } from './statusHelpers';
 import { getInviteOwnerName } from './inviteHelpers';
+import { resolveDisplayUserRole } from './roleHelpers';
 
 const renderRole = (role, userType, t) => {
-  switch (userType) {
+  switch (resolveDisplayUserRole(role, userType)) {
     case 'agent':
       return (
         <Tag color='purple' shape='circle'>
@@ -57,29 +58,6 @@ const renderRole = (role, userType, t) => {
       return (
         <Tag color='blue' shape='circle'>
           {t('普通用户')}
-        </Tag>
-      );
-    default:
-      break;
-  }
-
-  switch (role) {
-    case 1:
-      return (
-        <Tag color='blue' shape='circle'>
-          {t('普通用户')}
-        </Tag>
-      );
-    case 10:
-      return (
-        <Tag color='yellow' shape='circle'>
-          {t('管理员')}
-        </Tag>
-      );
-    case 100:
-      return (
-        <Tag color='orange' shape='circle'>
-          {t('超级管理员')}
         </Tag>
       );
     default:

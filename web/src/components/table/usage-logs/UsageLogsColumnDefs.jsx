@@ -853,6 +853,7 @@ export const getLogsColumns = ({
       key: COLUMN_KEYS.RETRY,
       title: t('重试'),
       dataIndex: 'retry',
+      width: 220,
       render: (text, record, index) => {
         if (!(record.type === 2 || record.type === 5)) {
           return <></>;

@@ -34,7 +34,6 @@ const LogsTable = (logsData) => {
     activePage,
     pageSize,
     logCount,
-    compactMode,
     visibleColumns,
     handlePageChange,
     handlePageSizeChange,
@@ -78,11 +77,7 @@ const LogsTable = (logsData) => {
     return getVisibleColumns();
   }, [visibleColumns, allColumns]);
 
-  const tableColumns = useMemo(() => {
-    return compactMode
-      ? visibleColumnsList.map(({ fixed, ...rest }) => rest)
-      : visibleColumnsList;
-  }, [compactMode, visibleColumnsList]);
+  const tableColumns = useMemo(() => visibleColumnsList, [visibleColumnsList]);
 
   const expandRowRender = (record, index) => {
     return <Descriptions data={expandData[record.key]} />;
@@ -100,7 +95,7 @@ const LogsTable = (logsData) => {
       dataSource={logs}
       rowKey='key'
       loading={loading}
-      scroll={compactMode ? undefined : { x: 'max-content' }}
+      scroll={{ x: 'max-content' }}
       className='rounded-xl overflow-hidden'
       size='small'
       empty={

@@ -1,3 +1,22 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Banner,
@@ -6,6 +25,7 @@ import {
   Empty,
   Input,
   Modal,
+  Select,
   Space,
   Table,
   Tag,
@@ -18,6 +38,7 @@ import CardPro from '../../components/common/ui/CardPro';
 import { API, createCardProPagination, showError, showSuccess, timestamp2string } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
+import { toGroupOptions } from '../../hooks/users/useUsersData.helpers';
 
 const { Text, Title } = Typography;
 
@@ -26,6 +47,7 @@ const emptyFormState = {
   password: '',
   display_name: '',
   remark: '',
+  group: '',
 };
 
 const sectionStyle = {
@@ -80,6 +102,8 @@ const AdminManagersPageV2 = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState(null);
   const [formState, setFormState] = useState(emptyFormState);
+  const [groupOptions, setGroupOptions] = useState([]);
+  const [defaultGroup, setDefaultGroup] = useState('');
 
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -90,7 +114,27 @@ const AdminManagersPageV2 = () => {
   const closeModal = () => {
     setModalVisible(false);
     setEditingRecord(null);
-    setFormState(emptyFormState);
+    setFormState({ ...emptyFormState, group: defaultGroup });
+  };
+
+  const fetchGroups = async () => {
+    try {
+      const res = await API.get('/api/group/');
+      if (res?.data?.success !== true) {
+        showError(res?.data?.message || t('加载分组列表失败'));
+        return;
+      }
+      const options = toGroupOptions(res.data);
+      setGroupOptions(options);
+      const nextDefaultGroup = options[0]?.value || '';
+      setDefaultGroup(nextDefaultGroup);
+      setFormState((prev) => ({
+        ...prev,
+        group: prev.group || nextDefaultGroup,
+      }));
+    } catch (error) {
+      showError(error);
+    }
   };
 
   const loadManagers = async (nextPage = page, nextPageSize = pageSize, nextKeyword = keyword) => {
@@ -155,7 +199,7 @@ const AdminManagersPageV2 = () => {
 
   const openCreateModal = () => {
     setEditingRecord(null);
-    setFormState(emptyFormState);
+    setFormState({ ...emptyFormState, group: defaultGroup });
     setModalVisible(true);
   };
 
@@ -167,6 +211,7 @@ const AdminManagersPageV2 = () => {
       password: '',
       display_name: record.display_name || '',
       remark: record.remark || '',
+      group: record.group || defaultGroup,
     });
 
     try {
@@ -181,6 +226,7 @@ const AdminManagersPageV2 = () => {
         password: '',
         display_name: data.display_name || '',
         remark: data.remark || '',
+        group: data.group || defaultGroup,
       });
     } catch (error) {
       showError(error);
@@ -193,6 +239,11 @@ const AdminManagersPageV2 = () => {
       return;
     }
 
+    if (!editingRecord && !formState.group) {
+      showError(t('请选择分组'));
+      return;
+    }
+
     setSubmitting(true);
     try {
       const payload = {
@@ -200,6 +251,7 @@ const AdminManagersPageV2 = () => {
         password: formState.password,
         display_name: formState.display_name.trim(),
         remark: formState.remark.trim(),
+        group: formState.group,
       };
 
       const res = editingRecord
@@ -249,6 +301,7 @@ const AdminManagersPageV2 = () => {
   };
 
   useEffect(() => {
+    fetchGroups();
     if (!permissionLoading && canRead) {
       loadManagers(1, pageSize, '');
     }
@@ -403,6 +456,19 @@ const AdminManagersPageV2 = () => {
                   onChange={(value) => setFormState((prev) => ({ ...prev, display_name: value }))}
                 />
               </div>
+              {!editingRecord ? (
+                <div style={fieldStyle}>
+                  <Text type='tertiary'>{t('分组')}</Text>
+                  <Select
+                    placeholder={t('请选择分组')}
+                    optionList={groupOptions}
+                    value={formState.group}
+                    onChange={(value) =>
+                      setFormState((prev) => ({ ...prev, group: value || '' }))
+                    }
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
           <div style={sectionBlockStyle}>

@@ -237,6 +237,10 @@ func GetAllUsers(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if err = service.PopulateUserInviteOwnerUsernames(users); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(users)
@@ -251,6 +255,10 @@ func SearchUsers(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	users, total, err := model.SearchUsers(keyword, group, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err = service.PopulateUserInviteOwnerUsernames(users); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -916,6 +924,11 @@ func CreateUser(c *gin.Context) {
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
 	}
+	targetGroup := strings.TrimSpace(user.Group)
+	if targetGroup == "" {
+		targetGroup = "default"
+	}
+	cleanUser.Group = targetGroup
 	if err := cleanUser.Insert(0); err != nil {
 		apiUserInputError(c, err)
 		return

@@ -364,9 +364,9 @@ func applyAgentQuotaTransferTx(tx *gorm.DB, operator *model.User, targetUser *mo
 			shortfall := amount - agentAccount.Balance
 			return nil, fmt.Errorf(
 				"insufficient agent quota balance: available %s, required %s, shortfall %s",
-				formatQuotaUSD(agentAccount.Balance),
-				formatQuotaUSD(amount),
-				formatQuotaUSD(shortfall),
+				FormatQuotaUSD(agentAccount.Balance),
+				FormatQuotaUSD(amount),
+				FormatQuotaUSD(shortfall),
 			)
 		}
 		agentAfter -= amount
@@ -1028,7 +1028,7 @@ func absInt(v int) int {
 	return v
 }
 
-func formatQuotaUSD(amount int) string {
+func FormatQuotaUSD(amount int) string {
 	if common.QuotaPerUnit <= 0 {
 		return fmt.Sprintf("$%d", amount)
 	}

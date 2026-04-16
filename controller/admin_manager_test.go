@@ -139,6 +139,28 @@ func TestCreateAdminManagerCreatesOpeningLedgerEntry(t *testing.T) {
 	require.Equal(t, "create", audit.ActionType)
 }
 
+func TestCreateAdminManagerPersistsRequestedGroup(t *testing.T) {
+	db := setupAdminManagerTestDB(t)
+
+	ctx, recorder := newAdminManagerContext(t, http.MethodPost, "/api/admin/admin-users", map[string]any{
+		"username":     "admin_group_1",
+		"password":     "12345678",
+		"display_name": "Admin Group",
+		"remark":       "ops",
+		"group":        "EZModel",
+	})
+
+	CreateAdminManager(ctx)
+
+	var response adminManagerAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var user model.User
+	require.NoError(t, db.Where("username = ?", "admin_group_1").First(&user).Error)
+	require.Equal(t, "EZModel", user.Group)
+}
+
 func TestGetAdminManagersReturnsAdminUsers(t *testing.T) {
 	db := setupAdminManagerTestDB(t)
 

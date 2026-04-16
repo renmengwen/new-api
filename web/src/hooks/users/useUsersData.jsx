@@ -22,7 +22,11 @@ import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
-import { normalizeUserPageData, toGroupOptions } from './useUsersData.helpers';
+import {
+  normalizeUserPageData,
+  toGroupOptions,
+  toManagedGroupOptions,
+} from './useUsersData.helpers';
 import { isUserDeleted } from '../../components/table/users/statusHelpers';
 
 export const useUsersData = (mode = 'legacy') => {
@@ -289,7 +293,17 @@ export const useUsersData = (mode = 'legacy') => {
   // Fetch groups data
   const fetchGroups = async () => {
     try {
-      let res = await API.get(`/api/group/`);
+      if (isManagedMode) {
+        const res = await API.get('/api/user/self/groups');
+        if (res === undefined) {
+          return;
+        }
+        const userGroup = JSON.parse(localStorage.getItem('user'))?.group;
+        setGroupOptions(toManagedGroupOptions(res.data.data, userGroup));
+        return;
+      }
+
+      let res = await API.get('/api/group/');
       if (res === undefined) {
         return;
       }
@@ -343,11 +357,7 @@ export const useUsersData = (mode = 'legacy') => {
       .catch((reason) => {
         showError(reason);
       });
-    if (!isManagedMode) {
-      fetchGroups().then();
-    } else {
-      setGroupOptions([]);
-    }
+    fetchGroups().then();
   }, [mode]);
 
   return {
@@ -400,4 +410,3 @@ export const useUsersData = (mode = 'legacy') => {
     t,
   };
 };
-

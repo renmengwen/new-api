@@ -272,14 +272,20 @@ func UpdateAdminUserWithOperator(targetUserId int, req UpdateAdminUserRequest, o
 	user.Quota = targetQuota
 
 	updatePassword := strings.TrimSpace(req.Password) != ""
+	validationUser := *user
 	if updatePassword {
-		user.Password = req.Password
+		validationUser.Password = req.Password
+	} else {
+		validationUser.Password = "$I_LOVE_U"
 	}
 
-	if err := common.Validate.Struct(user); err != nil {
+	if err := common.Validate.Struct(&validationUser); err != nil {
 		return err
 	}
 	user.Quota = originalQuota
+	if updatePassword {
+		user.Password = req.Password
+	}
 
 	tx := model.DB.Begin()
 	if tx.Error != nil {

@@ -72,3 +72,59 @@ func TestSearchUsersExcludesSoftDeletedUsers(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, float64(activeUser.Id), item["id"])
 }
+
+func TestGetAllUsersIncludesParentAgentUsernameForOwnedUsers(t *testing.T) {
+	db := setupLegacyUpdateUserQuotaTestDB(t)
+	agent := seedLegacyUpdateUserQuotaTarget(t, db, "legacy_parent_agent", model.UserTypeAgent, common.RoleAdminUser, 0)
+	ownedUser := seedLegacyUpdateUserQuotaTarget(t, db, "legacy_owned_user", model.UserTypeEndUser, common.RoleCommonUser, 600)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", ownedUser.Id).Update("parent_agent_id", agent.Id).Error)
+
+	ctx, recorder := newLegacyUserListContext(http.MethodGet, "/api/user/?p=1&page_size=10")
+	GetAllUsers(ctx)
+
+	var response legacyUserPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+
+	var ownedItem map[string]any
+	for _, rawItem := range items {
+		item, ok := rawItem.(map[string]any)
+		require.True(t, ok)
+		if item["id"] == float64(ownedUser.Id) {
+			ownedItem = item
+			break
+		}
+	}
+
+	require.NotNil(t, ownedItem)
+	require.Equal(t, "legacy_parent_agent", ownedItem["parent_agent_username"])
+}
+
+func TestSearchUsersIncludesParentAgentUsernameForOwnedUsers(t *testing.T) {
+	db := setupLegacyUpdateUserQuotaTestDB(t)
+	agent := seedLegacyUpdateUserQuotaTarget(t, db, "legacy_search_parent_agent", model.UserTypeAgent, common.RoleAdminUser, 0)
+	ownedUser := seedLegacyUpdateUserQuotaTarget(t, db, "legacy_search_owned_user", model.UserTypeEndUser, common.RoleCommonUser, 600)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", ownedUser.Id).Update("parent_agent_id", agent.Id).Error)
+
+	ctx, recorder := newLegacyUserListContext(
+		http.MethodGet,
+		"/api/user/search?keyword=legacy_search_owned_user&group=&p=1&page_size=10",
+	)
+	SearchUsers(ctx)
+
+	var response legacyUserPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+	require.Len(t, items, 1)
+
+	item, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(ownedUser.Id), item["id"])
+	require.Equal(t, "legacy_search_parent_agent", item["parent_agent_username"])
+}
