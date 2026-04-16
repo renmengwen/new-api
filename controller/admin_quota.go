@@ -167,7 +167,7 @@ func buildQuotaLedgerExportRows(items []service.QuotaLedgerListItem) [][]string 
 			service.FormatQuotaUSD(item.BalanceBefore),
 			service.FormatQuotaUSD(item.BalanceAfter),
 			item.ModelName,
-			item.SourceType,
+			service.GetQuotaSourceTypeLabel(item.SourceType),
 			service.GetQuotaReasonLabel(item.Reason),
 			item.Remark,
 			formatExportTimestamp(item.CreatedAtTs),
