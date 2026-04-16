@@ -593,6 +593,86 @@ func TestExportQuotaLedgerIncludesModelNameColumnForConsumeEntries(t *testing.T)
 	require.Equal(t, "claude-4-sonnet", rows[1][modelNameColumn])
 }
 
+func TestExportQuotaLedgerBackfillsModelNameForSplitWalletConsumeRows(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+
+	seedListExportUsers(t, db,
+		testListExportUser(9001, "root_operator", "Root Operator", common.RoleRootUser, model.UserTypeRoot),
+	)
+	user := testListExportUser(9201, "quota_export_split_user", "Quota Export Split User", common.RoleCommonUser, model.UserTypeEndUser)
+	require.NoError(t, db.Create(&user).Error)
+	require.NoError(t, db.Create(&model.QuotaAccount{
+		OwnerType:      model.QuotaOwnerTypeUser,
+		OwnerId:        user.Id,
+		Balance:        1000000,
+		TotalRecharged: 1000000,
+		Status:         model.CommonStatusEnabled,
+		CreatedAtTs:    1811000400,
+		UpdatedAtTs:    1811000400,
+	}).Error)
+
+	account, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, user.Id)
+	require.NoError(t, err)
+
+	require.NoError(t, db.Create(&[]model.QuotaLedger{
+		{
+			BizNo:            "ql_export_wallet_preconsume_match",
+			AccountId:        account.Id,
+			EntryType:        model.LedgerEntryConsume,
+			Direction:        model.LedgerDirectionOut,
+			Amount:           7240,
+			BalanceBefore:    1000000,
+			BalanceAfter:     992760,
+			SourceType:       "wallet_preconsume",
+			SourceId:         user.Id,
+			OperatorUserId:   user.Id,
+			OperatorUserType: model.UserTypeEndUser,
+			Reason:           "钱包预扣",
+			CreatedAtTs:      1811000400,
+		},
+		{
+			BizNo:            "ql_export_wallet_settle_match",
+			AccountId:        account.Id,
+			EntryType:        model.LedgerEntryConsume,
+			Direction:        model.LedgerDirectionOut,
+			Amount:           716,
+			BalanceBefore:    992760,
+			BalanceAfter:     992044,
+			SourceType:       "wallet_settle",
+			SourceId:         user.Id,
+			OperatorUserId:   user.Id,
+			OperatorUserType: model.UserTypeEndUser,
+			Reason:           "钱包结算扣费",
+			CreatedAtTs:      1811000404,
+		},
+	}).Error)
+
+	require.NoError(t, db.Create(&model.Log{
+		UserId:    user.Id,
+		Username:  user.Username,
+		CreatedAt: 1811000404,
+		Type:      model.LogTypeConsume,
+		Content:   "wallet split consume export log",
+		ModelName: "claude-opus-4-6",
+		Quota:     7956,
+	}).Error)
+
+	ctx, recorder := newSettingAuditContext(t, http.MethodPost, "/api/admin/quota/ledger/export", map[string]any{
+		"user_id":    user.Id,
+		"entry_type": model.LedgerEntryConsume,
+		"limit":      10,
+	})
+
+	ExportQuotaLedger(ctx)
+
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	rows, err := workbook.GetRows(workbook.GetSheetName(0))
+	require.NoError(t, err)
+	require.Len(t, rows, 3)
+	require.Equal(t, "claude-opus-4-6", rows[1][8])
+	require.Equal(t, "claude-opus-4-6", rows[2][8])
+}
+
 func TestExportAdminAuditLogsServiceHelperCapsLimit(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 	seedAuditLogs(t, db, 2050, "quota", 9001)
