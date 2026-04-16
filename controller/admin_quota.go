@@ -162,7 +162,7 @@ func buildQuotaLedgerExportRows(items []service.QuotaLedgerListItem) [][]string 
 			formatQuotaLedgerAccount(item),
 			formatQuotaLedgerOperator(item),
 			service.GetQuotaEntryTypeLabel(item.EntryType),
-			item.Direction,
+			service.GetQuotaDirectionLabel(item.Direction),
 			service.FormatQuotaUSD(item.Amount),
 			service.FormatQuotaUSD(item.BalanceBefore),
 			service.FormatQuotaUSD(item.BalanceAfter),

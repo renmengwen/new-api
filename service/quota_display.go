@@ -62,6 +62,11 @@ var quotaLedgerSourceTypeLabels = map[string]string{
 	"midjourney_refund":        "绘图任务退款",
 }
 
+var quotaLedgerDirectionLabels = map[string]string{
+	"in":  "入账",
+	"out": "出账",
+}
+
 func GetQuotaEntryTypeLabel(entryType string) string {
 	if entryType == "" {
 		return "-"
@@ -93,4 +98,14 @@ func GetQuotaSourceTypeLabel(sourceType string) string {
 		return label
 	}
 	return sourceType
+}
+
+func GetQuotaDirectionLabel(direction string) string {
+	if direction == "" {
+		return "-"
+	}
+	if label, ok := quotaLedgerDirectionLabels[direction]; ok {
+		return label
+	}
+	return direction
 }
