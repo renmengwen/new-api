@@ -116,7 +116,7 @@ func ExportQuotaLedger(c *gin.Context) {
 	fileName, content, err := service.BuildExcelFile(service.ExcelFileSpec{
 		FileNamePrefix: "额度流水",
 		SheetName:      "额度流水",
-		Headers:        []string{"ID", "账户", "操作人", "类型", "方向", "额度", "变更前", "变更后", "来源", "原因", "备注", "时间"},
+		Headers:        []string{"ID", "账户", "操作人", "类型", "方向", "额度", "变更前", "变更后", "模型名称", "来源", "原因", "备注", "时间"},
 		Rows:           buildQuotaLedgerExportRows(items),
 	})
 	if err != nil {
@@ -166,6 +166,7 @@ func buildQuotaLedgerExportRows(items []service.QuotaLedgerListItem) [][]string 
 			service.FormatQuotaUSD(item.Amount),
 			service.FormatQuotaUSD(item.BalanceBefore),
 			service.FormatQuotaUSD(item.BalanceAfter),
+			item.ModelName,
 			item.SourceType,
 			service.GetQuotaReasonLabel(item.Reason),
 			item.Remark,

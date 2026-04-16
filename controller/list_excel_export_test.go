@@ -514,7 +514,7 @@ func TestExportQuotaLedgerUsesEntryTypeFilterAndCap(t *testing.T) {
 	require.Equal(t, "quota_user", dataRows[0][1])
 	require.Contains(t, dataRows[0][2], "[ID:9001]")
 	require.Equal(t, "调额", dataRows[0][3])
-	require.Equal(t, "手动调额", dataRows[0][9])
+	require.Equal(t, "手动调额", dataRows[0][10])
 	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.EntryTypeMismatch.Id))
 	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.UserMismatch.Id))
 	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.OperatorMismatch.Id))
@@ -524,7 +524,7 @@ func TestExportQuotaLedgerUsesEntryTypeFilterAndCap(t *testing.T) {
 		require.Equal(t, "quota_user", row[1])
 		require.Contains(t, row[2], "[ID:9001]")
 		require.Equal(t, "调额", row[3])
-		require.Equal(t, "手动调额", row[9])
+		require.Equal(t, "手动调额", row[10])
 	}
 }
 
@@ -551,6 +551,46 @@ func TestExportQuotaLedgerFormatsQuotaColumnsAsUSD(t *testing.T) {
 	require.Equal(t, "$0.000002", dataRow[5])
 	require.Equal(t, "$0.200000", dataRow[6])
 	require.Equal(t, "$0.200002", dataRow[7])
+}
+
+func TestExportQuotaLedgerIncludesModelNameColumnForConsumeEntries(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	fixture := seedQuotaLedgerRows(t, db, 1, model.LedgerEntryConsume)
+
+	require.NoError(t, db.Create(&model.Log{
+		UserId:    2001,
+		Username:  "quota_user",
+		CreatedAt: fixture.LatestMatching.CreatedAtTs - 1,
+		Type:      model.LogTypeConsume,
+		Content:   "consume export match",
+		ModelName: "claude-4-sonnet",
+		Quota:     fixture.LatestMatching.Amount,
+	}).Error)
+
+	ctx, recorder := newSettingAuditContext(t, http.MethodPost, "/api/admin/quota/ledger/export", map[string]any{
+		"user_id":          2001,
+		"operator_user_id": 9001,
+		"entry_type":       model.LedgerEntryConsume,
+		"limit":            10,
+	})
+
+	ExportQuotaLedger(ctx)
+
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	rows, err := workbook.GetRows(workbook.GetSheetName(0))
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	require.Contains(t, rows[0], "模型名称")
+
+	modelNameColumn := -1
+	for index, header := range rows[0] {
+		if header == "模型名称" {
+			modelNameColumn = index
+			break
+		}
+	}
+	require.NotEqual(t, -1, modelNameColumn)
+	require.Equal(t, "claude-4-sonnet", rows[1][modelNameColumn])
 }
 
 func TestExportAdminAuditLogsServiceHelperCapsLimit(t *testing.T) {
@@ -844,6 +884,7 @@ func setupListExcelExportTestDB(t *testing.T) *gorm.DB {
 	db := setupSettingAuditTestDB(t)
 	require.NoError(t, db.AutoMigrate(
 		&model.User{},
+		&model.Log{},
 		&model.PermissionProfile{},
 		&model.PermissionProfileItem{},
 		&model.UserPermissionBinding{},

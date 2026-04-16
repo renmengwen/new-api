@@ -45,6 +45,7 @@ func setupAdminQuotaTestDB(t *testing.T) *gorm.DB {
 	model.LOG_DB = db
 	require.NoError(t, db.AutoMigrate(
 		&model.User{},
+		&model.Log{},
 		&model.PermissionProfile{},
 		&model.PermissionProfileItem{},
 		&model.UserPermissionBinding{},
@@ -245,6 +246,102 @@ func TestGetQuotaLedgerIncludesAccountAndOperatorUsernames(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, target.Username, item["account_username"])
 	require.Equal(t, operator.Username, item["operator_username"])
+}
+
+func TestGetQuotaLedgerBackfillsModelNameFromConsumeLogs(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	user := seedQuotaUser(t, db, "quota_consume_user", 1000)
+
+	account, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, user.Id)
+	require.NoError(t, err)
+
+	consumeLedger := model.QuotaLedger{
+		BizNo:            "ql_consume_match",
+		AccountId:        account.Id,
+		TransferOrderId:  0,
+		EntryType:        model.LedgerEntryConsume,
+		Direction:        model.LedgerDirectionOut,
+		Amount:           120,
+		BalanceBefore:    1000,
+		BalanceAfter:     880,
+		SourceType:       "post_consume_quota",
+		SourceId:         user.Id,
+		OperatorUserId:   user.Id,
+		OperatorUserType: model.UserTypeEndUser,
+		Reason:           "post_consume_quota",
+		CreatedAtTs:      1811000100,
+	}
+	adjustLedger := model.QuotaLedger{
+		BizNo:            "ql_adjust_no_model",
+		AccountId:        account.Id,
+		TransferOrderId:  0,
+		EntryType:        model.LedgerEntryAdjust,
+		Direction:        model.LedgerDirectionIn,
+		Amount:           50,
+		BalanceBefore:    880,
+		BalanceAfter:     930,
+		SourceType:       "admin_quota_adjust",
+		SourceId:         user.Id,
+		OperatorUserId:   999,
+		OperatorUserType: model.UserTypeRoot,
+		Reason:           "manual_adjust",
+		CreatedAtTs:      1811000200,
+	}
+	require.NoError(t, db.Create(&consumeLedger).Error)
+	require.NoError(t, db.Create(&adjustLedger).Error)
+
+	logs := []model.Log{
+		{
+			UserId:    user.Id,
+			Username:  user.Username,
+			CreatedAt: 1811000098,
+			Type:      model.LogTypeConsume,
+			Content:   "consume nearby but older",
+			ModelName: "gpt-4o-mini",
+			Quota:     120,
+		},
+		{
+			UserId:    user.Id,
+			Username:  user.Username,
+			CreatedAt: 1811000080,
+			Type:      model.LogTypeConsume,
+			Content:   "consume farther candidate",
+			ModelName: "gpt-4.1",
+			Quota:     120,
+		},
+		{
+			UserId:    user.Id,
+			Username:  user.Username,
+			CreatedAt: 1811000199,
+			Type:      model.LogTypeConsume,
+			Content:   "adjust should not use this",
+			ModelName: "should-stay-empty",
+			Quota:     50,
+		},
+	}
+	require.NoError(t, db.Create(&logs).Error)
+
+	listCtx, recorder := newAdminQuotaContext(t, http.MethodGet, "/api/admin/quota/ledger?user_id="+strconv.Itoa(user.Id)+"&p=1&page_size=10", nil)
+	GetQuotaLedger(listCtx)
+
+	var response adminQuotaPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, 2, response.Data.Total)
+
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+	require.Len(t, items, 2)
+
+	latestItem, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "manual_adjust", latestItem["reason"])
+	require.Empty(t, latestItem["model_name"])
+
+	consumeItem, ok := items[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "post_consume_quota", consumeItem["reason"])
+	require.Equal(t, "gpt-4o-mini", consumeItem["model_name"])
 }
 
 func TestAdjustUserQuotaBatchCreatesBatchItemsAndAudits(t *testing.T) {
