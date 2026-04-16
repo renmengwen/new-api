@@ -1,5 +1,9 @@
 {
   "translation": {
+    "删除权限模板失败": "Failed to delete permission template",
+    "权限模板已删除": "Permission template deleted",
+    "确定要删除此权限模板吗？": "Are you sure you want to delete this permission template?",
+    "删除后不可恢复；如果模板仍被当前生效账号引用，系统会阻止删除。": "Deletion cannot be undone. If the template is still referenced by active accounts, the system will block the deletion.",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one": " + Web search {{count}} time / 1K times * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + Web search {{count}} times / 1K times * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}": " + Image generation call {{symbol}}{{price}} / 1 time * {{ratioType}} {{ratio}}",

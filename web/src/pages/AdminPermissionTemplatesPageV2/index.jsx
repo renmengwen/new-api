@@ -233,8 +233,10 @@ const AdminPermissionTemplatesPageV2 = () => {
         return;
       }
 
+      const nextTotal = Math.max(0, total - 1);
+      const nextPage = Math.min(page, Math.max(1, Math.ceil(nextTotal / pageSize)));
       showSuccess(t('权限模板已删除'));
-      await loadTemplates(page, pageSize, profileTypeFilter, keyword);
+      await loadTemplates(nextPage, pageSize, profileTypeFilter, keyword);
     } catch (error) {
       showError(error?.response?.data?.message || error?.message || t('删除权限模板失败'));
     }

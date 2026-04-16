@@ -1,5 +1,9 @@
 {
   "translation": {
+    "删除权限模板失败": "刪除權限模板失敗",
+    "权限模板已删除": "權限模板已刪除",
+    "确定要删除此权限模板吗？": "確定要刪除此權限模板嗎？",
+    "删除后不可恢复；如果模板仍被当前生效账号引用，系统会阻止删除。": "刪除後不可恢復；如果模板仍被目前生效帳號引用，系統會阻止刪除。",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + Web搜尋 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}": " + 圖片生成調用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}",
     " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + 檔案搜尋 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
