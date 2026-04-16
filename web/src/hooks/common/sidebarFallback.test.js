@@ -28,6 +28,7 @@ const DEFAULT_ADMIN_CONFIG = {
     'permission-templates': true,
     'user-permissions': true,
     'quota-ledger': true,
+    'audit-logs': true,
     setting: true,
   },
 };
@@ -59,6 +60,7 @@ test('admins receive admin sidebar access but not settings by fallback', () => {
 
   assert.equal(config.admin.enabled, true);
   assert.equal(config.admin.agents, true);
+  assert.equal(config.admin['audit-logs'], true);
   assert.equal(config.admin.setting, false);
 });
 
@@ -69,6 +71,7 @@ test('root users keep settings access by fallback', () => {
   });
 
   assert.equal(config.admin.enabled, true);
+  assert.equal(config.admin['audit-logs'], true);
   assert.equal(config.admin.setting, true);
 });
 

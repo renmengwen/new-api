@@ -338,6 +338,7 @@ const ModelTestModal = ({
           <Table
             columns={columns}
             dataSource={dataSource}
+            className='grid-bordered-table'
             rowSelection={{
               selectedRowKeys: selectedModelKeys,
               onChange: (keys) => {

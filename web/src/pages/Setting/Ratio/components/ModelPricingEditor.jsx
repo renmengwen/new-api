@@ -310,6 +310,7 @@ export default function ModelPricingEditor({
           >
             <div style={{ overflowX: 'auto' }}>
               <Table
+                className='grid-bordered-table'
                 columns={columns}
                 dataSource={pagedData}
                 rowKey='name'

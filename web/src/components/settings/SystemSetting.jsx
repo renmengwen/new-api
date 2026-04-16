@@ -35,6 +35,7 @@ import {
 const { Text } = Typography;
 import {
   API,
+  buildOptionAuditPayload,
   removeTrailingSlash,
   showError,
   showSuccess,
@@ -238,7 +239,7 @@ const SystemSetting = () => {
     getOptions();
   }, []);
 
-  const updateOptions = async (options) => {
+  const updateOptions = async (options, auditMeta = null) => {
     setLoading(true);
     try {
       // 分离 checkbox 类型的选项和其他选项
@@ -251,10 +252,16 @@ const SystemSetting = () => {
 
       // 处理 checkbox 类型的选项
       for (const opt of checkboxOptions) {
-        const res = await API.put('/api/option/', {
-          key: opt.key,
-          value: opt.value.toString(),
-        });
+        const res = await API.put(
+          '/api/option/',
+          buildOptionAuditPayload({
+            key: opt.key,
+            value: opt.value.toString(),
+            auditModule: auditMeta?.auditModule,
+            auditType: auditMeta?.auditType,
+            auditDesc: auditMeta?.auditDesc,
+          }),
+        );
         if (!res.data.success) {
           showError(res.data.message);
           return;
@@ -264,11 +271,19 @@ const SystemSetting = () => {
       // 处理其他选项
       if (otherOptions.length > 0) {
         const requestQueue = otherOptions.map((opt) =>
-          API.put('/api/option/', {
-            key: opt.key,
-            value:
-              typeof opt.value === 'boolean' ? opt.value.toString() : opt.value,
-          }),
+          API.put(
+            '/api/option/',
+            buildOptionAuditPayload({
+              key: opt.key,
+              value:
+                typeof opt.value === 'boolean'
+                  ? opt.value.toString()
+                  : opt.value,
+              auditModule: auditMeta?.auditModule,
+              auditType: auditMeta?.auditType,
+              auditDesc: auditMeta?.auditDesc,
+            }),
+          ),
         );
 
         const results = await Promise.all(requestQueue);
@@ -314,7 +329,14 @@ const SystemSetting = () => {
 
   const submitServerAddress = async () => {
     let ServerAddress = removeTrailingSlash(inputs.ServerAddress);
-    await updateOptions([{ key: 'ServerAddress', value: ServerAddress }]);
+    await updateOptions(
+      [{ key: 'ServerAddress', value: ServerAddress }],
+      {
+        auditModule: 'setting_system',
+        auditType: 'save_server_url',
+        auditDesc: '系统设置-系统设置-更新服务器地址',
+      },
+    );
   };
 
   const submitSMTP = async () => {

@@ -244,6 +244,7 @@ const AgentManagementTabEnhanced = ({
       ) : null}
 
       <Table
+        className='grid-bordered-table'
         columns={columns}
         dataSource={agents}
         loading={loading}

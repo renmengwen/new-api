@@ -61,6 +61,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     'permission-templates': true,
     'user-permissions': true,
     'quota-ledger': true,
+    'audit-logs': true,
     subscription: true,
     setting: true,
   },
@@ -304,4 +305,3 @@ export const useSidebar = () => {
     refreshUserConfig,
   };
 };
-

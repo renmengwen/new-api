@@ -10,6 +10,10 @@ import (
 
 func GetChannelAffinityCacheStats(c *gin.Context) {
 	stats := service.GetChannelAffinityCacheStats()
+	createSettingAuditLog(c, settingAuditMetaRefreshAffinityCacheStats, 0, "", marshalSettingAuditPayload(map[string]any{
+		"rule_count": len(stats.ByRuleName),
+		"total":      stats.Total,
+	}))
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -23,6 +27,10 @@ func ClearChannelAffinityCache(c *gin.Context) {
 
 	if all == "true" {
 		deleted := service.ClearChannelAffinityCacheAll()
+		createSettingAuditLog(c, settingAuditMetaClearAffinityCache, 0, "", marshalSettingAuditPayload(map[string]any{
+			"all":     true,
+			"deleted": deleted,
+		}))
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "",
@@ -49,6 +57,11 @@ func ClearChannelAffinityCache(c *gin.Context) {
 		})
 		return
 	}
+	createSettingAuditLog(c, settingAuditMetaClearAffinityCache, 0, "", marshalSettingAuditPayload(map[string]any{
+		"all":       false,
+		"rule_name": ruleName,
+		"deleted":   deleted,
+	}))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

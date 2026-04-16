@@ -2,7 +2,6 @@ package controller
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,6 +11,14 @@ import (
 	"github.com/QuantumNous/new-api/pkg/ionet"
 	"github.com/gin-gonic/gin"
 )
+
+type ioNetConnectionTester interface {
+	GetMaxGPUsPerContainer() (*ionet.MaxGPUResponse, error)
+}
+
+var newIoNetEnterpriseConnectionTester = func(apiKey string) ioNetConnectionTester {
+	return ionet.NewEnterpriseClient(apiKey)
+}
 
 func getIoAPIKey(c *gin.Context) (string, bool) {
 	common.OptionMapRWMutex.RLock()
@@ -66,7 +73,7 @@ func TestIoNetConnection(c *gin.Context) {
 		return
 	}
 	if len(bytes.TrimSpace(rawBody)) > 0 {
-		if err := json.Unmarshal(rawBody, &req); err != nil {
+		if err := common.DecodeJson(bytes.NewReader(rawBody), &req); err != nil {
 			common.ApiErrorMsg(c, "invalid request payload")
 			return
 		}
@@ -84,7 +91,7 @@ func TestIoNetConnection(c *gin.Context) {
 		apiKey = storedKey
 	}
 
-	client := ionet.NewEnterpriseClient(apiKey)
+	client := newIoNetEnterpriseConnectionTester(apiKey)
 	result, err := client.GetMaxGPUsPerContainer()
 	if err != nil {
 		if apiErr, ok := err.(*ionet.APIError); ok {
@@ -110,6 +117,10 @@ func TestIoNetConnection(c *gin.Context) {
 			}
 		}
 	}
+	createSettingAuditLog(c, settingAuditMetaTestIoNetConnection, 0, "", marshalSettingAuditPayload(map[string]any{
+		"hardware_count":  totalHardware,
+		"total_available": totalAvailable,
+	}))
 
 	common.ApiSuccess(c, gin.H{
 		"hardware_count":  totalHardware,

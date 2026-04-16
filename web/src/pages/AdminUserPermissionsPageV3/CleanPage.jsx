@@ -565,6 +565,7 @@ const AdminUserPermissionsCleanPage = () => {
           </div>
         ) : null}
         <Table
+          className='grid-bordered-table'
           size='small'
           columns={columns}
           dataSource={items}

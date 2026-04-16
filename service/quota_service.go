@@ -716,6 +716,40 @@ func updateQuotaAccountBalanceTx(tx *gorm.DB, accountId int, balance int, delta 
 }
 
 func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRole int, userId int, operatorUserId int, entryType string) ([]QuotaLedgerListItem, int64, error) {
+	query, err := buildQuotaLedgerListQuery(requesterUserId, requesterRole, userId, operatorUserId, entryType)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	items, err := fetchQuotaLedgerItems(query, pageInfo.GetPageSize(), pageInfo.GetStartIdx())
+	if err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
+func ListQuotaLedgerForExport(requesterUserId int, requesterRole int, userId int, operatorUserId int, entryType string, limit int) ([]QuotaLedgerListItem, int64, error) {
+	items, err := fetchQuotaLedgerItemsForExport(requesterUserId, requesterRole, userId, operatorUserId, entryType, clampExportQueryLimit(limit))
+	if err != nil {
+		return nil, 0, err
+	}
+	return items, 0, nil
+}
+
+func fetchQuotaLedgerItemsForExport(requesterUserId int, requesterRole int, userId int, operatorUserId int, entryType string, limit int) ([]QuotaLedgerListItem, error) {
+	query, err := buildQuotaLedgerListQuery(requesterUserId, requesterRole, userId, operatorUserId, entryType)
+	if err != nil {
+		return nil, err
+	}
+	return fetchQuotaLedgerItems(query, limit, 0)
+}
+
+func buildQuotaLedgerListQuery(requesterUserId int, requesterRole int, userId int, operatorUserId int, entryType string) (*gorm.DB, error) {
 	query := model.DB.Model(&model.QuotaLedger{}).
 		Joins("LEFT JOIN quota_accounts ON quota_accounts.id = quota_ledgers.account_id").
 		Joins("LEFT JOIN users AS account_users ON quota_accounts.owner_type = ? AND account_users.id = quota_accounts.owner_id", model.QuotaOwnerTypeUser).
@@ -723,7 +757,7 @@ func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRo
 
 	operator, err := ResolveOperatorUser(requesterUserId, requesterRole)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	if operator.GetUserType() == model.UserTypeAgent {
 		managedUserSubQuery := ApplyManagedEndUserScope(
@@ -744,19 +778,25 @@ func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRo
 
 	if userId > 0 {
 		if operator.GetUserType() == model.UserTypeAgent && userId == operator.Id {
-			account, err := ensureUserQuotaAccount(operator.Id)
+			account, err := getQuotaAccountByOwnerWithDB(model.DB, model.QuotaOwnerTypeUser, operator.Id)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return query.Where("1 = 0"), nil
+			}
 			if err != nil {
-				return nil, 0, err
+				return nil, err
 			}
 			query = query.Where("quota_ledgers.account_id = ?", account.Id)
 		} else {
 			managedUser, err := GetManagedEndUserForResource(userId, requesterUserId, requesterRole, ResourceQuotaManagement)
 			if err != nil {
-				return nil, 0, err
+				return nil, err
 			}
-			account, err := ensureUserQuotaAccount(managedUser.Id)
+			account, err := getQuotaAccountByOwnerWithDB(model.DB, model.QuotaOwnerTypeUser, managedUser.Id)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return query.Where("1 = 0"), nil
+			}
 			if err != nil {
-				return nil, 0, err
+				return nil, err
 			}
 			query = query.Where("quota_ledgers.account_id = ?", account.Id)
 		}
@@ -767,14 +807,12 @@ func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRo
 	if entryType != "" {
 		query = query.Where("quota_ledgers.entry_type = ?", entryType)
 	}
+	return query, nil
+}
 
-	var total int64
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
+func fetchQuotaLedgerItems(query *gorm.DB, limit int, offset int) ([]QuotaLedgerListItem, error) {
 	var items []QuotaLedgerListItem
-	if err := query.
+	err := query.
 		Select(
 			"quota_ledgers.id, quota_ledgers.biz_no, quota_ledgers.account_id, account_users.username AS account_username, " +
 				"quota_ledgers.transfer_order_id, quota_ledgers.entry_type, quota_ledgers.direction, quota_ledgers.amount, " +
@@ -783,12 +821,10 @@ func ListQuotaLedger(pageInfo *common.PageInfo, requesterUserId int, requesterRo
 				"quota_ledgers.reason, quota_ledgers.remark, quota_ledgers.created_at",
 		).
 		Order("quota_ledgers.id desc").
-		Limit(pageInfo.GetPageSize()).
-		Offset(pageInfo.GetStartIdx()).
-		Scan(&items).Error; err != nil {
-		return nil, 0, err
-	}
-	return items, total, nil
+		Limit(limit).
+		Offset(offset).
+		Scan(&items).Error
+	return items, err
 }
 
 func AdjustUserQuotaBatch(req AdjustUserQuotaBatchRequest) (map[string]any, error) {

@@ -447,7 +447,7 @@ const SettingsUptimeKuma = ({ options, refresh }) => {
               style={{ padding: 30 }}
             />
           }
-          className='overflow-hidden'
+          className='grid-bordered-table overflow-hidden'
         />
       </Form.Section>
 

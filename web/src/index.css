@@ -18,6 +18,10 @@
   --sidebar-width: 180px;
   --sidebar-width-collapsed: 60px;
   --sidebar-current-width: var(--sidebar-width);
+  --table-border-outer: rgba(52, 53, 58, 0.88);
+  --table-divider-strong: rgba(52, 53, 58, 0.58);
+  --table-divider-soft: rgba(52, 53, 58, 0.34);
+  --table-row-hover-soft: rgba(52, 53, 58, 0.03);
 }
 
 body.sidebar-collapsed {
@@ -549,6 +553,89 @@ html.dark .sbg-variant-green {
   background: transparent;
 }
 
+.grid-bordered-table.semi-table-wrapper .semi-table-container {
+  border: 0;
+  background: transparent;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: none;
+}
+
+.grid-bordered-table.semi-table-wrapper .semi-table-container > .semi-table-header,
+.grid-bordered-table.semi-table-wrapper .semi-table-container > .semi-table-body,
+.grid-bordered-table.semi-table-wrapper .semi-table-container > .semi-table-body > .semi-table,
+.grid-bordered-table.semi-table-wrapper .semi-table-container > .semi-table-body > .semi-table-placeholder,
+.grid-bordered-table.semi-table-wrapper .semi-table-container > .semi-table-header > .semi-table {
+  background: transparent;
+}
+
+.grid-bordered-table.semi-table-wrapper .semi-table-container > .semi-table-body
+  > .semi-table
+  > .semi-table-thead
+  > .semi-table-row
+  > .semi-table-row-head,
+.grid-bordered-table.semi-table-wrapper .semi-table-container > .semi-table-body
+  > .semi-table
+  > .semi-table-tbody
+  > .semi-table-row
+  > .semi-table-row-cell,
+.grid-bordered-table.semi-table-wrapper .semi-table-container > .semi-table-header
+  > .semi-table
+  > .semi-table-thead
+  > .semi-table-row
+  > .semi-table-row-head,
+.grid-bordered-table.semi-table-wrapper .semi-table-container > .semi-table-body
+  > .semi-table-placeholder {
+  border-right: 0 !important;
+  border-bottom: 1px solid #EDEDEE !important;
+  background: transparent;
+}
+
+.grid-bordered-table.semi-table-wrapper
+  .semi-table-container
+  > .semi-table-body
+  > .semi-table
+  > .semi-table-tbody
+  > .semi-table-row:hover
+  > .semi-table-row-cell {
+  background: rgba(15, 23, 42, 0.03);
+}
+
+html.dark .grid-bordered-table.semi-table-wrapper .semi-table-container {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(24, 27, 32, 0.88);
+}
+
+html.dark .grid-bordered-table.semi-table-wrapper .semi-table-container > .semi-table-body
+  > .semi-table
+  > .semi-table-thead
+  > .semi-table-row
+  > .semi-table-row-head,
+html.dark .grid-bordered-table.semi-table-wrapper .semi-table-container > .semi-table-body
+  > .semi-table
+  > .semi-table-tbody
+  > .semi-table-row
+  > .semi-table-row-cell,
+html.dark .grid-bordered-table.semi-table-wrapper .semi-table-container > .semi-table-header
+  > .semi-table
+  > .semi-table-thead
+  > .semi-table-row
+  > .semi-table-row-head,
+html.dark .grid-bordered-table.semi-table-wrapper .semi-table-container > .semi-table-body
+  > .semi-table-placeholder {
+  border-bottom: 1px solid #34353A !important;
+}
+
+html.dark .grid-bordered-table.semi-table-wrapper
+  .semi-table-container
+  > .semi-table-body
+  > .semi-table
+  > .semi-table-tbody
+  > .semi-table-row:hover
+  > .semi-table-row-cell {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 /* 侧边抽屉滚动条样式 */
 .semi-sidesheet-body::-webkit-scrollbar {
   width: 6px;
@@ -980,6 +1067,29 @@ html.dark .with-pastel-balls::before {
 .semi-button,
 .semi-datepicker-range-input {
   border-radius: 10px !important;
+}
+
+/* Normalize Firefox focus rings for Semi form controls */
+.semi-input-wrapper input:focus,
+.semi-input-wrapper input:focus-visible,
+.semi-input-wrapper input:-moz-focusring,
+.semi-input-wrapper .semi-input:focus,
+.semi-input-wrapper .semi-input:focus-visible,
+.semi-input-wrapper .semi-input:-moz-focusring,
+.semi-input-textarea-wrapper textarea:focus,
+.semi-input-textarea-wrapper textarea:focus-visible,
+.semi-input-textarea-wrapper textarea:-moz-focusring,
+.semi-input-textarea-wrapper .semi-input:focus,
+.semi-input-textarea-wrapper .semi-input:focus-visible,
+.semi-input-textarea-wrapper .semi-input:-moz-focusring,
+.semi-select input:focus,
+.semi-select input:focus-visible,
+.semi-select input:-moz-focusring,
+.semi-select .semi-input:focus,
+.semi-select .semi-input:focus-visible,
+.semi-select .semi-input:-moz-focusring {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 @keyframes slideInLeft {

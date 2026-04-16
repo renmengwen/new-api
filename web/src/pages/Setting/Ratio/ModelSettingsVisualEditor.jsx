@@ -17,9 +17,75 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { Spin } from '@douyinfe/semi-ui';
+import { useTranslation } from 'react-i18next';
+import { API, showError } from '../../../helpers';
 import ModelPricingEditor from './components/ModelPricingEditor';
 
 export default function ModelSettingsVisualEditor(props) {
-  return <ModelPricingEditor options={props.options} refresh={props.refresh} />;
+  const { t } = useTranslation();
+  const [enabledModels, setEnabledModels] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadEnabledModels = async () => {
+      setLoading(true);
+      try {
+        const res = await API.get('/api/channel/models_enabled');
+        const { success, message, data } = res.data;
+        if (!active) {
+          return;
+        }
+        if (success) {
+          setEnabledModels(Array.isArray(data) ? data : []);
+        } else {
+          showError(message);
+          setEnabledModels([]);
+        }
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        console.error(t('获取启用模型失败:'), error);
+        showError(t('获取启用模型失败'));
+        setEnabledModels([]);
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadEnabledModels();
+
+    return () => {
+      active = false;
+    };
+  }, [t]);
+
+  if (loading) {
+    return (
+      <Spin spinning={true}>
+        <div style={{ minHeight: 160 }} />
+      </Spin>
+    );
+  }
+
+  return (
+    <ModelPricingEditor
+      options={props.options}
+      refresh={props.refresh}
+      candidateModelNames={enabledModels}
+      filterMode='enabled'
+      allowAddModel={false}
+      listDescription={t(
+        '此页面仅显示渠道管理中已配置且已启用的模型，未启用模型的价格配置会继续保留。',
+      )}
+      emptyTitle={t('没有已启用的模型')}
+      emptyDescription={t('当前渠道管理中没有已配置且已启用的模型')}
+    />
+  );
 }

@@ -255,7 +255,22 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string) (logs []*Log, total int64, err error) {
+const logExportLimit = 2000
+
+func ensureLogExportQueryColumnsInitialized() {
+	if logGroupCol == "" || logKeyCol == "" {
+		initCol()
+	}
+}
+
+func normalizeLogExportLimit(limit int) int {
+	if limit <= 0 || limit > logExportLimit {
+		return logExportLimit
+	}
+	return limit
+}
+
+func buildAllLogsQuery(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string) *gorm.DB {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -287,13 +302,13 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
 	}
-	err = tx.Model(&Log{}).Count(&total).Error
-	if err != nil {
-		return nil, 0, err
-	}
+	return tx
+}
+
+func findAllLogs(tx *gorm.DB, startIdx int, num int) (logs []*Log, err error) {
 	err = tx.Order("logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
 	channelIds := types.NewSet[int]()
@@ -324,7 +339,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		} else {
 			// Bulk query channels from DB
 			if err = DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
-				return logs, total, err
+				return logs, err
 			}
 		}
 		channelMap := make(map[int]string, len(channels))
@@ -336,13 +351,31 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		}
 	}
 
+	return logs, nil
+}
+
+func GetAllLogsForExport(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, limit int, channel int, group string, requestId string) (logs []*Log, err error) {
+	ensureLogExportQueryColumnsInitialized()
+	return findAllLogs(
+		buildAllLogsQuery(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId),
+		0,
+		normalizeLogExportLimit(limit),
+	)
+}
+
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string) (logs []*Log, total int64, err error) {
+	tx := buildAllLogsQuery(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId)
+	err = tx.Model(&Log{}).Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	logs, err = findAllLogs(tx, startIdx, num)
 	return logs, total, err
 }
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string) (logs []*Log, total int64, err error) {
-	var tx *gorm.DB
+func buildUserLogsQuery(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string) (tx *gorm.DB, err error) {
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
 	} else {
@@ -352,7 +385,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if modelName != "" {
 		modelNamePattern, err := sanitizeLikePattern(modelName)
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		tx = tx.Where("logs.model_name LIKE ? ESCAPE '!'", modelNamePattern)
 	}
@@ -371,19 +404,49 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
 	}
+	return tx, nil
+}
+
+func findUserLogs(tx *gorm.DB, startIdx int, num int) (logs []*Log, err error) {
+	err = tx.Order("logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
+	if err != nil {
+		return nil, err
+	}
+
+	formatUserLogs(logs, startIdx)
+	return logs, nil
+}
+
+func GetUserLogsForExport(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, limit int, group string, requestId string) (logs []*Log, err error) {
+	ensureLogExportQueryColumnsInitialized()
+	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, requestId)
+	if err != nil {
+		return nil, err
+	}
+	logs, err = findUserLogs(tx, 0, normalizeLogExportLimit(limit))
+	if err != nil {
+		common.SysError("failed to search user logs: " + err.Error())
+		return nil, errors.New("鏌ヨ鏃ュ織澶辫触")
+	}
+	return logs, nil
+}
+
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string) (logs []*Log, total int64, err error) {
+	tx, err := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, group, requestId)
+	if err != nil {
+		return nil, 0, err
+	}
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
 		common.SysError("failed to count user logs: " + err.Error())
 		return nil, 0, errors.New("查询日志失败")
 	}
-	err = tx.Order("logs.id desc").Limit(num).Offset(startIdx).Find(&logs).Error
+	logs, err = findUserLogs(tx, startIdx, num)
 	if err != nil {
 		common.SysError("failed to search user logs: " + err.Error())
 		return nil, 0, errors.New("查询日志失败")
 	}
-
-	formatUserLogs(logs, startIdx)
-	return logs, total, err
+	return logs, total, nil
 }
 
 type Stat struct {

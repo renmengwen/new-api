@@ -627,6 +627,7 @@ const CustomOAuthSetting = ({ serverAddress }) => {
           dataSource={providers}
           loading={loading}
           rowKey="id"
+          className='grid-bordered-table'
           pagination={false}
           empty={t('暂无自定义 OAuth 提供商')}
         />

@@ -164,6 +164,7 @@ const MissingModelsModal = ({ visible, onClose, onConfigureModel, t }) => {
               <Table
                 columns={columns}
                 dataSource={dataSource}
+                className='grid-bordered-table'
                 pagination={{
                   currentPage: currentPage,
                   pageSize: MODEL_TABLE_PAGE_SIZE,

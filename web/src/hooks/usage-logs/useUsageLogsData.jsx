@@ -22,9 +22,12 @@ import { useTranslation } from 'react-i18next';
 import { Modal } from '@douyinfe/semi-ui';
 import {
   API,
+  MAX_EXCEL_EXPORT_ROWS,
+  downloadExcelBlob,
   getTodayStartTimestamp,
   isAdmin,
   showError,
+  showInfo,
   showSuccess,
   timestamp2string,
   renderQuota,
@@ -40,6 +43,12 @@ import {
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
+import { getLogsColumns } from '../../components/table/usage-logs/UsageLogsColumnDefs';
+import {
+  buildUsageLogExportRequest,
+  createUsageLogCommittedQuery,
+  getVisibleUsageLogColumnKeys,
+} from './exportState';
 
 export const useLogsData = () => {
   const { t } = useTranslation();
@@ -105,6 +114,12 @@ export const useLogsData = () => {
     ],
     logType: '0',
   };
+  const [committedQuery, setCommittedQuery] = useState(() =>
+    createUsageLogCommittedQuery(formInitValues),
+  );
+  const [listRequestsInFlight, setListRequestsInFlight] = useState(0);
+  const isExportReady = listRequestsInFlight === 0;
+  const [exportLoading, setExportLoading] = useState(false);
 
   // Get default column visibility based on user role
   const getDefaultColumnVisibility = () => {
@@ -232,44 +247,20 @@ export const useLogsData = () => {
 
   // 获取表单值的辅助函数，确保所有值都是字符串
   const getFormValues = () => {
-    const formValues = formApi ? formApi.getValues() : {};
-
-    let start_timestamp = timestamp2string(getTodayStartTimestamp());
-    let end_timestamp = timestamp2string(now.getTime() / 1000 + 3600);
-
-    if (
-      formValues.dateRange &&
-      Array.isArray(formValues.dateRange) &&
-      formValues.dateRange.length === 2
-    ) {
-      start_timestamp = formValues.dateRange[0];
-      end_timestamp = formValues.dateRange[1];
-    }
-
-    return {
-      username: formValues.username || '',
-      token_name: formValues.token_name || '',
-      model_name: formValues.model_name || '',
-      start_timestamp,
-      end_timestamp,
-      channel: formValues.channel || '',
-      group: formValues.group || '',
-      request_id: formValues.request_id || '',
-      logType: formValues.logType ? parseInt(formValues.logType) : 0,
-    };
+    const formValues = formApi ? formApi.getValues() : formInitValues;
+    return createUsageLogCommittedQuery(formValues, formInitValues.dateRange);
   };
 
   // Statistics functions
-  const getLogSelfStat = async () => {
+  const getLogSelfStat = async (query = committedQuery) => {
     const {
       token_name,
       model_name,
       start_timestamp,
       end_timestamp,
       group,
-      logType: formLogType,
-    } = getFormValues();
-    const currentLogType = formLogType !== undefined ? formLogType : logType;
+      logType: currentLogType,
+    } = query;
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
     let url = `/api/log/self/stat?type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}`;
@@ -283,7 +274,7 @@ export const useLogsData = () => {
     }
   };
 
-  const getLogStat = async () => {
+  const getLogStat = async (query = committedQuery) => {
     const {
       username,
       token_name,
@@ -292,9 +283,8 @@ export const useLogsData = () => {
       end_timestamp,
       channel,
       group,
-      logType: formLogType,
-    } = getFormValues();
-    const currentLogType = formLogType !== undefined ? formLogType : logType;
+      logType: currentLogType,
+    } = query;
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
     let url = `/api/log/stat?type=${currentLogType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${group}`;
@@ -308,18 +298,23 @@ export const useLogsData = () => {
     }
   };
 
-  const handleEyeClick = async () => {
+  const handleEyeClick = async (query = committedQuery) => {
     if (loadingStat) {
       return;
     }
     setLoadingStat(true);
-    if (isAdminUser) {
-      await getLogStat();
-    } else {
-      await getLogSelfStat();
+    try {
+      if (isAdminUser) {
+        await getLogStat(query);
+      } else {
+        await getLogSelfStat(query);
+      }
+      setShowStat(true);
+    } catch (error) {
+      showError(error);
+    } finally {
+      setLoadingStat(false);
     }
-    setShowStat(true);
-    setLoadingStat(false);
   };
 
   // User info function
@@ -717,8 +712,9 @@ export const useLogsData = () => {
   };
 
   // Load logs function
-  const loadLogs = async (startIdx, pageSize, customLogType = null) => {
+  const loadLogs = async (startIdx, pageSize, query = committedQuery) => {
     setLoading(true);
+    setListRequestsInFlight((count) => count + 1);
 
     let url = '';
     const {
@@ -730,15 +726,8 @@ export const useLogsData = () => {
       channel,
       group,
       request_id,
-      logType: formLogType,
-    } = getFormValues();
-
-    const currentLogType =
-      customLogType !== null
-        ? customLogType
-        : formLogType !== undefined
-          ? formLogType
-          : logType;
+      logType: currentLogType,
+    } = query;
 
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
@@ -748,32 +737,38 @@ export const useLogsData = () => {
       url = `/api/log/self/?p=${startIdx}&page_size=${pageSize}&type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}&request_id=${request_id}`;
     }
     url = encodeURI(url);
-    const res = await API.get(url);
-    const { success, message, data } = res.data;
-    if (success) {
-      const newPageData = data.items;
-      setActivePage(data.page);
-      setPageSize(data.page_size);
-      setLogCount(data.total);
+    try {
+      const res = await API.get(url);
+      const { success, message, data } = res.data;
+      if (success) {
+        const newPageData = data.items;
+        setActivePage(data.page);
+        setPageSize(data.page_size);
+        setLogCount(data.total);
 
-      setLogsFormat(newPageData);
-    } else {
+        setLogsFormat(newPageData);
+        return true;
+      }
+
       showError(message);
+      return false;
+    } finally {
+      setLoading(false);
+      setListRequestsInFlight((count) => Math.max(0, count - 1));
     }
-    setLoading(false);
   };
 
   // Page handlers
   const handlePageChange = (page) => {
     setActivePage(page);
-    loadLogs(page, pageSize).then((r) => {});
+    loadLogs(page, pageSize, committedQuery).then((r) => {});
   };
 
   const handlePageSizeChange = async (size) => {
     localStorage.setItem('page-size', size + '');
     setPageSize(size);
     setActivePage(1);
-    loadLogs(activePage, size)
+    loadLogs(1, size, committedQuery)
       .then()
       .catch((reason) => {
         showError(reason);
@@ -782,9 +777,13 @@ export const useLogsData = () => {
 
   // Refresh function
   const refresh = async () => {
+    const nextCommittedQuery = getFormValues();
     setActivePage(1);
-    handleEyeClick();
-    await loadLogs(1, pageSize);
+    handleEyeClick(nextCommittedQuery);
+    const didRefresh = await loadLogs(1, pageSize, nextCommittedQuery);
+    if (didRefresh) {
+      setCommittedQuery(nextCommittedQuery);
+    }
   };
 
   // Copy text function
@@ -797,12 +796,73 @@ export const useLogsData = () => {
     }
   };
 
+  const getExportColumnKeys = () => {
+    const allColumns = getLogsColumns({
+      t,
+      COLUMN_KEYS,
+      copyText,
+      showUserInfoFunc,
+      openChannelAffinityUsageCacheModal,
+      isAdminUser,
+      billingDisplayMode,
+    });
+
+    return getVisibleUsageLogColumnKeys({
+      allColumns,
+      visibleColumns,
+    });
+  };
+
+  const runExport = async () => {
+    setExportLoading(true);
+    try {
+      await downloadExcelBlob({
+        url: isAdminUser ? '/api/log/export' : '/api/log/self/export',
+        payload: buildUsageLogExportRequest({
+          committedQuery,
+          visibleColumnKeys: getExportColumnKeys(),
+        }),
+        fallbackFileName: 'usage-logs.xlsx',
+      });
+    } catch (error) {
+      showError(error);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleExport = async () => {
+    if (loading || exportLoading || !isExportReady) {
+      return;
+    }
+
+    if (!logCount) {
+      showInfo(t('无可导出数据'));
+      return;
+    }
+
+    if (logCount > MAX_EXCEL_EXPORT_ROWS) {
+      Modal.confirm({
+        title: t('导出 Excel'),
+        content: t(
+          '当前筛选结果超过 2000 条，将仅导出最近 2000 条记录，是否继续？',
+        ),
+        okText: t('继续导出'),
+        cancelText: t('取消'),
+        onOk: runExport,
+      });
+      return;
+    }
+
+    await runExport();
+  };
+
   // Initialize data
   useEffect(() => {
     const localPageSize =
       parseInt(localStorage.getItem('page-size')) || ITEMS_PER_PAGE;
     setPageSize(localPageSize);
-    loadLogs(activePage, localPageSize)
+    loadLogs(activePage, localPageSize, committedQuery)
       .then()
       .catch((reason) => {
         showError(reason);
@@ -812,7 +872,7 @@ export const useLogsData = () => {
   // Initialize statistics when formApi is available
   useEffect(() => {
     if (formApi) {
-      handleEyeClick();
+      handleEyeClick(committedQuery);
     }
   }, [formApi]);
 
@@ -842,6 +902,8 @@ export const useLogsData = () => {
     setFormApi,
     formInitValues,
     getFormValues,
+    committedQuery,
+    isExportReady,
 
     // Column visibility
     visibleColumns,
@@ -884,6 +946,8 @@ export const useLogsData = () => {
     hasExpandableRows,
     setLogType,
     openParamOverrideModal,
+    handleExport,
+    exportLoading,
 
     // Translation
     t,

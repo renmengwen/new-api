@@ -200,6 +200,18 @@ func FetchCustomOAuthDiscovery(c *gin.Context) {
 		return
 	}
 
+	createSettingAuditLog(
+		c,
+		settingAuditMetaFetchCustomOAuthDiscovery,
+		0,
+		"",
+		marshalSettingAuditPayload(map[string]any{
+			"well_known_url":         targetURL,
+			"authorization_endpoint": discovery["authorization_endpoint"],
+			"token_endpoint":         discovery["token_endpoint"],
+			"userinfo_endpoint":      discovery["userinfo_endpoint"],
+		}),
+	)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -258,6 +270,7 @@ func CreateCustomOAuthProvider(c *gin.Context) {
 
 	// Register the provider in the OAuth registry
 	oauth.RegisterOrUpdateCustomProvider(provider)
+	createSettingAuditLog(c, settingAuditMetaCreateCustomOAuthProvider, provider.Id, "", marshalCustomOAuthProviderAuditPayload(provider, false))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -310,6 +323,7 @@ func UpdateCustomOAuthProvider(c *gin.Context) {
 		return
 	}
 
+	beforeJSON := marshalCustomOAuthProviderAuditPayload(provider, false)
 	oldSlug := provider.Slug
 
 	// Check if new slug is taken by another provider
@@ -391,6 +405,7 @@ func UpdateCustomOAuthProvider(c *gin.Context) {
 		oauth.UnregisterCustomProvider(oldSlug)
 	}
 	oauth.RegisterOrUpdateCustomProvider(provider)
+	createSettingAuditLog(c, settingAuditMetaUpdateCustomOAuthProvider, provider.Id, beforeJSON, marshalCustomOAuthProviderAuditPayload(provider, req.ClientSecret != ""))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -427,6 +442,7 @@ func DeleteCustomOAuthProvider(c *gin.Context) {
 		return
 	}
 
+	beforeJSON := marshalCustomOAuthProviderAuditPayload(provider, false)
 	if err := model.DeleteCustomOAuthProvider(id); err != nil {
 		common.ApiError(c, err)
 		return
@@ -434,6 +450,7 @@ func DeleteCustomOAuthProvider(c *gin.Context) {
 
 	// Unregister the provider from the OAuth registry
 	oauth.UnregisterCustomProvider(provider.Slug)
+	createSettingAuditLog(c, settingAuditMetaDeleteCustomOAuthProvider, provider.Id, beforeJSON, "")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

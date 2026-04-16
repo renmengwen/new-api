@@ -27,6 +27,9 @@ const LogsFilters = ({
   formInitValues,
   setFormApi,
   refresh,
+  handleExport,
+  exportLoading,
+  isExportReady,
   setShowColumnSelector,
   formApi,
   setLogType,
@@ -182,6 +185,15 @@ const LogsFilters = ({
               size='small'
             >
               {t('列设置')}
+            </Button>
+            <Button
+              type='tertiary'
+              onClick={handleExport}
+              disabled={loading || exportLoading || !isExportReady}
+              loading={exportLoading}
+              size='small'
+            >
+              {t('导出 Excel')}
             </Button>
           </div>
         </div>

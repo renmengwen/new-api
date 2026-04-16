@@ -61,6 +61,7 @@ const CardTable = ({
     const finalTableProps = hidePagination
       ? { ...tableProps, pagination: false }
       : tableProps;
+    const { bordered = true, ...desktopTableProps } = finalTableProps;
 
     return (
       <Table
@@ -68,7 +69,15 @@ const CardTable = ({
         dataSource={dataSource}
         loading={loading}
         rowKey={rowKey}
-        {...finalTableProps}
+        bordered={bordered}
+        {...desktopTableProps}
+        className={
+          bordered
+            ? ['grid-bordered-table', desktopTableProps.className]
+                .filter(Boolean)
+                .join(' ')
+            : desktopTableProps.className
+        }
       />
     );
   }

@@ -298,6 +298,7 @@ const UpstreamConflictModal = ({
             <Table
               columns={columns}
               dataSource={pagedDataSource}
+              className='grid-bordered-table'
               pagination={{
                 currentPage: currentPage,
                 pageSize: MODEL_TABLE_PAGE_SIZE,

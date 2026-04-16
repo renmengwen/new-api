@@ -146,6 +146,7 @@ const ChannelsTable = (channelsData) => {
         onPageChange: handlePageChange,
       }}
       hidePagination={true}
+      bordered
       expandAllRows={false}
       onRow={handleRow}
       rowSelection={
@@ -167,7 +168,7 @@ const ChannelsTable = (channelsData) => {
           style={{ padding: 30 }}
         />
       }
-      className='rounded-xl overflow-hidden'
+      className='grid-bordered-table rounded-xl overflow-hidden'
       size='middle'
       loading={loading || searching}
     />

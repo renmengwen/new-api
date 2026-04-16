@@ -1,11 +1,16 @@
 package controller
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -67,6 +72,318 @@ func SearchUserLogs(c *gin.Context) {
 		"success": false,
 		"message": "该接口已废弃",
 	})
+}
+
+type usageLogExportColumn struct {
+	Header string
+	Value  func(*model.Log) string
+}
+
+var usageLogExportColumns = map[string]usageLogExportColumn{
+	"time": {
+		Header: "时间",
+		Value: func(log *model.Log) string {
+			return formatExportTimestamp(log.CreatedAt)
+		},
+	},
+	"channel": {
+		Header: "渠道",
+		Value: func(log *model.Log) string {
+			return formatUsageLogChannel(log)
+		},
+	},
+	"username": {
+		Header: "用户",
+		Value: func(log *model.Log) string {
+			return log.Username
+		},
+	},
+	"token": {
+		Header: "令牌",
+		Value: func(log *model.Log) string {
+			return log.TokenName
+		},
+	},
+	"group": {
+		Header: "分组",
+		Value: func(log *model.Log) string {
+			return log.Group
+		},
+	},
+	"type": {
+		Header: "类型",
+		Value: func(log *model.Log) string {
+			return formatUsageLogType(log.Type)
+		},
+	},
+	"model": {
+		Header: "模型",
+		Value: func(log *model.Log) string {
+			return service.GetUsageLogExportModelLabel(log)
+		},
+	},
+	"use_time": {
+		Header: "用时/首字",
+		Value: func(log *model.Log) string {
+			return service.GetUsageLogExportUseTimeLabel(log)
+		},
+	},
+	"prompt": {
+		Header: "输入",
+		Value: func(log *model.Log) string {
+			return strconv.Itoa(log.PromptTokens)
+		},
+	},
+	"completion": {
+		Header: "输出",
+		Value: func(log *model.Log) string {
+			return strconv.Itoa(log.CompletionTokens)
+		},
+	},
+	"cost": {
+		Header: "花费",
+		Value: func(log *model.Log) string {
+			return strconv.Itoa(log.Quota)
+		},
+	},
+	"retry": {
+		Header: "重试",
+		Value: func(log *model.Log) string {
+			return formatUsageLogRetry(log.Other)
+		},
+	},
+	"ip": {
+		Header: "IP",
+		Value: func(log *model.Log) string {
+			return log.Ip
+		},
+	},
+	"details": {
+		Header: "详情",
+		Value: func(log *model.Log) string {
+			return log.Content
+		},
+	},
+}
+
+var defaultAdminUsageLogExportColumnKeys = []string{
+	"time",
+	"channel",
+	"username",
+	"token",
+	"group",
+	"type",
+	"model",
+	"use_time",
+	"prompt",
+	"completion",
+	"cost",
+	"retry",
+	"ip",
+	"details",
+}
+
+var defaultSelfUsageLogExportColumnKeys = []string{
+	"time",
+	"token",
+	"group",
+	"type",
+	"model",
+	"use_time",
+	"prompt",
+	"completion",
+	"cost",
+	"ip",
+	"details",
+}
+
+func ExportAllLogs(c *gin.Context) {
+	var req dto.UsageLogExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+	channel, _ := strconv.Atoi(req.Channel)
+
+	logs, err := model.GetAllLogsForExport(
+		req.Type,
+		req.StartTimestamp,
+		req.EndTimestamp,
+		req.ModelName,
+		req.Username,
+		req.TokenName,
+		req.Limit,
+		channel,
+		req.Group,
+		req.RequestID,
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	exportUsageLogs(c, logs, req.ColumnKeys, req.QuotaDisplayType, true)
+}
+
+func ExportUserLogs(c *gin.Context) {
+	var req dto.UsageLogExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	logs, err := model.GetUserLogsForExport(
+		c.GetInt("id"),
+		req.Type,
+		req.StartTimestamp,
+		req.EndTimestamp,
+		req.ModelName,
+		req.TokenName,
+		req.Limit,
+		req.Group,
+		req.RequestID,
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	exportUsageLogs(c, logs, req.ColumnKeys, req.QuotaDisplayType, false)
+}
+
+func exportUsageLogs(c *gin.Context, logs []*model.Log, requestedColumnKeys []string, requestedQuotaDisplayType string, isAdmin bool) {
+	columnKeys := resolveUsageLogExportColumnKeys(requestedColumnKeys, isAdmin)
+	if len(columnKeys) == 0 {
+		common.ApiError(c, errors.New("no export columns selected"))
+		return
+	}
+	headers := make([]string, 0, len(columnKeys))
+	rows := make([][]string, 0, len(logs))
+
+	for _, key := range columnKeys {
+		headers = append(headers, usageLogExportColumns[key].Header)
+	}
+	for _, log := range logs {
+		row := make([]string, 0, len(columnKeys))
+		for _, key := range columnKeys {
+			row = append(row, resolveUsageLogExportValue(log, key, requestedQuotaDisplayType))
+		}
+		rows = append(rows, row)
+	}
+
+	fileName, content, err := service.BuildExcelFile(service.ExcelFileSpec{
+		FileNamePrefix: "使用日志",
+		SheetName:      "使用日志",
+		Headers:        headers,
+		Rows:           rows,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	streamExcelFile(c, fileName, content)
+}
+
+func resolveUsageLogExportValue(log *model.Log, key string, requestedQuotaDisplayType string) string {
+	if key == "cost" {
+		return service.GetUsageLogExportCostLabel(log, requestedQuotaDisplayType)
+	}
+	return usageLogExportColumns[key].Value(log)
+}
+
+func resolveUsageLogExportColumnKeys(requestedColumnKeys []string, isAdmin bool) []string {
+	allowedKeys := defaultSelfUsageLogExportColumnKeys
+	if isAdmin {
+		allowedKeys = defaultAdminUsageLogExportColumnKeys
+	}
+	if requestedColumnKeys == nil {
+		return allowedKeys
+	}
+	allowedSet := make(map[string]struct{}, len(allowedKeys))
+	for _, key := range allowedKeys {
+		allowedSet[key] = struct{}{}
+	}
+	selected := make([]string, 0, len(requestedColumnKeys))
+	seen := make(map[string]struct{}, len(requestedColumnKeys))
+	for _, rawKey := range requestedColumnKeys {
+		key := strings.TrimSpace(rawKey)
+		if key == "" {
+			continue
+		}
+		if _, ok := allowedSet[key]; !ok {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		selected = append(selected, key)
+	}
+	return selected
+}
+
+func formatUsageLogChannel(log *model.Log) string {
+	if log.ChannelId == 0 {
+		return ""
+	}
+	if log.ChannelName != "" {
+		return fmt.Sprintf("%d - %s", log.ChannelId, log.ChannelName)
+	}
+	return strconv.Itoa(log.ChannelId)
+}
+
+func formatUsageLogType(logType int) string {
+	switch logType {
+	case model.LogTypeTopup:
+		return "充值"
+	case model.LogTypeConsume:
+		return "消费"
+	case model.LogTypeManage:
+		return "管理"
+	case model.LogTypeSystem:
+		return "系统"
+	case model.LogTypeError:
+		return "错误"
+	case model.LogTypeRefund:
+		return "退款"
+	default:
+		return "未知"
+	}
+}
+
+func formatUsageLogUseTime(log *model.Log) string {
+	if log.Type != model.LogTypeConsume && log.Type != model.LogTypeError {
+		return ""
+	}
+	return strconv.Itoa(log.UseTime)
+}
+
+func formatUsageLogRetry(otherJSON string) string {
+	if strings.TrimSpace(otherJSON) == "" {
+		return ""
+	}
+	var other map[string]any
+	if err := common.UnmarshalJsonStr(otherJSON, &other); err != nil {
+		return ""
+	}
+	adminInfo, ok := other["admin_info"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	useChannels, ok := adminInfo["use_channel"].([]any)
+	if !ok {
+		return ""
+	}
+	parts := make([]string, 0, len(useChannels))
+	for _, useChannel := range useChannels {
+		part := strings.TrimSpace(fmt.Sprint(useChannel))
+		if part == "" {
+			continue
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, "->")
 }
 
 func GetLogByKey(c *gin.Context) {
@@ -162,6 +479,10 @@ func DeleteHistoryLogs(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	createSettingAuditLog(c, settingAuditMetaClearHistoryLogs, 0, "", marshalSettingAuditPayload(map[string]any{
+		"target_timestamp": targetTimestamp,
+		"deleted_count":    count,
+	}))
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
