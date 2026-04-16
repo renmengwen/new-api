@@ -44,6 +44,24 @@ var quotaLedgerReasonLabels = map[string]string{
 	"wechat":                "微信支付",
 }
 
+var quotaLedgerSourceTypeLabels = map[string]string{
+	"quota_reconcile":          "同步用户额度",
+	"admin_quota_adjust":       "管理员调额",
+	"admin_quota_adjust_batch": "批量调额",
+	"wallet_settle":            "钱包结算",
+	"task_billing":             "任务结算",
+	"admin_user_create":        "创建用户",
+	"admin_manager_create":     "创建管理员",
+	"agent_create":             "创建代理商",
+	"root_bootstrap":           "Root 初始化",
+	"redemption_recharge":      "兑换码充值",
+	"checkin_reward":           "签到奖励",
+	"aff_quota_transfer":       "推广返佣",
+	"user_register":            "新用户注册赠送",
+	"invitee_register":         "邀请注册赠送",
+	"midjourney_refund":        "绘图任务退款",
+}
+
 func GetQuotaEntryTypeLabel(entryType string) string {
 	if entryType == "" {
 		return "-"
@@ -62,4 +80,17 @@ func GetQuotaReasonLabel(reason string) string {
 		return label
 	}
 	return reason
+}
+
+func GetQuotaSourceTypeLabel(sourceType string) string {
+	if sourceType == "" {
+		return "-"
+	}
+	if label, ok := quotaLedgerSourceTypeLabels[sourceType]; ok {
+		return label
+	}
+	if label, ok := quotaLedgerReasonLabels[sourceType]; ok {
+		return label
+	}
+	return sourceType
 }

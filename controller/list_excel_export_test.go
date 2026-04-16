@@ -671,6 +671,8 @@ func TestExportQuotaLedgerBackfillsModelNameForSplitWalletConsumeRows(t *testing
 	require.Len(t, rows, 3)
 	require.Equal(t, "claude-opus-4-6", rows[1][8])
 	require.Equal(t, "claude-opus-4-6", rows[2][8])
+	require.Equal(t, "钱包结算", rows[1][9])
+	require.Equal(t, "钱包预扣", rows[2][9])
 }
 
 func TestExportAdminAuditLogsServiceHelperCapsLimit(t *testing.T) {
