@@ -79,3 +79,19 @@ func UpdatePermissionTemplate(c *gin.Context) {
 	}
 	common.ApiSuccess(c, data)
 }
+
+func DeletePermissionTemplate(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourcePermissionManagement, service.ActionBindProfile) {
+		return
+	}
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := service.DeletePermissionTemplate(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"id": id})
+}

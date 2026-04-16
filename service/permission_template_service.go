@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -154,6 +155,33 @@ func UpdatePermissionTemplate(profileId int, req PermissionTemplateUpsertRequest
 		return nil, err
 	}
 	return GetPermissionTemplateDetail(profile.Id)
+}
+
+func DeletePermissionTemplate(profileId int) error {
+	var profile model.PermissionProfile
+	if err := model.DB.First(&profile, profileId).Error; err != nil {
+		return err
+	}
+
+	var activeBindingCount int64
+	if err := model.DB.Model(&model.UserPermissionBinding{}).
+		Where("profile_id = ? AND status = ?", profileId, model.CommonStatusEnabled).
+		Count(&activeBindingCount).Error; err != nil {
+		return err
+	}
+	if activeBindingCount > 0 {
+		return fmt.Errorf("该模板正在被 %d 个账号使用，无法删除", activeBindingCount)
+	}
+
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("profile_id = ?", profileId).Delete(&model.PermissionProfileItem{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&profile).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func validatePermissionTemplateRequest(req PermissionTemplateUpsertRequest) error {
