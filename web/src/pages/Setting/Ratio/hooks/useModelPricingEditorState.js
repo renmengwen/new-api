@@ -1,5 +1,28 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import { useEffect, useMemo, useState } from 'react';
 import { API, showError, showSuccess } from '../../../../helpers';
+import {
+  resolveInitialVisibleModelNames,
+  resolveVisibleModels,
+} from './modelPricingVisibility';
 
 export const PAGE_SIZE = 10;
 export const PRICE_SUFFIX = '$/1M tokens';
@@ -570,15 +593,15 @@ export function useModelPricingEditorState({
     const nextModels = Array.from(names)
       .map((name) => buildModelState(name, sourceMaps))
       .sort((a, b) => a.name.localeCompare(b.name));
+    const nextVisibleModelNames = resolveInitialVisibleModelNames({
+      nextModels,
+      filterMode,
+      candidateModelNames,
+      isBasePricingUnset,
+    });
 
     setModels(nextModels);
-    setInitialVisibleModelNames(
-      filterMode === 'unset'
-        ? nextModels
-            .filter((model) => isBasePricingUnset(model))
-            .map((model) => model.name)
-        : nextModels.map((model) => model.name),
-    );
+    setInitialVisibleModelNames(nextVisibleModelNames);
     setOptionalFieldToggles(
       nextModels.reduce((acc, model) => {
         acc[model.name] = buildOptionalFieldToggles(model);
@@ -589,19 +612,26 @@ export function useModelPricingEditorState({
       if (previous && nextModels.some((model) => model.name === previous)) {
         return previous;
       }
-      const nextVisibleModels =
-        filterMode === 'unset'
-          ? nextModels.filter((model) => isBasePricingUnset(model))
-          : nextModels;
+      const nextVisibleModels = resolveVisibleModels({
+        models: nextModels,
+        filterMode,
+        candidateModelNames,
+        initialVisibleModelNames: nextVisibleModelNames,
+      });
       return nextVisibleModels[0]?.name || '';
     });
   }, [candidateModelNames, filterMode, options]);
 
-  const visibleModels = useMemo(() => {
-    return filterMode === 'unset'
-      ? models.filter((model) => initialVisibleModelNames.includes(model.name))
-      : models;
-  }, [filterMode, initialVisibleModelNames, models]);
+  const visibleModels = useMemo(
+    () =>
+      resolveVisibleModels({
+        models,
+        filterMode,
+        candidateModelNames,
+        initialVisibleModelNames,
+      }),
+    [candidateModelNames, filterMode, initialVisibleModelNames, models],
+  );
 
   const filteredModels = useMemo(() => {
     return visibleModels.filter((model) => {
