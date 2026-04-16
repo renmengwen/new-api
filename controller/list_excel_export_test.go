@@ -669,6 +669,8 @@ func TestExportQuotaLedgerBackfillsModelNameForSplitWalletConsumeRows(t *testing
 	rows, err := workbook.GetRows(workbook.GetSheetName(0))
 	require.NoError(t, err)
 	require.Len(t, rows, 3)
+	require.Equal(t, "出账", rows[1][4])
+	require.Equal(t, "出账", rows[2][4])
 	require.Equal(t, "claude-opus-4-6", rows[1][8])
 	require.Equal(t, "claude-opus-4-6", rows[2][8])
 	require.Equal(t, "钱包结算", rows[1][9])
