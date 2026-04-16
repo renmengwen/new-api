@@ -130,6 +130,28 @@ func TestCreateAgentCreatesOpeningLedgerEntry(t *testing.T) {
 	require.Equal(t, "create", audit.ActionType)
 }
 
+func TestCreateAgentPersistsRequestedGroup(t *testing.T) {
+	db := setupAdminAgentTestDB(t)
+
+	ctx, recorder := newAdminAgentContext(t, http.MethodPost, "/api/admin/agents", map[string]any{
+		"username":      "agent_group_1",
+		"password":      "12345678",
+		"agent_name":    "Agent Group",
+		"company_name":  "Shenzhou",
+		"contact_phone": "13800000000",
+		"group":         "EZModel",
+	})
+	CreateAgent(ctx)
+
+	var response adminAgentAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var user model.User
+	require.NoError(t, db.Where("username = ?", "agent_group_1").First(&user).Error)
+	require.Equal(t, "EZModel", user.Group)
+}
+
 func TestGetAgentsReturnsCreatedAgent(t *testing.T) {
 	db := setupAdminAgentTestDB(t)
 

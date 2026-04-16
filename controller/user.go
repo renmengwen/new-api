@@ -916,6 +916,11 @@ func CreateUser(c *gin.Context) {
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
 	}
+	targetGroup := strings.TrimSpace(user.Group)
+	if targetGroup == "" {
+		targetGroup = "default"
+	}
+	cleanUser.Group = targetGroup
 	if err := cleanUser.Insert(0); err != nil {
 		apiUserInputError(c, err)
 		return

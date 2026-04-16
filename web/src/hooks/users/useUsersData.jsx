@@ -343,11 +343,7 @@ export const useUsersData = (mode = 'legacy') => {
       .catch((reason) => {
         showError(reason);
       });
-    if (!isManagedMode) {
-      fetchGroups().then();
-    } else {
-      setGroupOptions([]);
-    }
+    fetchGroups().then();
   }, [mode]);
 
   return {
@@ -400,4 +396,3 @@ export const useUsersData = (mode = 'legacy') => {
     t,
   };
 };
-

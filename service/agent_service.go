@@ -15,6 +15,7 @@ type CreateAgentRequest struct {
 	AgentName    string `json:"agent_name"`
 	CompanyName  string `json:"company_name"`
 	ContactPhone string `json:"contact_phone"`
+	Group        string `json:"group"`
 	Remark       string `json:"remark"`
 }
 
@@ -49,7 +50,7 @@ func CreateAgentWithOperator(req CreateAgentRequest, operatorUserId int, operato
 		Role:        common.RoleCommonUser,
 		Status:      common.UserStatusEnabled,
 		UserType:    model.UserTypeAgent,
-		Group:       "default",
+		Group:       firstNonEmpty(strings.TrimSpace(req.Group), "default"),
 		Phone:       strings.TrimSpace(req.ContactPhone),
 	}
 

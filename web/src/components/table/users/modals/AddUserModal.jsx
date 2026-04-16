@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { API, showError, showSuccess } from '../../../../helpers';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import {
@@ -44,12 +44,29 @@ const AddUserModal = (props) => {
   const [loading, setLoading] = useState(false);
   const isMobile = useIsMobile();
 
+  const getDefaultGroupValue = () => props.groupOptions?.[0]?.value || '';
+
   const getInitValues = () => ({
     username: '',
     display_name: '',
     password: '',
     remark: '',
+    group: getDefaultGroupValue(),
   });
+
+  useEffect(() => {
+    if (!props.visible) {
+      return;
+    }
+    const nextDefaultGroup = getDefaultGroupValue();
+    if (!nextDefaultGroup) {
+      return;
+    }
+    const currentGroup = formApiRef.current?.getValue('group');
+    if (!currentGroup) {
+      formApiRef.current?.setValue('group', nextDefaultGroup);
+    }
+  }, [props.visible, props.groupOptions]);
 
   const submit = async (values) => {
     setLoading(true);
@@ -69,6 +86,7 @@ const AddUserModal = (props) => {
   };
 
   const handleCancel = () => {
+    formApiRef.current?.setValues(getInitValues());
     props.handleClose();
   };
 
@@ -152,6 +170,16 @@ const AddUserModal = (props) => {
                       placeholder={t('请输入密码')}
                       rules={[{ required: true, message: t('请输入密码') }]}
                       showClear
+                    />
+                  </Col>
+                  <Col span={24}>
+                    <Form.Select
+                      field='group'
+                      label={t('分组')}
+                      placeholder={t('请选择分组')}
+                      optionList={props.groupOptions}
+                      rules={[{ required: true, message: t('请选择分组') }]}
+                      search
                     />
                   </Col>
                   <Col span={24}>

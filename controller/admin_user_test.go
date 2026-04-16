@@ -439,6 +439,28 @@ func TestCreateAdminUserForAgentCreatesOpeningLedgerEntry(t *testing.T) {
 	require.NoError(t, db.Where("action_module = ? AND action_type = ? AND target_type = ? AND target_id = ?", service.ResourceUserManagement, service.ActionCreate, "user", user.Id).First(&audit).Error)
 }
 
+func TestCreateAdminUserPersistsRequestedGroup(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodPost, "/api/admin/users", map[string]any{
+		"username":     "managed_group_user",
+		"password":     "12345678",
+		"display_name": "Managed Group User",
+		"group":        "EZModel",
+		"remark":       "with group",
+	}, 999, common.RoleRootUser)
+
+	CreateAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var user model.User
+	require.NoError(t, db.Where("username = ?", "managed_group_user").First(&user).Error)
+	require.Equal(t, "EZModel", user.Group)
+}
+
 func TestUpdateAdminUserForAgentRejectsUserOutsideManagedScope(t *testing.T) {
 	db := setupAdminUserTestDB(t)
 	agent := seedManagedUser(t, db, "agent_update_operator", model.UserTypeAgent, common.RoleAdminUser, 0, 0)

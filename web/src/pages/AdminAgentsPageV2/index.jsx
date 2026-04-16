@@ -1,3 +1,22 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Banner,
@@ -6,6 +25,7 @@ import {
   Empty,
   Input,
   Modal,
+  Select,
   Space,
   Table,
   Tag,
@@ -18,6 +38,7 @@ import CardPro from '../../components/common/ui/CardPro';
 import { API, createCardProPagination, showError, showSuccess } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
+import { toGroupOptions } from '../../hooks/users/useUsersData.helpers';
 
 const { Text, Title } = Typography;
 
@@ -29,6 +50,7 @@ const emptyFormState = {
   company_name: '',
   contact_phone: '',
   remark: '',
+  group: '',
 };
 
 const sectionStyle = {
@@ -87,11 +109,33 @@ const AdminAgentsPageV2 = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingAgent, setEditingAgent] = useState(null);
   const [formState, setFormState] = useState(emptyFormState);
+  const [groupOptions, setGroupOptions] = useState([]);
+  const [defaultGroup, setDefaultGroup] = useState('');
 
   const closeModal = () => {
     setModalVisible(false);
     setEditingAgent(null);
-    setFormState(emptyFormState);
+    setFormState({ ...emptyFormState, group: defaultGroup });
+  };
+
+  const fetchGroups = async () => {
+    try {
+      const res = await API.get('/api/group/');
+      if (res?.data?.success !== true) {
+        showError(res?.data?.message || t('加载分组列表失败'));
+        return;
+      }
+      const options = toGroupOptions(res.data);
+      setGroupOptions(options);
+      const nextDefaultGroup = options[0]?.value || '';
+      setDefaultGroup(nextDefaultGroup);
+      setFormState((prev) => ({
+        ...prev,
+        group: prev.group || nextDefaultGroup,
+      }));
+    } catch (error) {
+      showError(error);
+    }
   };
 
   const loadAgents = async (nextPage = page, nextPageSize = pageSize, nextKeyword = keyword) => {
@@ -157,7 +201,7 @@ const AdminAgentsPageV2 = () => {
 
   const openCreateModal = () => {
     setEditingAgent(null);
-    setFormState(emptyFormState);
+    setFormState({ ...emptyFormState, group: defaultGroup });
     setModalVisible(true);
   };
 
@@ -172,6 +216,7 @@ const AdminAgentsPageV2 = () => {
       company_name: record.company_name || '',
       contact_phone: record.contact_phone || '',
       remark: '',
+      group: record.group || defaultGroup,
     });
 
     try {
@@ -189,6 +234,7 @@ const AdminAgentsPageV2 = () => {
         company_name: data.company_name || '',
         contact_phone: data.contact_phone || '',
         remark: data.remark || '',
+        group: data.group || defaultGroup,
       }));
     } catch (error) {
       showError(error);
@@ -202,6 +248,11 @@ const AdminAgentsPageV2 = () => {
     }
     if (editingAgent && !formState.agent_name.trim()) {
       showError(t('请填写代理商名称'));
+      return;
+    }
+
+    if (!editingAgent && !formState.group) {
+      showError(t('请选择分组'));
       return;
     }
 
@@ -222,6 +273,7 @@ const AdminAgentsPageV2 = () => {
             company_name: formState.company_name.trim(),
             contact_phone: formState.contact_phone.trim(),
             remark: formState.remark.trim(),
+            group: formState.group,
           };
 
       const res = editingAgent
@@ -270,6 +322,7 @@ const AdminAgentsPageV2 = () => {
   };
 
   useEffect(() => {
+    fetchGroups();
     if (!permissionLoading && canRead) {
       loadAgents(1, pageSize, '');
     }
@@ -448,6 +501,19 @@ const AdminAgentsPageV2 = () => {
                   onChange={(value) => setFormState((prev) => ({ ...prev, contact_phone: value }))}
                 />
               </div>
+              {!editingAgent ? (
+                <div style={fieldStyle}>
+                  <Text type='tertiary'>{t('分组')}</Text>
+                  <Select
+                    placeholder={t('请选择分组')}
+                    optionList={groupOptions}
+                    value={formState.group}
+                    onChange={(value) =>
+                      setFormState((prev) => ({ ...prev, group: value || '' }))
+                    }
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
           <div style={sectionBlockStyle}>

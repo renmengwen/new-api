@@ -12,6 +12,7 @@ type CreateAdminManagerRequest struct {
 	Username    string `json:"username"`
 	Password    string `json:"password"`
 	DisplayName string `json:"display_name"`
+	Group       string `json:"group"`
 	Remark      string `json:"remark"`
 }
 
@@ -72,7 +73,7 @@ func CreateAdminManagerWithOperator(req CreateAdminManagerRequest, operatorUserI
 		Role:        common.RoleAdminUser,
 		Status:      common.UserStatusEnabled,
 		UserType:    model.UserTypeAdmin,
-		Group:       "default",
+		Group:       firstNonEmpty(strings.TrimSpace(req.Group), "default"),
 		Remark:      strings.TrimSpace(req.Remark),
 	}
 

@@ -95,6 +95,7 @@ const UsersPage = ({ mode = 'legacy', capabilities = {} }) => {
         visible={showAddUser}
         handleClose={closeAddUser}
         createUser={usersData.createUser}
+        groupOptions={groupOptions}
       />
 
       <EditUserModal
