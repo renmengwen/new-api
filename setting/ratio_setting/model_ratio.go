@@ -535,9 +535,9 @@ func getHardcodedCompletionModelRatio(name string) (float64, bool) {
 	}
 
 	if strings.Contains(name, "claude-3") {
-		return 5, true
+		return 5, false
 	} else if strings.Contains(name, "claude-sonnet-4") || strings.Contains(name, "claude-opus-4") || strings.Contains(name, "claude-haiku-4") {
-		return 5, true
+		return 5, false
 	}
 
 	if strings.HasPrefix(name, "gpt-3.5") {
