@@ -649,3 +649,52 @@ func TestUpdateAdminUserForAgentQuotaIncreaseConsumesAgentBalanceAndCreatesLedge
 	require.NoError(t, db.Where("transfer_order_id = ?", order.Id).Order("account_id asc").Find(&ledgers).Error)
 	require.Len(t, ledgers, 2)
 }
+
+func TestUpdateAdminUserWithBlankPasswordAcceptsHashedStoredPassword(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	agent := seedManagedUser(t, db, "agent_hash_pwd_op", model.UserTypeAgent, common.RoleCommonUser, 200, 0)
+	target := seedManagedUser(t, db, "managed_hash_pwd", model.UserTypeEndUser, common.RoleCommonUser, 140, agent.Id)
+	hashedPassword, err := common.Password2Hash("12345678")
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", target.Id).Update("password", hashedPassword).Error)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   target.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	require.NoError(t, db.Create(&model.AgentQuotaPolicy{
+		AgentUserId:           agent.Id,
+		AllowRechargeUser:     true,
+		AllowReclaimQuota:     true,
+		MaxSingleAdjustAmount: 0,
+		Status:                model.CommonStatusEnabled,
+		UpdatedAtTs:           common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, model.UserTypeAgent,
+		permissionGrant{Resource: "user_management", Action: "update"},
+		permissionGrant{Resource: "quota_management", Action: "adjust"},
+	)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodPut, "/api/admin/users/"+strconv.Itoa(target.Id), map[string]any{
+		"username":     target.Username,
+		"display_name": target.DisplayName,
+		"password":     "",
+		"group":        target.Group,
+		"remark":       target.Remark,
+		"email":        "",
+		"quota":        210,
+	}, agent.Id, common.RoleCommonUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(target.Id)}}
+	UpdateAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var reloaded model.User
+	require.NoError(t, db.First(&reloaded, target.Id).Error)
+	require.Equal(t, 210, reloaded.Quota)
+}
