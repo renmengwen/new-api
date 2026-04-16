@@ -62,10 +62,13 @@ func createAdminAuditLogWithDB(db *gorm.DB, input AuditLogInput) error {
 	return db.Create(log).Error
 }
 
-func ListAdminAuditLogs(pageInfo *common.PageInfo, actionModule string, operatorUserId int) ([]AdminAuditLogListItem, int64, error) {
+func ListAdminAuditLogs(pageInfo *common.PageInfo, requesterUserId int, requesterRole int, actionModule string, operatorUserId int) ([]AdminAuditLogListItem, int64, error) {
 	var total int64
 
-	query := buildAdminAuditLogsQuery(actionModule, operatorUserId)
+	query, err := buildAdminAuditLogsQuery(requesterUserId, requesterRole, actionModule, operatorUserId)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -77,8 +80,12 @@ func ListAdminAuditLogs(pageInfo *common.PageInfo, actionModule string, operator
 	return logs, total, nil
 }
 
-func ListAdminAuditLogsForExport(actionModule string, operatorUserId int, limit int) ([]AdminAuditLogListItem, int64, error) {
-	logs, err := fetchAdminAuditLogs(buildAdminAuditLogsQuery(actionModule, operatorUserId), clampExportQueryLimit(limit), 0)
+func ListAdminAuditLogsForExport(requesterUserId int, requesterRole int, actionModule string, operatorUserId int, limit int) ([]AdminAuditLogListItem, int64, error) {
+	query, err := buildAdminAuditLogsQuery(requesterUserId, requesterRole, actionModule, operatorUserId)
+	if err != nil {
+		return nil, 0, err
+	}
+	logs, err := fetchAdminAuditLogs(query, clampExportQueryLimit(limit), 0)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -92,18 +99,63 @@ func clampExportQueryLimit(limit int) int {
 	return limit
 }
 
-func buildAdminAuditLogsQuery(actionModule string, operatorUserId int) *gorm.DB {
+func buildAdminAuditLogsQuery(requesterUserId int, requesterRole int, actionModule string, operatorUserId int) (*gorm.DB, error) {
 	query := model.DB.Model(&model.AdminAuditLog{}).
 		Select("admin_audit_logs.id, admin_audit_logs.operator_user_id, admin_audit_logs.operator_user_type, admin_audit_logs.action_module, admin_audit_logs.action_type, admin_audit_logs.target_type, admin_audit_logs.target_id, admin_audit_logs.ip, admin_audit_logs.created_at, operator_users.username AS operator_username, operator_users.display_name AS operator_display_name, target_users.username AS target_username, target_users.display_name AS target_display_name").
 		Joins("LEFT JOIN users AS operator_users ON operator_users.id = admin_audit_logs.operator_user_id").
 		Joins("LEFT JOIN users AS target_users ON admin_audit_logs.target_type = ? AND target_users.id = admin_audit_logs.target_id", "user")
+	operator, err := ResolveOperatorUser(requesterUserId, requesterRole)
+	if err != nil {
+		return nil, err
+	}
+	query, err = applyAdminAuditScope(query, operator)
+	if err != nil {
+		return nil, err
+	}
 	if actionModule != "" {
 		query = query.Where("action_module = ?", actionModule)
 	}
 	if operatorUserId > 0 {
-		query = query.Where("operator_user_id = ?", operatorUserId)
+		query = query.Where("admin_audit_logs.operator_user_id = ?", operatorUserId)
 	}
-	return query
+	return query, nil
+}
+
+func applyAdminAuditScope(query *gorm.DB, operator *model.User) (*gorm.DB, error) {
+	if operator == nil || operator.Role == common.RoleRootUser || operator.GetUserType() == model.UserTypeRoot || operator.GetUserType() == model.UserTypeAdmin {
+		return query, nil
+	}
+
+	scopeType, scopeUserIDs, err := resolveDataScopeForResource(operator, ResourceAuditManagement)
+	if err != nil {
+		return nil, err
+	}
+
+	switch scopeType {
+	case model.ScopeTypeAll:
+		return query, nil
+	case model.ScopeTypeSelf:
+		return query.Where("admin_audit_logs.operator_user_id = ?", operator.Id), nil
+	case model.ScopeTypeAssigned:
+		if len(scopeUserIDs) == 0 {
+			return query.Where("1 = 0"), nil
+		}
+		return query.Where("admin_audit_logs.operator_user_id IN ?", scopeUserIDs), nil
+	default:
+		if operator.GetUserType() != model.UserTypeAgent {
+			return query.Where("1 = 0"), nil
+		}
+		managedUserSubQuery := ApplyManagedEndUserScope(
+			model.DB.Model(&model.User{}).Select("users.id"),
+			operator,
+			ResourceAuditManagement,
+		)
+		return query.Where(
+			"(admin_audit_logs.operator_user_id = ? OR admin_audit_logs.operator_user_id IN (?))",
+			operator.Id,
+			managedUserSubQuery,
+		), nil
+	}
 }
 
 func fetchAdminAuditLogs(query *gorm.DB, limit int, offset int) ([]AdminAuditLogListItem, error) {

@@ -557,13 +557,13 @@ func TestExportAdminAuditLogsServiceHelperCapsLimit(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 	seedAuditLogs(t, db, 2050, "quota", 9001)
 
-	items, total, err := service.ListAdminAuditLogsForExport("quota", 9001, 5000)
+	items, total, err := service.ListAdminAuditLogsForExport(9001, common.RoleRootUser, "quota", 9001, 5000)
 	require.NoError(t, err)
 	require.Len(t, items, 2000)
 	require.Zero(t, total)
 	require.True(t, items[0].Id > items[len(items)-1].Id)
 
-	items, total, err = service.ListAdminAuditLogsForExport("quota", 9001, 123)
+	items, total, err = service.ListAdminAuditLogsForExport(9001, common.RoleRootUser, "quota", 9001, 123)
 	require.NoError(t, err)
 	require.Len(t, items, 123)
 	require.Zero(t, total)
@@ -585,28 +585,81 @@ func TestExportQuotaLedgerServiceHelperCapsLimit(t *testing.T) {
 	require.Zero(t, total)
 }
 
-func TestExportAdminAuditLogsDeniesAgentEvenWithReadGrant(t *testing.T) {
+func TestExportAdminAuditLogsAllowsAgentReadGrantAndOnlyExportsOwnRows(t *testing.T) {
 	db := setupListExcelExportTestDB(t)
 
 	agent := testListExportUser(9101, "audit_agent", "Audit Agent", common.RoleAdminUser, model.UserTypeAgent)
+	otherOperator := testListExportUser(9102, "other_audit_operator", "Other Audit Operator", common.RoleAdminUser, model.UserTypeAdmin)
+	managedUser := testListExportUser(9103, "managed_audit_user", "Managed Audit User", common.RoleCommonUser, model.UserTypeEndUser)
 	require.NoError(t, db.Create(&agent).Error)
+	require.NoError(t, db.Create(&otherOperator).Error)
+	require.NoError(t, db.Create(&managedUser).Error)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   managedUser.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
 	grantPermissionActions(t, db, agent.Id, "agent",
 		permissionGrant{Resource: service.ResourceAuditManagement, Action: service.ActionRead},
 	)
+	require.NoError(t, db.Create(&[]model.AdminAuditLog{
+		{
+			OperatorUserId:   agent.Id,
+			OperatorUserType: model.UserTypeAgent,
+			ActionModule:     "quota",
+			ActionType:       "adjust",
+			ActionDesc:       "agent_self_row",
+			TargetType:       "user",
+			TargetId:         agent.Id,
+			Ip:               "203.0.113.10",
+			CreatedAtTs:      1810000201,
+		},
+		{
+			OperatorUserId:   managedUser.Id,
+			OperatorUserType: model.UserTypeEndUser,
+			ActionModule:     "quota",
+			ActionType:       "adjust",
+			ActionDesc:       "managed_user_row",
+			TargetType:       "user",
+			TargetId:         managedUser.Id,
+			Ip:               "203.0.113.12",
+			CreatedAtTs:      1810000202,
+		},
+		{
+			OperatorUserId:   otherOperator.Id,
+			OperatorUserType: model.UserTypeAdmin,
+			ActionModule:     "quota",
+			ActionType:       "adjust",
+			ActionDesc:       "other_operator_row",
+			TargetType:       "user",
+			TargetId:         otherOperator.Id,
+			Ip:               "203.0.113.11",
+			CreatedAtTs:      1810000203,
+		},
+	}).Error)
 
 	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/admin/audit-logs/export", map[string]any{
-		"action_module":    "quota",
-		"operator_user_id": 9001,
-		"limit":            10,
+		"action_module": "quota",
+		"limit":         10,
 	}, agent.Id, common.RoleAdminUser)
 
 	ExportAdminAuditLogs(ctx)
 
-	var response settingAuditResponse
-	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
-	require.False(t, response.Success)
-	require.Equal(t, "permission denied", response.Message)
-	require.NotEqual(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
+	require.Equal(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	sheets := workbook.GetSheetList()
+	require.NotEmpty(t, sheets)
+	rows, err := workbook.GetRows(sheets[0])
+	require.NoError(t, err)
+	require.Len(t, rows, 3)
+	operatorCells := []string{rows[1][1], rows[2][1]}
+	require.Contains(t, operatorCells[0]+operatorCells[1], agent.Username)
+	require.Contains(t, operatorCells[0]+operatorCells[1], strconv.Itoa(agent.Id))
+	require.Contains(t, operatorCells[0]+operatorCells[1], managedUser.Username)
+	require.Contains(t, operatorCells[0]+operatorCells[1], strconv.Itoa(managedUser.Id))
 }
 
 func TestExportAdminAuditLogsRequiresReadPermission(t *testing.T) {
