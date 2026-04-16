@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -74,24 +75,34 @@ type UserQuotaLedgerEntryInput struct {
 }
 
 type QuotaLedgerListItem struct {
-	Id               int    `json:"id"`
-	BizNo            string `json:"biz_no"`
-	AccountId        int    `json:"account_id"`
-	AccountUsername  string `json:"account_username"`
-	TransferOrderId  int    `json:"transfer_order_id"`
-	EntryType        string `json:"entry_type"`
-	Direction        string `json:"direction"`
-	Amount           int    `json:"amount"`
-	BalanceBefore    int    `json:"balance_before"`
-	BalanceAfter     int    `json:"balance_after"`
-	SourceType       string `json:"source_type"`
-	SourceId         int    `json:"source_id"`
-	OperatorUserId   int    `json:"operator_user_id"`
-	OperatorUsername string `json:"operator_username"`
-	OperatorUserType string `json:"operator_user_type"`
-	Reason           string `json:"reason"`
-	Remark           string `json:"remark"`
-	CreatedAtTs      int64  `json:"created_at" gorm:"column:created_at"`
+	Id                 int    `json:"id"`
+	BizNo              string `json:"biz_no"`
+	AccountId          int    `json:"account_id"`
+	AccountOwnerUserId int    `json:"-" gorm:"column:account_owner_user_id"`
+	AccountUsername    string `json:"account_username"`
+	TransferOrderId    int    `json:"transfer_order_id"`
+	EntryType          string `json:"entry_type"`
+	Direction          string `json:"direction"`
+	Amount             int    `json:"amount"`
+	BalanceBefore      int    `json:"balance_before"`
+	BalanceAfter       int    `json:"balance_after"`
+	SourceType         string `json:"source_type"`
+	SourceId           int    `json:"source_id"`
+	OperatorUserId     int    `json:"operator_user_id"`
+	OperatorUsername   string `json:"operator_username"`
+	OperatorUserType   string `json:"operator_user_type"`
+	Reason             string `json:"reason"`
+	Remark             string `json:"remark"`
+	ModelName          string `json:"model_name"`
+	CreatedAtTs        int64  `json:"created_at" gorm:"column:created_at"`
+}
+
+type quotaLedgerConsumeLogMatch struct {
+	Id        int    `gorm:"column:id"`
+	UserId    int    `gorm:"column:user_id"`
+	Quota     int    `gorm:"column:quota"`
+	ModelName string `gorm:"column:model_name"`
+	CreatedAt int64  `gorm:"column:created_at"`
 }
 
 func GetUserQuotaSummary(userId int) (map[string]any, error) {
@@ -814,7 +825,7 @@ func fetchQuotaLedgerItems(query *gorm.DB, limit int, offset int) ([]QuotaLedger
 	var items []QuotaLedgerListItem
 	err := query.
 		Select(
-			"quota_ledgers.id, quota_ledgers.biz_no, quota_ledgers.account_id, account_users.username AS account_username, " +
+			"quota_ledgers.id, quota_ledgers.biz_no, quota_ledgers.account_id, quota_accounts.owner_id AS account_owner_user_id, account_users.username AS account_username, " +
 				"quota_ledgers.transfer_order_id, quota_ledgers.entry_type, quota_ledgers.direction, quota_ledgers.amount, " +
 				"quota_ledgers.balance_before, quota_ledgers.balance_after, quota_ledgers.source_type, quota_ledgers.source_id, " +
 				"quota_ledgers.operator_user_id, operator_users.username AS operator_username, quota_ledgers.operator_user_type, " +
@@ -824,7 +835,129 @@ func fetchQuotaLedgerItems(query *gorm.DB, limit int, offset int) ([]QuotaLedger
 		Limit(limit).
 		Offset(offset).
 		Scan(&items).Error
-	return items, err
+	if err != nil {
+		return nil, err
+	}
+	if err := backfillQuotaLedgerModelNames(items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func backfillQuotaLedgerModelNames(items []QuotaLedgerListItem) error {
+	const quotaLedgerLogMatchWindowSeconds int64 = 300
+
+	type consumeTarget struct {
+		index     int
+		userId    int
+		amount    int
+		createdAt int64
+	}
+
+	targets := make([]consumeTarget, 0)
+	userIds := make(map[int]struct{})
+	quotas := make(map[int]struct{})
+	var minCreatedAt int64
+	var maxCreatedAt int64
+
+	for index := range items {
+		item := &items[index]
+		if item.EntryType != model.LedgerEntryConsume || item.AccountOwnerUserId == 0 || item.Amount <= 0 {
+			continue
+		}
+		targets = append(targets, consumeTarget{
+			index:     index,
+			userId:    item.AccountOwnerUserId,
+			amount:    item.Amount,
+			createdAt: item.CreatedAtTs,
+		})
+		userIds[item.AccountOwnerUserId] = struct{}{}
+		quotas[item.Amount] = struct{}{}
+		if minCreatedAt == 0 || item.CreatedAtTs < minCreatedAt {
+			minCreatedAt = item.CreatedAtTs
+		}
+		if item.CreatedAtTs > maxCreatedAt {
+			maxCreatedAt = item.CreatedAtTs
+		}
+	}
+	if len(targets) == 0 {
+		return nil
+	}
+
+	userIdList := make([]int, 0, len(userIds))
+	for userId := range userIds {
+		userIdList = append(userIdList, userId)
+	}
+	quotaList := make([]int, 0, len(quotas))
+	for quota := range quotas {
+		quotaList = append(quotaList, quota)
+	}
+
+	var logs []quotaLedgerConsumeLogMatch
+	err := model.LOG_DB.Model(&model.Log{}).
+		Select("id, user_id, quota, model_name, created_at").
+		Where("type = ?", model.LogTypeConsume).
+		Where("model_name <> ''").
+		Where("user_id IN ?", userIdList).
+		Where("quota IN ?", quotaList).
+		Where("created_at >= ? AND created_at <= ?", minCreatedAt-quotaLedgerLogMatchWindowSeconds, maxCreatedAt+quotaLedgerLogMatchWindowSeconds).
+		Order("created_at asc, id asc").
+		Scan(&logs).Error
+	if err != nil {
+		return err
+	}
+	if len(logs) == 0 {
+		return nil
+	}
+
+	logsByUserAndQuota := make(map[string][]quotaLedgerConsumeLogMatch, len(logs))
+	for _, log := range logs {
+		key := quotaLedgerConsumeLogMatchKey(log.UserId, log.Quota)
+		logsByUserAndQuota[key] = append(logsByUserAndQuota[key], log)
+	}
+
+	sort.Slice(targets, func(i int, j int) bool {
+		if targets[i].createdAt == targets[j].createdAt {
+			return targets[i].index < targets[j].index
+		}
+		return targets[i].createdAt < targets[j].createdAt
+	})
+
+	usedLogIds := make(map[int]struct{}, len(logs))
+	for _, target := range targets {
+		key := quotaLedgerConsumeLogMatchKey(target.userId, target.amount)
+		candidates := logsByUserAndQuota[key]
+		bestIndex := -1
+		var bestDistance int64
+		for index, candidate := range candidates {
+			if _, used := usedLogIds[candidate.Id]; used {
+				continue
+			}
+			distance := quotaLedgerLogMatchDistance(target.createdAt, candidate.CreatedAt)
+			if bestIndex == -1 || distance < bestDistance || (distance == bestDistance && candidate.CreatedAt < candidates[bestIndex].CreatedAt) {
+				bestIndex = index
+				bestDistance = distance
+			}
+		}
+		if bestIndex == -1 {
+			continue
+		}
+		items[target.index].ModelName = candidates[bestIndex].ModelName
+		usedLogIds[candidates[bestIndex].Id] = struct{}{}
+	}
+
+	return nil
+}
+
+func quotaLedgerConsumeLogMatchKey(userId int, quota int) string {
+	return fmt.Sprintf("%d:%d", userId, quota)
+}
+
+func quotaLedgerLogMatchDistance(a int64, b int64) int64 {
+	if a > b {
+		return a - b
+	}
+	return b - a
 }
 
 func AdjustUserQuotaBatch(req AdjustUserQuotaBatchRequest) (map[string]any, error) {

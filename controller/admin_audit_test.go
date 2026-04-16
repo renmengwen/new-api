@@ -66,6 +66,10 @@ func setupAdminAuditTestDB(t *testing.T) *gorm.DB {
 		&model.PermissionProfile{},
 		&model.PermissionProfileItem{},
 		&model.UserPermissionBinding{},
+		&model.UserPermissionOverride{},
+		&model.UserMenuOverride{},
+		&model.UserDataScopeOverride{},
+		&model.AgentUserRelation{},
 		&model.AdminAuditLog{},
 	))
 
@@ -211,7 +215,7 @@ func TestGetAdminAuditLogsLeavesTargetIdentityEmptyForNonUserTargets(t *testing.
 	require.Equal(t, "", response.Data.Items[0].TargetDisplayName)
 }
 
-func TestGetAdminAuditLogsDeniesAgentUsersEvenWithReadGrant(t *testing.T) {
+func TestGetAdminAuditLogsAllowsAgentUsersWithReadGrantAndScopesToSelf(t *testing.T) {
 	db := setupAdminAuditTestDB(t)
 	operator := model.User{
 		Username:    "audit_agent_with_grant",
@@ -224,10 +228,69 @@ func TestGetAdminAuditLogsDeniesAgentUsersEvenWithReadGrant(t *testing.T) {
 		AffCode:     "auditagentgr",
 	}
 	require.NoError(t, db.Create(&operator).Error)
+	otherOperator := model.User{
+		Username:    "audit_other_operator",
+		Password:    "hashed-password",
+		DisplayName: "Audit Other Operator",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAdmin,
+		Group:       "default",
+		AffCode:     "auditother",
+	}
+	managedUser := model.User{
+		Username:    "audit_managed_user",
+		Password:    "hashed-password",
+		DisplayName: "Audit Managed User",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeEndUser,
+		Group:       "default",
+		AffCode:     "auditmanaged",
+	}
+	require.NoError(t, db.Create(&otherOperator).Error)
+	require.NoError(t, db.Create(&managedUser).Error)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: operator.Id,
+		EndUserId:   managedUser.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
 	grantPermissionActions(t, db, operator.Id, model.UserTypeAgent, permissionGrant{
 		Resource: "audit_management",
 		Action:   "read",
 	})
+	require.NoError(t, db.Create(&[]model.AdminAuditLog{
+		{
+			OperatorUserId:   operator.Id,
+			OperatorUserType: model.UserTypeAgent,
+			ActionModule:     "user_management",
+			ActionType:       "update",
+			TargetType:       "user",
+			TargetId:         operator.Id,
+			CreatedAtTs:      common.GetTimestamp(),
+		},
+		{
+			OperatorUserId:   managedUser.Id,
+			OperatorUserType: model.UserTypeEndUser,
+			ActionModule:     "quota",
+			ActionType:       "adjust",
+			TargetType:       "user",
+			TargetId:         managedUser.Id,
+			CreatedAtTs:      common.GetTimestamp() + 1,
+		},
+		{
+			OperatorUserId:   otherOperator.Id,
+			OperatorUserType: model.UserTypeAdmin,
+			ActionModule:     "quota",
+			ActionType:       "adjust",
+			TargetType:       "user",
+			TargetId:         otherOperator.Id,
+			CreatedAtTs:      common.GetTimestamp() + 2,
+		},
+	}).Error)
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -239,7 +302,11 @@ func TestGetAdminAuditLogsDeniesAgentUsersEvenWithReadGrant(t *testing.T) {
 
 	var response adminAuditPageResponse
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
-	require.False(t, response.Success)
+	require.True(t, response.Success)
+	require.Equal(t, 2, response.Data.Total)
+	require.Len(t, response.Data.Items, 2)
+	require.Equal(t, managedUser.Id, response.Data.Items[0].OperatorUserId)
+	require.Equal(t, operator.Id, response.Data.Items[1].OperatorUserId)
 }
 
 func TestGetAdminAuditLogsListResponseOmitsHeavyFields(t *testing.T) {

@@ -1,3 +1,22 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -33,6 +52,11 @@ test('AdminQuotaLedgerPageV2 formats ledger quota amounts with six decimal place
     source,
     /dataIndex:\s*'balance_after'[\s\S]*render:\s*\(value\)\s*=>\s*renderQuota\(value,\s*ADMIN_QUOTA_LEDGER_DIGITS\)/,
   );
+});
+
+test('AdminQuotaLedgerPageV2 includes a fixed model_name column for ledger rows', () => {
+  assert.match(pageSource, /title:\s*t\('模型名称'\)/);
+  assert.match(pageSource, /dataIndex:\s*'model_name'/);
 });
 
 test('AdminQuotaLedgerPageV2 uses committed request state and wires Excel export from committed filters', () => {
