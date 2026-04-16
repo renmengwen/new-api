@@ -8,6 +8,8 @@ test('getAuditLogModuleLabel renders Chinese and falls back to raw values', asyn
 
   assert.equal(getAuditLogModuleLabel('admin_management'), '管理员管理');
   assert.equal(getAuditLogModuleLabel('agent'), '代理管理');
+  assert.equal(getAuditLogModuleLabel('setting_system'), '系统设置');
+  assert.equal(getAuditLogModuleLabel('setting_model'), '模型相关设置');
   assert.equal(getAuditLogModuleLabel('future_module'), 'future_module');
 });
 
@@ -16,6 +18,9 @@ test('getAuditLogActionLabel renders Chinese and falls back to raw values', asyn
 
   assert.equal(getAuditLogActionLabel('create'), '创建');
   assert.equal(getAuditLogActionLabel('adjust_batch'), '批量额度调整');
+  assert.equal(getAuditLogActionLabel('save_general'), '保存通用设置');
+  assert.equal(getAuditLogActionLabel('toggle_allow_private_ip'), '允许访问私有 IP');
+  assert.equal(getAuditLogActionLabel('refresh_performance_stats'), '刷新统计');
   assert.equal(getAuditLogActionLabel('future_action'), 'future_action');
 });
 
@@ -73,12 +78,20 @@ test('formatAuditTarget prefers user identity and otherwise falls back to target
 
   assert.equal(
     formatAuditTarget({
+      targetType: 'option_key',
+      targetId: 0,
+    }),
+    '配置项',
+  );
+
+  assert.equal(
+    formatAuditTarget({
       targetType: 'user',
       targetId: 42,
       targetUsername: '',
       targetDisplayName: '',
     }),
-    'user #42',
+    '用户 #42',
   );
 });
 
@@ -92,4 +105,13 @@ test('AUDIT_LOG_COVERAGE exactly enumerates the current write points', async () 
     { module: 'permission', actions: ['bind_profile', 'clear_profile'] },
     { module: 'quota', actions: ['adjust', 'adjust_batch'] },
   ]);
+});
+
+test('AUDIT_LOG_FILTER_MODULES includes setting modules for the filter select', async () => {
+  const { AUDIT_LOG_FILTER_MODULES } = await loadDisplayHelpers();
+
+  assert.equal(AUDIT_LOG_FILTER_MODULES.includes('admin_management'), true);
+  assert.equal(AUDIT_LOG_FILTER_MODULES.includes('setting_system'), true);
+  assert.equal(AUDIT_LOG_FILTER_MODULES.includes('setting_model'), true);
+  assert.equal(AUDIT_LOG_FILTER_MODULES.includes('setting_performance'), true);
 });

@@ -32,6 +32,7 @@ test('useUsageLogsData uses committed query state for export, refresh, paging, a
   assert.match(hookSource, /downloadExcelBlob/);
   assert.match(hookSource, /\/api\/log\/export/);
   assert.match(hookSource, /\/api\/log\/self\/export/);
+  assert.match(hookSource, /quota_display_type/);
   assert.match(hookSource, /showInfo\(t\('无可导出数据'\)\)/);
   assert.match(hookSource, /Modal\.confirm/);
   assert.match(hookSource, /const nextCommittedQuery = getFormValues\(\)/);

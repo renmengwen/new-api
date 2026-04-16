@@ -82,6 +82,7 @@ test('buildUsageLogExportRequest uses the committed query snapshot, visible colu
     channel: '18',
     group: 'default',
     request_id: 'req_123',
+    quota_display_type: 'USD',
     column_keys: ['time', 'model', 'details'],
     limit: MAX_EXCEL_EXPORT_ROWS,
   });

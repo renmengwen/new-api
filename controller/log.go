@@ -119,13 +119,13 @@ var usageLogExportColumns = map[string]usageLogExportColumn{
 	"model": {
 		Header: "模型",
 		Value: func(log *model.Log) string {
-			return log.ModelName
+			return service.GetUsageLogExportModelLabel(log)
 		},
 	},
 	"use_time": {
 		Header: "用时/首字",
 		Value: func(log *model.Log) string {
-			return formatUsageLogUseTime(log)
+			return service.GetUsageLogExportUseTimeLabel(log)
 		},
 	},
 	"prompt": {
@@ -222,7 +222,7 @@ func ExportAllLogs(c *gin.Context) {
 		return
 	}
 
-	exportUsageLogs(c, logs, req.ColumnKeys, true)
+	exportUsageLogs(c, logs, req.ColumnKeys, req.QuotaDisplayType, true)
 }
 
 func ExportUserLogs(c *gin.Context) {
@@ -248,10 +248,10 @@ func ExportUserLogs(c *gin.Context) {
 		return
 	}
 
-	exportUsageLogs(c, logs, req.ColumnKeys, false)
+	exportUsageLogs(c, logs, req.ColumnKeys, req.QuotaDisplayType, false)
 }
 
-func exportUsageLogs(c *gin.Context, logs []*model.Log, requestedColumnKeys []string, isAdmin bool) {
+func exportUsageLogs(c *gin.Context, logs []*model.Log, requestedColumnKeys []string, requestedQuotaDisplayType string, isAdmin bool) {
 	columnKeys := resolveUsageLogExportColumnKeys(requestedColumnKeys, isAdmin)
 	if len(columnKeys) == 0 {
 		common.ApiError(c, errors.New("no export columns selected"))
@@ -266,7 +266,7 @@ func exportUsageLogs(c *gin.Context, logs []*model.Log, requestedColumnKeys []st
 	for _, log := range logs {
 		row := make([]string, 0, len(columnKeys))
 		for _, key := range columnKeys {
-			row = append(row, usageLogExportColumns[key].Value(log))
+			row = append(row, resolveUsageLogExportValue(log, key, requestedQuotaDisplayType))
 		}
 		rows = append(rows, row)
 	}
@@ -283,6 +283,13 @@ func exportUsageLogs(c *gin.Context, logs []*model.Log, requestedColumnKeys []st
 	}
 
 	streamExcelFile(c, fileName, content)
+}
+
+func resolveUsageLogExportValue(log *model.Log, key string, requestedQuotaDisplayType string) string {
+	if key == "cost" {
+		return service.GetUsageLogExportCostLabel(log, requestedQuotaDisplayType)
+	}
+	return usageLogExportColumns[key].Value(log)
 }
 
 func resolveUsageLogExportColumnKeys(requestedColumnKeys []string, isAdmin bool) []string {

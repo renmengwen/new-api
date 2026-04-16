@@ -12,6 +12,7 @@ type ExcelFileSpec struct {
 	SheetName      string
 	Headers        []string
 	Rows           [][]string
+	ColumnWidths   map[string]float64
 }
 
 func BuildExcelFile(spec ExcelFileSpec) (fileName string, content []byte, err error) {
@@ -51,6 +52,12 @@ func BuildExcelFile(spec ExcelFileSpec) (fileName string, content []byte, err er
 			if err := file.SetCellValue(sheetName, cellName, value); err != nil {
 				return "", nil, err
 			}
+		}
+	}
+
+	for columnName, width := range spec.ColumnWidths {
+		if err := file.SetColWidth(sheetName, columnName, columnName, width); err != nil {
+			return "", nil, err
 		}
 	}
 

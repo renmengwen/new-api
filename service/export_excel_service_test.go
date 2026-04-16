@@ -38,6 +38,37 @@ func TestBuildExcelFileWritesHeadersAndRows(t *testing.T) {
 	require.Equal(t, "2026-04-16 12:05:00", mustCell(t, workbook, "审计日志", "C3"))
 }
 
+func TestBuildExcelFileAppliesConfiguredColumnWidths(t *testing.T) {
+	fileName, content, err := BuildExcelFile(ExcelFileSpec{
+		FileNamePrefix: "审计日志",
+		SheetName:      "审计日志",
+		Headers:        []string{"ID", "操作人"},
+		Rows: [][]string{
+			{"101", "alice [ID:1]"},
+		},
+		ColumnWidths: map[string]float64{
+			"A": 14,
+			"B": 28,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, fileName)
+
+	workbook, err := excelize.OpenReader(bytes.NewReader(content))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, workbook.Close())
+	})
+
+	widthA, err := workbook.GetColWidth("审计日志", "A")
+	require.NoError(t, err)
+	require.Equal(t, 14.0, widthA)
+
+	widthB, err := workbook.GetColWidth("审计日志", "B")
+	require.NoError(t, err)
+	require.Equal(t, 28.0, widthB)
+}
+
 func mustCell(t *testing.T, workbook *excelize.File, sheetName string, cell string) string {
 	t.Helper()
 

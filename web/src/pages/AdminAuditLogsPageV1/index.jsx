@@ -24,7 +24,7 @@ import {
   updateDraftFilters,
 } from './requestState';
 import {
-  AUDIT_LOG_COVERAGE,
+  AUDIT_LOG_FILTER_MODULES,
   formatAuditIdentity,
   formatAuditTarget,
   getAuditLogActionLabel,
@@ -40,7 +40,7 @@ const renderText = (value) => {
   return value;
 };
 
-const moduleOptions = AUDIT_LOG_COVERAGE.map(({ module }) => ({
+const moduleOptions = AUDIT_LOG_FILTER_MODULES.map((module) => ({
   label: getAuditLogModuleLabel(module),
   value: module,
 }));

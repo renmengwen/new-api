@@ -15,6 +15,13 @@ const toUnixTimestamp = (value) => {
   return Math.floor(parsedValue / 1000);
 };
 
+const getQuotaDisplayType = () => {
+  if (typeof localStorage === 'undefined') {
+    return 'USD';
+  }
+  return localStorage.getItem('quota_display_type') || 'USD';
+};
+
 export const createUsageLogCommittedQuery = (
   values = {},
   fallbackDateRange = [],
@@ -58,6 +65,7 @@ export const buildUsageLogExportRequest = ({
   channel: normalizeText(committedQuery?.channel),
   group: normalizeText(committedQuery?.group),
   request_id: normalizeText(committedQuery?.request_id),
+  quota_display_type: normalizeText(getQuotaDisplayType()),
   column_keys: Array.isArray(visibleColumnKeys) ? visibleColumnKeys : [],
   limit: MAX_EXCEL_EXPORT_ROWS,
 });

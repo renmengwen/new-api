@@ -107,17 +107,18 @@ func TestExportAdminUsageLogsUsesFiltersColumnKeysAndCap(t *testing.T) {
 
 	adminUser := testListExportUser(9001, "root_exporter", "Root Exporter", common.RoleRootUser, model.UserTypeRoot)
 	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/log/export", map[string]any{
-		"type":            model.LogTypeConsume,
-		"start_timestamp": fixture.OldestExported.CreatedAt - 50,
-		"end_timestamp":   fixture.LatestMatching.CreatedAt,
-		"username":        fixture.LatestMatching.Username,
-		"token_name":      fixture.LatestMatching.TokenName,
-		"model_name":      fixture.LatestMatching.ModelName,
-		"channel":         strconv.Itoa(fixture.LatestMatching.ChannelId),
-		"group":           fixture.LatestMatching.Group,
-		"request_id":      fixture.LatestMatching.RequestId,
-		"column_keys":     []string{"details", "model", "username", "time"},
-		"limit":           5000,
+		"type":               model.LogTypeConsume,
+		"start_timestamp":    fixture.OldestExported.CreatedAt - 50,
+		"end_timestamp":      fixture.LatestMatching.CreatedAt,
+		"username":           fixture.LatestMatching.Username,
+		"token_name":         fixture.LatestMatching.TokenName,
+		"model_name":         fixture.LatestMatching.ModelName,
+		"channel":            strconv.Itoa(fixture.LatestMatching.ChannelId),
+		"group":              fixture.LatestMatching.Group,
+		"request_id":         fixture.LatestMatching.RequestId,
+		"column_keys":        []string{"model", "use_time", "cost", "username", "time"},
+		"quota_display_type": "USD",
+		"limit":              5000,
 	}, adminUser.Id, common.RoleRootUser)
 	ctx.Set("username", adminUser.Username)
 
@@ -133,25 +134,26 @@ func TestExportAdminUsageLogsUsesFiltersColumnKeysAndCap(t *testing.T) {
 	rows, err := workbook.GetRows("使用日志")
 	require.NoError(t, err)
 	require.Len(t, rows, 2001)
-	require.Equal(t, []string{"详情", "模型", "用户", "时间"}, rows[0])
+	require.Equal(t, []string{"模型", "用时/首字", "花费", "用户", "时间"}, rows[0])
 
 	dataRows := rows[1:]
-	exportedDetails := sheetColumnValues(dataRows, 0)
-	require.Equal(t, fixture.LatestMatching.Content, dataRows[0][0])
-	require.Equal(t, fixture.LatestMatching.ModelName, dataRows[0][1])
-	require.Equal(t, fixture.LatestMatching.Username, dataRows[0][2])
-	require.Equal(t, formatExportTimestamp(fixture.LatestMatching.CreatedAt), dataRows[0][3])
-	require.Equal(t, fixture.OldestExported.Content, dataRows[len(dataRows)-1][0])
-	require.NotContains(t, exportedDetails, fixture.CappedOut.Content)
-	require.NotContains(t, exportedDetails, fixture.BeforeStart.Content)
-	require.NotContains(t, exportedDetails, fixture.AfterEnd.Content)
-	require.NotContains(t, exportedDetails, fixture.TypeMismatch.Content)
-	require.NotContains(t, exportedDetails, fixture.UserMismatch.Content)
-	require.NotContains(t, exportedDetails, fixture.TokenMismatch.Content)
-	require.NotContains(t, exportedDetails, fixture.ModelMismatch.Content)
-	require.NotContains(t, exportedDetails, fixture.ChannelMismatch.Content)
-	require.NotContains(t, exportedDetails, fixture.GroupMismatch.Content)
-	require.NotContains(t, exportedDetails, fixture.RequestMismatch.Content)
+	exportedModels := sheetColumnValues(dataRows, 0)
+	require.Equal(t, "gpt-4o -> gpt-4.1", dataRows[0][0])
+	require.Equal(t, "2079 s / 首字 0.8 s / 流", dataRows[0][1])
+	require.Equal(t, "由订阅抵扣（等价金额：$0.004298）", dataRows[0][2])
+	require.Equal(t, fixture.LatestMatching.Username, dataRows[0][3])
+	require.Equal(t, formatExportTimestamp(fixture.LatestMatching.CreatedAt), dataRows[0][4])
+	require.Equal(t, "gpt-4o -> gpt-4.1", dataRows[len(dataRows)-1][0])
+	require.NotContains(t, exportedModels, fixture.CappedOut.Content)
+	require.NotContains(t, exportedModels, fixture.BeforeStart.Content)
+	require.NotContains(t, exportedModels, fixture.AfterEnd.Content)
+	require.NotContains(t, exportedModels, fixture.TypeMismatch.Content)
+	require.NotContains(t, exportedModels, fixture.UserMismatch.Content)
+	require.NotContains(t, exportedModels, fixture.TokenMismatch.Content)
+	require.NotContains(t, exportedModels, fixture.ModelMismatch.Content)
+	require.NotContains(t, exportedModels, fixture.ChannelMismatch.Content)
+	require.NotContains(t, exportedModels, fixture.GroupMismatch.Content)
+	require.NotContains(t, exportedModels, fixture.RequestMismatch.Content)
 }
 
 func TestExportAdminUsageLogsKeepsNewestFirst(t *testing.T) {
@@ -304,12 +306,13 @@ func TestExportSelfUsageLogsUsesDefaultColumnsWhenColumnKeysOmitted(t *testing.T
 
 	selfUser := testListExportUser(7001, "self_exporter", "Self Exporter", common.RoleCommonUser, model.UserTypeEndUser)
 	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/log/self/export", map[string]any{
-		"type":       model.LogTypeConsume,
-		"token_name": fixture.LatestOwnMatching.TokenName,
-		"model_name": fixture.LatestOwnMatching.ModelName,
-		"group":      fixture.LatestOwnMatching.Group,
-		"request_id": fixture.LatestOwnMatching.RequestId,
-		"limit":      10,
+		"type":               model.LogTypeConsume,
+		"token_name":         fixture.LatestOwnMatching.TokenName,
+		"model_name":         fixture.LatestOwnMatching.ModelName,
+		"group":              fixture.LatestOwnMatching.Group,
+		"request_id":         fixture.LatestOwnMatching.RequestId,
+		"quota_display_type": "USD",
+		"limit":              10,
 	}, selfUser.Id, common.RoleCommonUser)
 	ctx.Set("username", selfUser.Username)
 
@@ -327,11 +330,12 @@ func TestExportSelfUsageLogsUsesDefaultColumnsWhenColumnKeysOmitted(t *testing.T
 	require.Equal(t, formatExportTimestamp(fixture.LatestOwnMatching.CreatedAt), dataRow[0])
 	require.Equal(t, fixture.LatestOwnMatching.TokenName, dataRow[1])
 	require.Equal(t, fixture.LatestOwnMatching.Group, dataRow[2])
-	require.Equal(t, fixture.LatestOwnMatching.ModelName, dataRow[4])
-	require.Equal(t, strconv.Itoa(fixture.LatestOwnMatching.UseTime), dataRow[5])
+	require.Equal(t, "消费", dataRow[3])
+	require.Equal(t, "gpt-4o-mini -> gpt-4.1-mini", dataRow[4])
+	require.Equal(t, "8 s / 首字 0.8 s / 流", dataRow[5])
 	require.Equal(t, strconv.Itoa(fixture.LatestOwnMatching.PromptTokens), dataRow[6])
 	require.Equal(t, strconv.Itoa(fixture.LatestOwnMatching.CompletionTokens), dataRow[7])
-	require.Equal(t, strconv.Itoa(fixture.LatestOwnMatching.Quota), dataRow[8])
+	require.Equal(t, "由订阅抵扣（等价金额：$0.000044）", dataRow[8])
 	require.Equal(t, fixture.LatestOwnMatching.Ip, dataRow[9])
 	require.Equal(t, fixture.LatestOwnMatching.Content, dataRow[10])
 }
@@ -411,16 +415,78 @@ func TestExportAdminAuditLogsUsesFiltersAndCap(t *testing.T) {
 	exportedIDs := sheetColumnValues(dataRows, 0)
 	require.Equal(t, strconv.Itoa(fixture.LatestMatching.Id), dataRows[0][0])
 	require.Contains(t, dataRows[0][1], "[ID:9001]")
-	require.Equal(t, "quota", dataRows[0][2])
-	require.Equal(t, "adjust", dataRows[0][3])
+	require.Equal(t, "额度管理", dataRows[0][2])
+	require.Equal(t, "额度调整", dataRows[0][3])
 	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.ModuleMismatch.Id))
 	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.OperatorMismatch.Id))
 	requireStrictlyDescendingIDs(t, exportedIDs)
 
 	for _, row := range dataRows {
-		require.Equal(t, "quota", row[2])
+		require.Equal(t, "额度管理", row[2])
 		require.Contains(t, row[1], "[ID:9001]")
 	}
+}
+
+func TestExportAdminAuditLogsFormatsSettingLabelsAndColumnWidths(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+	seedListExportUsers(t, db,
+		testListExportUser(9001, "admin", "Root User", common.RoleRootUser, model.UserTypeRoot),
+	)
+	settingLog := model.AdminAuditLog{
+		OperatorUserId:   9001,
+		OperatorUserType: model.UserTypeRoot,
+		ActionModule:     "setting_system",
+		ActionType:       "toggle_allow_private_ip",
+		ActionDesc:       "系统设置-系统设置-SSRF-允许访问私有 IP",
+		TargetType:       "option_key",
+		TargetId:         0,
+		Ip:               "::1",
+		CreatedAtTs:      1810001234,
+	}
+	require.NoError(t, db.Create(&settingLog).Error)
+
+	ctx, recorder := newSettingAuditContext(t, http.MethodPost, "/api/admin/audit-logs/export", map[string]any{
+		"action_module":    "setting_system",
+		"operator_user_id": 9001,
+		"limit":            10,
+	})
+
+	ExportAdminAuditLogs(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	rows, err := workbook.GetRows("审计日志")
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	require.Equal(t, []string{"ID", "操作人", "动作模块", "动作类型", "目标", "IP", "时间"}, rows[0])
+	require.Equal(t, "系统设置", rows[1][2])
+	require.Equal(t, "允许访问私有 IP", rows[1][3])
+	require.Equal(t, "配置项", rows[1][4])
+
+	widthB, err := workbook.GetColWidth("审计日志", "B")
+	require.NoError(t, err)
+	require.Equal(t, 28.0, widthB)
+
+	widthC, err := workbook.GetColWidth("审计日志", "C")
+	require.NoError(t, err)
+	require.Equal(t, 18.0, widthC)
+
+	widthD, err := workbook.GetColWidth("审计日志", "D")
+	require.NoError(t, err)
+	require.Equal(t, 24.0, widthD)
+
+	widthE, err := workbook.GetColWidth("审计日志", "E")
+	require.NoError(t, err)
+	require.Equal(t, 24.0, widthE)
+
+	widthF, err := workbook.GetColWidth("审计日志", "F")
+	require.NoError(t, err)
+	require.Equal(t, 16.0, widthF)
+
+	widthG, err := workbook.GetColWidth("审计日志", "G")
+	require.NoError(t, err)
+	require.Equal(t, 22.0, widthG)
 }
 
 func TestExportQuotaLedgerUsesEntryTypeFilterAndCap(t *testing.T) {
@@ -447,7 +513,8 @@ func TestExportQuotaLedgerUsesEntryTypeFilterAndCap(t *testing.T) {
 	require.Equal(t, strconv.Itoa(fixture.LatestMatching.Id), dataRows[0][0])
 	require.Equal(t, "quota_user", dataRows[0][1])
 	require.Contains(t, dataRows[0][2], "[ID:9001]")
-	require.Equal(t, model.LedgerEntryAdjust, dataRows[0][3])
+	require.Equal(t, "调额", dataRows[0][3])
+	require.Equal(t, "手动调额", dataRows[0][9])
 	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.EntryTypeMismatch.Id))
 	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.UserMismatch.Id))
 	require.NotContains(t, exportedIDs, strconv.Itoa(fixture.OperatorMismatch.Id))
@@ -456,7 +523,8 @@ func TestExportQuotaLedgerUsesEntryTypeFilterAndCap(t *testing.T) {
 	for _, row := range dataRows {
 		require.Equal(t, "quota_user", row[1])
 		require.Contains(t, row[2], "[ID:9001]")
-		require.Equal(t, model.LedgerEntryAdjust, row[3])
+		require.Equal(t, "调额", row[3])
+		require.Equal(t, "手动调额", row[9])
 	}
 }
 
@@ -831,7 +899,7 @@ func seedQuotaLedgerRows(t *testing.T, db *gorm.DB, total int, entryType string)
 			SourceId:         2001,
 			OperatorUserId:   9001,
 			OperatorUserType: model.UserTypeRoot,
-			Reason:           "adjust",
+			Reason:           "manual_adjust",
 			Remark:           "",
 			CreatedAtTs:      int64(1710000000 + i),
 		})
@@ -998,6 +1066,13 @@ func seedAdminUsageLogsForExport(t *testing.T, db *gorm.DB) usageLogExportFixtur
 		Group:  "default",
 	}).Error)
 
+	matchedOther := common.MapToJsonStr(map[string]any{
+		"is_model_mapped":     true,
+		"upstream_model_name": "gpt-4.1",
+		"frt":                 800,
+		"billing_source":      "subscription",
+	})
+
 	logs := make([]model.Log, 0, 2058)
 	for i := 0; i < 2050; i++ {
 		logs = append(logs, model.Log{
@@ -1012,11 +1087,12 @@ func seedAdminUsageLogsForExport(t *testing.T, db *gorm.DB) usageLogExportFixtur
 			PromptTokens:     10 + i,
 			CompletionTokens: 20 + i,
 			UseTime:          30 + i,
-			IsStream:         i%2 == 0,
+			IsStream:         true,
 			ChannelId:        7,
 			Group:            "ops",
 			Ip:               fmt.Sprintf("203.0.113.%d", (i%200)+1),
 			RequestId:        "admin-export-request",
+			Other:            matchedOther,
 		})
 	}
 	logs = append(logs,
@@ -1188,9 +1264,16 @@ func seedUserUsageLogsForExport(t *testing.T, db *gorm.DB) userUsageLogExportFix
 			PromptTokens:     220,
 			CompletionTokens: 44,
 			UseTime:          8,
+			IsStream:         true,
 			Group:            "personal",
 			Ip:               "203.0.113.31",
 			RequestId:        "self-export-request",
+			Other: common.MapToJsonStr(map[string]any{
+				"is_model_mapped":     true,
+				"upstream_model_name": "gpt-4.1-mini",
+				"frt":                 800,
+				"billing_source":      "subscription",
+			}),
 		},
 		{
 			UserId:           7002,

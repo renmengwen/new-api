@@ -15,6 +15,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var auditLogExportColumnWidths = map[string]float64{
+	"A": 10,
+	"B": 28,
+	"C": 18,
+	"D": 24,
+	"E": 24,
+	"F": 16,
+	"G": 22,
+}
+
 func GetAdminAuditLogs(c *gin.Context) {
 	operator, err := service.ResolveOperatorUser(c.GetInt("id"), c.GetInt("role"))
 	if err != nil {
@@ -74,6 +84,7 @@ func ExportAdminAuditLogs(c *gin.Context) {
 		SheetName:      "审计日志",
 		Headers:        []string{"ID", "操作人", "动作模块", "动作类型", "目标", "IP", "时间"},
 		Rows:           buildAuditLogExportRows(items),
+		ColumnWidths:   auditLogExportColumnWidths,
 	})
 	if err != nil {
 		common.ApiError(c, err)
@@ -102,8 +113,8 @@ func buildAuditLogExportRows(items []service.AdminAuditLogListItem) [][]string {
 		rows = append(rows, []string{
 			strconv.Itoa(item.Id),
 			formatAuditOperator(item),
-			item.ActionModule,
-			item.ActionType,
+			service.GetAuditLogModuleLabel(item.ActionModule),
+			service.GetAuditLogActionLabel(item.ActionType),
 			formatAuditTarget(item),
 			item.IP,
 			formatExportTimestamp(item.CreatedAt),
@@ -140,7 +151,7 @@ func formatAuditTarget(item service.AdminAuditLogListItem) string {
 		}
 	}
 	if name == "" {
-		name = item.TargetType
+		name = service.GetAuditLogTargetTypeLabel(item.TargetType)
 	}
 	if item.TargetId > 0 {
 		return fmt.Sprintf("%s [ID:%d]", name, item.TargetId)
