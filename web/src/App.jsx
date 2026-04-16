@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { lazy, Suspense, useContext, useMemo } from 'react';
 import { Route, Routes, useLocation, useParams } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
-import { AuthRedirect, PrivateRoute, AdminRoute } from './helpers';
+import { AuthRedirect, PrivateRoute, AdminRoute, AdminPlatformRoute } from './helpers';
 import { StatusContext } from './context/Status';
 import SetupCheck from './components/layout/SetupCheck';
 
@@ -60,6 +60,7 @@ const AdminPermissionTemplates = lazy(() => import('./pages/AdminPermissionTempl
 const AdminUserPermissions = lazy(() => import('./pages/AdminUserPermissionsPage'));
 const AdminQuotaLedger = lazy(() => import('./pages/AdminQuotaLedgerPageV2'));
 const AdminAuditLogs = lazy(() => import('./pages/AdminAuditLogsPageV1'));
+const AdminOperationsAnalytics = lazy(() => import('./pages/AdminOperationsAnalyticsPageV1'));
 
 function DynamicOAuth2Callback() {
   const { provider } = useParams();
@@ -222,6 +223,14 @@ function App() {
             <PrivateRoute>
               <Suspense fallback={<Loading />}><AdminAuditLogs /></Suspense>
             </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/operations-analytics'
+          element={
+            <AdminPlatformRoute>
+              <Suspense fallback={<Loading />}><AdminOperationsAnalytics /></Suspense>
+            </AdminPlatformRoute>
           }
         />
         <Route

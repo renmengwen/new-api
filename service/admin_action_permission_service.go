@@ -13,6 +13,7 @@ const (
 	ResourcePermissionManagement = "permission_management"
 	ResourceAgentManagement      = "agent_management"
 	ResourceAdminManagement      = "admin_management"
+	ResourceAnalyticsManagement  = "analytics_management"
 	ResourceUserManagement       = "user_management"
 	ResourceQuotaManagement      = "quota_management"
 	ResourceAuditManagement      = "audit_management"
@@ -29,6 +30,7 @@ const (
 	ActionManageSubs   = "manage_subscriptions"
 	ActionManageBinds  = "manage_bindings"
 	ActionBindProfile  = "bind_profile"
+	ActionExport       = "export"
 	ActionReadSummary  = "read_summary"
 	ActionAdjust       = "adjust"
 	ActionAdjustBatch  = "adjust_batch"
@@ -39,6 +41,7 @@ var adminActionCatalog = map[string][]string{
 	ResourcePermissionManagement: {ActionRead, ActionBindProfile},
 	ResourceAgentManagement:      {ActionRead, ActionCreate, ActionUpdate, ActionUpdateStatus},
 	ResourceAdminManagement:      {ActionRead, ActionCreate, ActionUpdate, ActionUpdateStatus},
+	ResourceAnalyticsManagement:  {ActionRead, ActionExport},
 	ResourceUserManagement: {
 		ActionRead,
 		ActionCreate,
@@ -50,8 +53,8 @@ var adminActionCatalog = map[string][]string{
 		ActionManageSubs,
 		ActionManageBinds,
 	},
-	ResourceQuotaManagement:      {ActionReadSummary, ActionAdjust, ActionAdjustBatch, ActionLedgerRead},
-	ResourceAuditManagement:      {ActionRead},
+	ResourceQuotaManagement: {ActionReadSummary, ActionAdjust, ActionAdjustBatch, ActionLedgerRead},
+	ResourceAuditManagement: {ActionRead},
 }
 
 var adminSidebarModuleCatalog = map[string][]string{
@@ -63,6 +66,7 @@ var adminSidebarModuleCatalog = map[string][]string{
 		"user-permissions",
 		"quota-ledger",
 		"audit-logs",
+		"operations-analytics",
 		"channel",
 		"subscription",
 		"models",

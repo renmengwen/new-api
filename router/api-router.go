@@ -337,6 +337,16 @@ func SetApiRouter(router *gin.Engine) {
 			adminAuditRoute.POST("/export", controller.ExportAdminAuditLogs)
 		}
 
+		adminAnalyticsRoute := apiRouter.Group("/admin/analytics")
+		adminAnalyticsRoute.Use(middleware.AdminPlatformAuth())
+		{
+			adminAnalyticsRoute.GET("/summary", controller.GetAdminAnalyticsSummary)
+			adminAnalyticsRoute.GET("/models", controller.GetAdminAnalyticsModels)
+			adminAnalyticsRoute.GET("/users", controller.GetAdminAnalyticsUsers)
+			adminAnalyticsRoute.GET("/daily", controller.GetAdminAnalyticsDaily)
+			adminAnalyticsRoute.POST("/export", controller.ExportAdminAnalytics)
+		}
+
 		usageRoute := apiRouter.Group("/usage")
 		usageRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
