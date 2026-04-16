@@ -856,7 +856,6 @@ func backfillQuotaLedgerModelNames(items []QuotaLedgerListItem) error {
 
 	targets := make([]consumeTarget, 0)
 	userIds := make(map[int]struct{})
-	quotas := make(map[int]struct{})
 	var minCreatedAt int64
 	var maxCreatedAt int64
 
@@ -872,7 +871,6 @@ func backfillQuotaLedgerModelNames(items []QuotaLedgerListItem) error {
 			createdAt: item.CreatedAtTs,
 		})
 		userIds[item.AccountOwnerUserId] = struct{}{}
-		quotas[item.Amount] = struct{}{}
 		if minCreatedAt == 0 || item.CreatedAtTs < minCreatedAt {
 			minCreatedAt = item.CreatedAtTs
 		}
@@ -888,10 +886,6 @@ func backfillQuotaLedgerModelNames(items []QuotaLedgerListItem) error {
 	for userId := range userIds {
 		userIdList = append(userIdList, userId)
 	}
-	quotaList := make([]int, 0, len(quotas))
-	for quota := range quotas {
-		quotaList = append(quotaList, quota)
-	}
 
 	var logs []quotaLedgerConsumeLogMatch
 	err := model.LOG_DB.Model(&model.Log{}).
@@ -899,7 +893,6 @@ func backfillQuotaLedgerModelNames(items []QuotaLedgerListItem) error {
 		Where("type = ?", model.LogTypeConsume).
 		Where("model_name <> ''").
 		Where("user_id IN ?", userIdList).
-		Where("quota IN ?", quotaList).
 		Where("created_at >= ? AND created_at <= ?", minCreatedAt-quotaLedgerLogMatchWindowSeconds, maxCreatedAt+quotaLedgerLogMatchWindowSeconds).
 		Order("created_at asc, id asc").
 		Scan(&logs).Error
@@ -911,9 +904,11 @@ func backfillQuotaLedgerModelNames(items []QuotaLedgerListItem) error {
 	}
 
 	logsByUserAndQuota := make(map[string][]quotaLedgerConsumeLogMatch, len(logs))
+	logsByUser := make(map[int][]quotaLedgerConsumeLogMatch, len(logs))
 	for _, log := range logs {
 		key := quotaLedgerConsumeLogMatchKey(log.UserId, log.Quota)
 		logsByUserAndQuota[key] = append(logsByUserAndQuota[key], log)
+		logsByUser[log.UserId] = append(logsByUser[log.UserId], log)
 	}
 
 	sort.Slice(targets, func(i int, j int) bool {
@@ -923,30 +918,36 @@ func backfillQuotaLedgerModelNames(items []QuotaLedgerListItem) error {
 		return targets[i].createdAt < targets[j].createdAt
 	})
 
-	usedLogIds := make(map[int]struct{}, len(logs))
 	for _, target := range targets {
 		key := quotaLedgerConsumeLogMatchKey(target.userId, target.amount)
 		candidates := logsByUserAndQuota[key]
-		bestIndex := -1
-		var bestDistance int64
-		for index, candidate := range candidates {
-			if _, used := usedLogIds[candidate.Id]; used {
-				continue
-			}
-			distance := quotaLedgerLogMatchDistance(target.createdAt, candidate.CreatedAt)
-			if bestIndex == -1 || distance < bestDistance || (distance == bestDistance && candidate.CreatedAt < candidates[bestIndex].CreatedAt) {
-				bestIndex = index
-				bestDistance = distance
-			}
+		bestMatch := findBestQuotaLedgerConsumeLogMatch(candidates, target.createdAt)
+		if bestMatch == nil {
+			bestMatch = findBestQuotaLedgerConsumeLogMatch(logsByUser[target.userId], target.createdAt)
 		}
-		if bestIndex == -1 {
+		if bestMatch == nil {
 			continue
 		}
-		items[target.index].ModelName = candidates[bestIndex].ModelName
-		usedLogIds[candidates[bestIndex].Id] = struct{}{}
+		items[target.index].ModelName = bestMatch.ModelName
 	}
 
 	return nil
+}
+
+func findBestQuotaLedgerConsumeLogMatch(candidates []quotaLedgerConsumeLogMatch, targetCreatedAt int64) *quotaLedgerConsumeLogMatch {
+	bestIndex := -1
+	var bestDistance int64
+	for index, candidate := range candidates {
+		distance := quotaLedgerLogMatchDistance(targetCreatedAt, candidate.CreatedAt)
+		if bestIndex == -1 || distance < bestDistance || (distance == bestDistance && candidate.CreatedAt < candidates[bestIndex].CreatedAt) {
+			bestIndex = index
+			bestDistance = distance
+		}
+	}
+	if bestIndex == -1 {
+		return nil
+	}
+	return &candidates[bestIndex]
 }
 
 func quotaLedgerConsumeLogMatchKey(userId int, quota int) string {

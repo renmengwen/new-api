@@ -344,6 +344,81 @@ func TestGetQuotaLedgerBackfillsModelNameFromConsumeLogs(t *testing.T) {
 	require.Equal(t, "gpt-4o-mini", consumeItem["model_name"])
 }
 
+func TestGetQuotaLedgerBackfillsModelNameForSplitWalletConsumeRows(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	user := seedQuotaUser(t, db, "quota_split_consume_user", 1000000)
+
+	account, err := model.GetQuotaAccountByOwner(model.QuotaOwnerTypeUser, user.Id)
+	require.NoError(t, err)
+
+	preconsumeLedger := model.QuotaLedger{
+		BizNo:            "ql_wallet_preconsume_match",
+		AccountId:        account.Id,
+		TransferOrderId:  0,
+		EntryType:        model.LedgerEntryConsume,
+		Direction:        model.LedgerDirectionOut,
+		Amount:           7240,
+		BalanceBefore:    1000000,
+		BalanceAfter:     992760,
+		SourceType:       "wallet_preconsume",
+		SourceId:         user.Id,
+		OperatorUserId:   user.Id,
+		OperatorUserType: model.UserTypeEndUser,
+		Reason:           "钱包预扣",
+		CreatedAtTs:      1811000300,
+	}
+	settleLedger := model.QuotaLedger{
+		BizNo:            "ql_wallet_settle_match",
+		AccountId:        account.Id,
+		TransferOrderId:  0,
+		EntryType:        model.LedgerEntryConsume,
+		Direction:        model.LedgerDirectionOut,
+		Amount:           716,
+		BalanceBefore:    992760,
+		BalanceAfter:     992044,
+		SourceType:       "wallet_settle",
+		SourceId:         user.Id,
+		OperatorUserId:   user.Id,
+		OperatorUserType: model.UserTypeEndUser,
+		Reason:           "钱包结算扣费",
+		CreatedAtTs:      1811000304,
+	}
+	require.NoError(t, db.Create(&preconsumeLedger).Error)
+	require.NoError(t, db.Create(&settleLedger).Error)
+
+	require.NoError(t, db.Create(&model.Log{
+		UserId:    user.Id,
+		Username:  user.Username,
+		CreatedAt: 1811000304,
+		Type:      model.LogTypeConsume,
+		Content:   "wallet split consume final log",
+		ModelName: "claude-opus-4-6",
+		Quota:     7956,
+	}).Error)
+
+	listCtx, recorder := newAdminQuotaContext(t, http.MethodGet, "/api/admin/quota/ledger?user_id="+strconv.Itoa(user.Id)+"&p=1&page_size=10", nil)
+	GetQuotaLedger(listCtx)
+
+	var response adminQuotaPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, 2, response.Data.Total)
+
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+	require.Len(t, items, 2)
+
+	settleItem, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "钱包结算扣费", settleItem["reason"])
+	require.Equal(t, "claude-opus-4-6", settleItem["model_name"])
+
+	preconsumeItem, ok := items[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "钱包预扣", preconsumeItem["reason"])
+	require.Equal(t, "claude-opus-4-6", preconsumeItem["model_name"])
+}
+
 func TestAdjustUserQuotaBatchCreatesBatchItemsAndAudits(t *testing.T) {
 	db := setupAdminQuotaTestDB(t)
 	userA := seedQuotaUser(t, db, "quota_batch_user_a", 500)
