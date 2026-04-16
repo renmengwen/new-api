@@ -1,5 +1,9 @@
 {
   "translation": {
+    "删除权限模板失败": "Échec de la suppression du modèle d'autorisations",
+    "权限模板已删除": "Modèle d'autorisations supprimé",
+    "确定要删除此权限模板吗？": "Voulez-vous vraiment supprimer ce modèle d'autorisations ?",
+    "删除后不可恢复；如果模板仍被当前生效账号引用，系统会阻止删除。": "La suppression est irréversible ; si le modèle est encore référencé par des comptes actifs, le système empêchera sa suppression.",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one": " + Recherche Web {{count}} fois / 1K fois * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_many": " + Recherche Web {{count}} fois / 1K fois * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + Recherche Web {{count}} fois / 1K fois * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",

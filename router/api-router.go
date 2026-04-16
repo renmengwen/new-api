@@ -274,6 +274,7 @@ func SetApiRouter(router *gin.Engine) {
 			adminPermissionTemplateRoute.GET("/:id", controller.GetPermissionTemplate)
 			adminPermissionTemplateRoute.POST("", controller.CreatePermissionTemplate)
 			adminPermissionTemplateRoute.PUT("/:id", controller.UpdatePermissionTemplate)
+			adminPermissionTemplateRoute.DELETE("/:id", controller.DeletePermissionTemplate)
 		}
 
 		adminUserPermissionRoute := apiRouter.Group("/admin/user-permissions")

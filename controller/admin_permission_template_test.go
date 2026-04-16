@@ -175,3 +175,179 @@ func TestGetPermissionTemplatesReturnsItems(t *testing.T) {
 	require.True(t, response.Success)
 	require.Equal(t, 1, response.Data.Total)
 }
+
+func TestDeletePermissionTemplateRejectsActiveBinding(t *testing.T) {
+	db := setupAdminPermissionTestDB(t)
+
+	user := model.User{
+		Username:    "permission_template_delete_blocked",
+		Password:    "hashed-password",
+		DisplayName: "Permission Template Delete Blocked",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAdmin,
+		Group:       "default",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	profile := model.PermissionProfile{
+		ProfileName: "Delete Blocked Template",
+		ProfileType: model.UserTypeAdmin,
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+		UpdatedAtTs: common.GetTimestamp(),
+	}
+	require.NoError(t, db.Create(&profile).Error)
+	require.NoError(t, db.Create(&model.PermissionProfileItem{
+		ProfileId:   profile.Id,
+		ResourceKey: "permission_management",
+		ActionKey:   "bind_profile",
+		Allowed:     true,
+		ScopeType:   model.ScopeTypeAll,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	require.NoError(t, db.Create(&model.UserPermissionBinding{
+		UserId:        user.Id,
+		ProfileId:     profile.Id,
+		EffectiveFrom: common.GetTimestamp(),
+		Status:        model.CommonStatusEnabled,
+		CreatedAtTs:   common.GetTimestamp(),
+	}).Error)
+
+	ctx, recorder := newAdminPermissionContext(
+		t,
+		http.MethodDelete,
+		"/api/admin/permission-templates/"+strconv.Itoa(profile.Id),
+		nil,
+	)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(profile.Id)}}
+
+	DeletePermissionTemplate(ctx)
+
+	var response adminPermissionAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+	require.Equal(t, "该模板正在被 1 个账号使用，无法删除", response.Message)
+
+	var profileCount int64
+	require.NoError(t, db.Model(&model.PermissionProfile{}).Where("id = ?", profile.Id).Count(&profileCount).Error)
+	require.Equal(t, int64(1), profileCount)
+
+	var itemCount int64
+	require.NoError(t, db.Model(&model.PermissionProfileItem{}).Where("profile_id = ?", profile.Id).Count(&itemCount).Error)
+	require.Equal(t, int64(1), itemCount)
+}
+
+func TestDeletePermissionTemplateAllowsHistoricalBindingOnly(t *testing.T) {
+	db := setupAdminPermissionTestDB(t)
+
+	user := model.User{
+		Username:    "permission_template_delete_allowed",
+		Password:    "hashed-password",
+		DisplayName: "Permission Template Delete Allowed",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAdmin,
+		Group:       "default",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	profile := model.PermissionProfile{
+		ProfileName: "Delete Allowed Template",
+		ProfileType: model.UserTypeAdmin,
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+		UpdatedAtTs: common.GetTimestamp(),
+	}
+	require.NoError(t, db.Create(&profile).Error)
+	require.NoError(t, db.Create(&model.PermissionProfileItem{
+		ProfileId:   profile.Id,
+		ResourceKey: "user_management",
+		ActionKey:   "read",
+		Allowed:     true,
+		ScopeType:   model.ScopeTypeAll,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	require.NoError(t, db.Model(&model.UserPermissionBinding{}).Create(map[string]any{
+		"user_id":        user.Id,
+		"profile_id":     profile.Id,
+		"effective_from": common.GetTimestamp(),
+		"status":         model.CommonStatusDisabled,
+		"created_at":     common.GetTimestamp(),
+	}).Error)
+
+	ctx, recorder := newAdminPermissionContext(
+		t,
+		http.MethodDelete,
+		"/api/admin/permission-templates/"+strconv.Itoa(profile.Id),
+		nil,
+	)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(profile.Id)}}
+
+	DeletePermissionTemplate(ctx)
+
+	var response adminPermissionAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var profileCount int64
+	require.NoError(t, db.Model(&model.PermissionProfile{}).Where("id = ?", profile.Id).Count(&profileCount).Error)
+	require.Zero(t, profileCount)
+
+	var itemCount int64
+	require.NoError(t, db.Model(&model.PermissionProfileItem{}).Where("profile_id = ?", profile.Id).Count(&itemCount).Error)
+	require.Zero(t, itemCount)
+}
+
+func TestDeletePermissionTemplateAllowsRecreateWithSameNameAndType(t *testing.T) {
+	db := setupAdminPermissionTestDB(t)
+
+	createBody := map[string]any{
+		"profile_name": "Reusable Template",
+		"profile_type": model.UserTypeAgent,
+		"description":  "template that should be reusable after delete",
+		"status":       model.CommonStatusEnabled,
+		"items": []map[string]any{
+			{
+				"resource_key": "user_management",
+				"action_key":   "read",
+				"allowed":      true,
+			},
+		},
+	}
+
+	createCtx, createRecorder := newAdminPermissionContext(t, http.MethodPost, "/api/admin/permission-templates", createBody)
+	CreatePermissionTemplate(createCtx)
+
+	var createResponse adminPermissionAPIResponse
+	require.NoError(t, common.Unmarshal(createRecorder.Body.Bytes(), &createResponse))
+	require.True(t, createResponse.Success, createResponse.Message)
+
+	var profile model.PermissionProfile
+	require.NoError(t, db.Where("profile_name = ? AND profile_type = ?", "Reusable Template", model.UserTypeAgent).First(&profile).Error)
+
+	deleteCtx, deleteRecorder := newAdminPermissionContext(
+		t,
+		http.MethodDelete,
+		"/api/admin/permission-templates/"+strconv.Itoa(profile.Id),
+		nil,
+	)
+	deleteCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(profile.Id)}}
+
+	DeletePermissionTemplate(deleteCtx)
+
+	var deleteResponse adminPermissionAPIResponse
+	require.NoError(t, common.Unmarshal(deleteRecorder.Body.Bytes(), &deleteResponse))
+	require.True(t, deleteResponse.Success, deleteResponse.Message)
+
+	recreateCtx, recreateRecorder := newAdminPermissionContext(t, http.MethodPost, "/api/admin/permission-templates", createBody)
+	CreatePermissionTemplate(recreateCtx)
+
+	var recreateResponse adminPermissionAPIResponse
+	require.NoError(t, common.Unmarshal(recreateRecorder.Body.Bytes(), &recreateResponse))
+	require.True(t, recreateResponse.Success, recreateResponse.Message)
+
+	var profileCount int64
+	require.NoError(t, db.Model(&model.PermissionProfile{}).Where("profile_name = ? AND profile_type = ?", "Reusable Template", model.UserTypeAgent).Count(&profileCount).Error)
+	require.Equal(t, int64(1), profileCount)
+}

@@ -1,5 +1,9 @@
 {
   "translation": {
+    "删除权限模板失败": "Xóa mẫu quyền thất bại",
+    "权限模板已删除": "Đã xóa mẫu quyền",
+    "确定要删除此权限模板吗？": "Bạn có chắc muốn xóa mẫu quyền này không?",
+    "删除后不可恢复；如果模板仍被当前生效账号引用，系统会阻止删除。": "Sau khi xóa sẽ không thể khôi phục; nếu mẫu vẫn đang được các tài khoản đang hoạt động tham chiếu, hệ thống sẽ chặn thao tác xóa.",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one": " + Tìm kiếm Web {{count}} lần / 1K lần * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + Tìm kiếm Web {{count}} lần / 1K lần * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}": " + Gọi tạo hình ảnh {{symbol}}{{price}} / 1 lần * {{ratioType}} {{ratio}}",

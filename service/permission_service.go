@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type PermissionUserView struct {
@@ -123,17 +124,11 @@ func UpdateUserPermissionBinding(userId int, profileId int, operatorUserId int, 
 		}
 	}
 
-	var profile model.PermissionProfile
+	expectedProfileType := ""
 	if profileId != 0 {
-		if err := model.DB.First(&profile, profileId).Error; err != nil {
-			return nil, err
-		}
-		expectedProfileType := permissionProfileTypeForUserType(targetUserType)
+		expectedProfileType = permissionProfileTypeForUserType(targetUserType)
 		if expectedProfileType == "" {
 			return nil, errors.New("unsupported user_type for permission management")
-		}
-		if profile.ProfileType != expectedProfileType {
-			return nil, errors.New("profile type does not match target user_type")
 		}
 	}
 
@@ -176,6 +171,16 @@ func UpdateUserPermissionBinding(userId int, profileId int, operatorUserId int, 
 			return nil, err
 		}
 		return &model.UserPermissionBinding{UserId: userId, ProfileId: 0, Status: model.CommonStatusDisabled}, nil
+	}
+
+	var profile model.PermissionProfile
+	if err := permissionProfileForUpdateQuery(tx, profileId).First(&profile).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if profile.ProfileType != expectedProfileType {
+		tx.Rollback()
+		return nil, errors.New("profile type does not match target user_type")
 	}
 
 	binding := &model.UserPermissionBinding{
@@ -236,4 +241,12 @@ func permissionProfileTypeForUserType(userType string) string {
 	default:
 		return ""
 	}
+}
+
+func permissionProfileForUpdateQuery(tx *gorm.DB, profileId int) *gorm.DB {
+	query := tx.Where("id = ?", profileId)
+	if common.UsingSQLite {
+		return query
+	}
+	return query.Clauses(clause.Locking{Strength: "UPDATE"})
 }

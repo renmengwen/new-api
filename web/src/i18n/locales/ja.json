@@ -1,5 +1,9 @@
 {
   "translation": {
+    "删除权限模板失败": "権限テンプレートの削除に失敗しました",
+    "权限模板已删除": "権限テンプレートを削除しました",
+    "确定要删除此权限模板吗？": "この権限テンプレートを削除してもよろしいですか？",
+    "删除后不可恢复；如果模板仍被当前生效账号引用，系统会阻止删除。": "削除後は元に戻せません。テンプレートが有効なアカウントから参照されている場合、システムは削除を拒否します。",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one": " + Web検索 {{count}}回 / 1K回 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one",
     " + Web搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + Web検索 {{count}}回 / 1K回 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other",
     " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}": " + 画像生成APIコール {{symbol}}{{price}} / 1回 * {{ratioType}} {{ratio}}",
