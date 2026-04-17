@@ -170,6 +170,31 @@ test('buildAdvancedPricingModePayload removes stale invalid advanced entries fro
   });
 });
 
+test('buildAdvancedPricingModePayload preserves refreshed advanced entries when latest rules are now valid', () => {
+  const merged = buildAdvancedPricingModePayload({
+    latestModeMap: {
+      refreshed_advanced: BILLING_MODE_ADVANCED,
+    },
+    latestRulesMap: {
+      refreshed_advanced: {
+        rule_type: 'tiered',
+      },
+    },
+    models: [
+      {
+        name: 'refreshed_advanced',
+        billingMode: BILLING_MODE_PER_REQUEST,
+        hasExplicitBillingMode: false,
+        hasInvalidExplicitAdvancedMode: true,
+      },
+    ],
+  });
+
+  assert.deepEqual(merged, {
+    refreshed_advanced: BILLING_MODE_ADVANCED,
+  });
+});
+
 test('advanced availability and unset state require a real advanced rule type', () => {
   assert.equal(
     canUseAdvancedBilling({

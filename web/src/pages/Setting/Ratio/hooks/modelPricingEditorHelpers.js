@@ -77,6 +77,7 @@ export const shouldPersistAdvancedPricingMode = ({
 
 export const buildAdvancedPricingModePayload = ({
   latestModeMap,
+  latestRulesMap,
   models,
   dirtyModeNames = [],
 }) => {
@@ -88,12 +89,23 @@ export const buildAdvancedPricingModePayload = ({
     !Array.isArray(latestModeMap)
       ? { ...latestModeMap }
       : {};
+  const normalizedLatestRulesMap =
+    latestRulesMap &&
+    typeof latestRulesMap === 'object' &&
+    !Array.isArray(latestRulesMap)
+      ? latestRulesMap
+      : {};
 
   models.forEach((model) => {
+    const latestAdvancedModeIsValid = canUseAdvancedBilling({
+      advancedRuleType: normalizedLatestRulesMap[model.name]?.rule_type,
+    });
+
     if (
       !dirtySet.has(model.name) &&
       model.hasInvalidExplicitAdvancedMode &&
-      normalizedLatestModeMap[model.name] === BILLING_MODE_ADVANCED
+      normalizedLatestModeMap[model.name] === BILLING_MODE_ADVANCED &&
+      !latestAdvancedModeIsValid
     ) {
       delete normalizedLatestModeMap[model.name];
       return;

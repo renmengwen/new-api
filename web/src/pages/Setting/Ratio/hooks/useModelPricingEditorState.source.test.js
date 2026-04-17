@@ -45,7 +45,10 @@ test('pricing state hook reads advanced pricing mode and rules while keeping adv
     /const billingModeState = resolveBillingMode\(\{[\s\S]*explicitMode: sourceMaps\.AdvancedPricingMode\[name\],[\s\S]*fixedPrice,[\s\S]*advancedRuleType,[\s\S]*\}\)/,
   );
   assert.match(source, /const latestOptionsRes = await API\.get\('\/api\/option\/'\)/);
-  assert.match(source, /output\.AdvancedPricingMode = buildAdvancedPricingModePayload\(/);
+  assert.match(
+    source,
+    /output\.AdvancedPricingMode = buildAdvancedPricingModePayload\(\{[\s\S]*latestModeMap: parseOptionJSON\(latestOptionsByKey\.AdvancedPricingMode\),[\s\S]*latestRulesMap: parseOptionJSON\(latestOptionsByKey\.AdvancedPricingRules\),[\s\S]*models,[\s\S]*dirtyModeNames: billingModeDirtyNames,[\s\S]*\}\)/,
+  );
   assert.doesNotMatch(source, /AdvancedPricingRules:\s*\{\}/);
   assert.doesNotMatch(source, /output\.AdvancedPricingMode\[model\.name\]\s*=\s*model\.billingMode/);
 });

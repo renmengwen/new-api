@@ -1078,6 +1078,7 @@ export function useModelPricingEditorState({
 
       output.AdvancedPricingMode = buildAdvancedPricingModePayload({
         latestModeMap: parseOptionJSON(latestOptionsByKey.AdvancedPricingMode),
+        latestRulesMap: parseOptionJSON(latestOptionsByKey.AdvancedPricingRules),
         models,
         dirtyModeNames: billingModeDirtyNames,
       });
