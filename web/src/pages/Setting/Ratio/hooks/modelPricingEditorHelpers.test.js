@@ -35,11 +35,13 @@ test('resolveBillingMode keeps explicit mode separate from legacy inferred mode'
     resolveBillingMode({
       explicitMode: BILLING_MODE_PER_REQUEST,
       fixedPrice: '',
+      advancedRuleType: '',
     }),
     {
       billingMode: BILLING_MODE_PER_REQUEST,
       explicitBillingMode: BILLING_MODE_PER_REQUEST,
       hasExplicitBillingMode: true,
+      hasInvalidExplicitAdvancedMode: false,
     },
   );
 
@@ -47,11 +49,13 @@ test('resolveBillingMode keeps explicit mode separate from legacy inferred mode'
     resolveBillingMode({
       explicitMode: '',
       fixedPrice: '3',
+      advancedRuleType: '',
     }),
     {
       billingMode: BILLING_MODE_PER_REQUEST,
       explicitBillingMode: '',
       hasExplicitBillingMode: false,
+      hasInvalidExplicitAdvancedMode: false,
     },
   );
 
@@ -59,11 +63,41 @@ test('resolveBillingMode keeps explicit mode separate from legacy inferred mode'
     resolveBillingMode({
       explicitMode: '',
       fixedPrice: '',
+      advancedRuleType: '',
     }),
     {
       billingMode: BILLING_MODE_PER_TOKEN,
       explicitBillingMode: '',
       hasExplicitBillingMode: false,
+      hasInvalidExplicitAdvancedMode: false,
+    },
+  );
+
+  assert.deepEqual(
+    resolveBillingMode({
+      explicitMode: BILLING_MODE_ADVANCED,
+      fixedPrice: '3',
+      advancedRuleType: '',
+    }),
+    {
+      billingMode: BILLING_MODE_PER_REQUEST,
+      explicitBillingMode: '',
+      hasExplicitBillingMode: false,
+      hasInvalidExplicitAdvancedMode: true,
+    },
+  );
+
+  assert.deepEqual(
+    resolveBillingMode({
+      explicitMode: BILLING_MODE_ADVANCED,
+      fixedPrice: '',
+      advancedRuleType: 'tiered',
+    }),
+    {
+      billingMode: BILLING_MODE_ADVANCED,
+      explicitBillingMode: BILLING_MODE_ADVANCED,
+      hasExplicitBillingMode: true,
+      hasInvalidExplicitAdvancedMode: false,
     },
   );
 });
@@ -107,6 +141,33 @@ test('buildAdvancedPricingModePayload merges latest server state without persist
     explicit_missing_remote: BILLING_MODE_PER_TOKEN,
   });
   assert.equal('inferred_unchanged' in merged, false);
+});
+
+test('buildAdvancedPricingModePayload removes stale invalid advanced entries from latest server state', () => {
+  const merged = buildAdvancedPricingModePayload({
+    latestModeMap: {
+      stale_advanced: BILLING_MODE_ADVANCED,
+      unrelated_explicit: BILLING_MODE_PER_REQUEST,
+    },
+    models: [
+      {
+        name: 'stale_advanced',
+        billingMode: BILLING_MODE_PER_REQUEST,
+        hasExplicitBillingMode: false,
+        hasInvalidExplicitAdvancedMode: true,
+      },
+      {
+        name: 'unrelated_explicit',
+        billingMode: BILLING_MODE_PER_REQUEST,
+        hasExplicitBillingMode: true,
+        hasInvalidExplicitAdvancedMode: false,
+      },
+    ],
+  });
+
+  assert.deepEqual(merged, {
+    unrelated_explicit: BILLING_MODE_PER_REQUEST,
+  });
 });
 
 test('advanced availability and unset state require a real advanced rule type', () => {

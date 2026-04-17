@@ -30,8 +30,15 @@ const VALID_BILLING_MODES = new Set([
 export const hasValue = (value) =>
   value !== '' && value !== null && value !== undefined && value !== false;
 
-export const resolveBillingMode = ({ explicitMode, fixedPrice }) => {
-  const hasExplicitBillingMode = VALID_BILLING_MODES.has(explicitMode);
+export const resolveBillingMode = ({
+  explicitMode,
+  fixedPrice,
+  advancedRuleType,
+}) => {
+  const hasInvalidExplicitAdvancedMode =
+    explicitMode === BILLING_MODE_ADVANCED && !hasValue(advancedRuleType);
+  const hasExplicitBillingMode =
+    VALID_BILLING_MODES.has(explicitMode) && !hasInvalidExplicitAdvancedMode;
   const billingMode = hasExplicitBillingMode
     ? explicitMode
     : hasValue(fixedPrice)
@@ -42,6 +49,7 @@ export const resolveBillingMode = ({ explicitMode, fixedPrice }) => {
     billingMode,
     explicitBillingMode: hasExplicitBillingMode ? explicitMode : '',
     hasExplicitBillingMode,
+    hasInvalidExplicitAdvancedMode,
   };
 };
 
@@ -82,6 +90,15 @@ export const buildAdvancedPricingModePayload = ({
       : {};
 
   models.forEach((model) => {
+    if (
+      !dirtySet.has(model.name) &&
+      model.hasInvalidExplicitAdvancedMode &&
+      normalizedLatestModeMap[model.name] === BILLING_MODE_ADVANCED
+    ) {
+      delete normalizedLatestModeMap[model.name];
+      return;
+    }
+
     if (!shouldPersistAdvancedPricingMode({ model, dirtyModeNames: dirtySet })) {
       return;
     }

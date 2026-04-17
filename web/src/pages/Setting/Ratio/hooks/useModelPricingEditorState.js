@@ -46,6 +46,7 @@ const EMPTY_MODEL = {
   billingMode: BILLING_MODE_PER_TOKEN,
   explicitBillingMode: '',
   hasExplicitBillingMode: false,
+  hasInvalidExplicitAdvancedMode: false,
   advancedRuleType: '',
   fixedPrice: '',
   inputPrice: '',
@@ -165,12 +166,13 @@ const buildModelState = (name, sourceMaps) => {
     sourceMaps.AudioCompletionRatio[name],
   );
   const fixedPrice = toNumericString(sourceMaps.ModelPrice[name]);
+  const advancedRuleType = resolveAdvancedRuleType(
+    sourceMaps.AdvancedPricingRules?.[name],
+  );
   const billingModeState = resolveBillingMode({
     explicitMode: sourceMaps.AdvancedPricingMode[name],
     fixedPrice,
-  });
-  const advancedRuleType = resolveAdvancedRuleType(
-    sourceMaps.AdvancedPricingRules?.[name],
+    advancedRuleType,
   );
   const inputPrice = ratioToBasePrice(modelRatio);
   const inputPriceNumber = toNumberOrNull(inputPrice);
@@ -185,6 +187,8 @@ const buildModelState = (name, sourceMaps) => {
     billingMode: billingModeState.billingMode,
     explicitBillingMode: billingModeState.explicitBillingMode,
     hasExplicitBillingMode: billingModeState.hasExplicitBillingMode,
+    hasInvalidExplicitAdvancedMode:
+      billingModeState.hasInvalidExplicitAdvancedMode,
     advancedRuleType,
     fixedPrice,
     inputPrice,
