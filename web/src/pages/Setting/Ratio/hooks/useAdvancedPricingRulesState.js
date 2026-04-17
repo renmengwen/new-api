@@ -25,6 +25,12 @@ import {
   hasValue,
   resolveBillingMode,
 } from './modelPricingEditorHelpers';
+import {
+  buildAdvancedPricingDraftBillingModes as mergeAdvancedPricingDraftBillingModes,
+  buildAdvancedPricingDraftRules as mergeAdvancedPricingDraftRules,
+  buildAdvancedPricingModels as buildDerivedAdvancedPricingModels,
+  resolveAdvancedPricingSelectedModelName as resolveDerivedSelectedModelName,
+} from './advancedPricingRulesStateHelpers';
 
 const RULE_TYPE_TEXT_SEGMENT = 'text_segment';
 const RULE_TYPE_MEDIA_TASK = 'media_task';
@@ -220,54 +226,31 @@ export default function useAdvancedPricingRulesState({
   }, [launchModelName, selectedModelName]);
 
   useEffect(() => {
-    const sourceMaps = {
-      AdvancedPricingMode: parseOptionJSON(options.AdvancedPricingMode),
-      AdvancedPricingRules: parseOptionJSON(options.AdvancedPricingRules),
-      ModelPrice: parseOptionJSON(options.ModelPrice),
-      ModelRatio: parseOptionJSON(options.ModelRatio),
-    };
-
-    const names = new Set([
-      ...enabledModelNames,
-      ...Object.keys(sourceMaps.AdvancedPricingMode),
-      ...Object.keys(sourceMaps.AdvancedPricingRules),
-      ...Object.keys(sourceMaps.ModelPrice),
-      ...Object.keys(sourceMaps.ModelRatio),
-    ]);
-
-    if (launchModelName) {
-      names.add(launchModelName);
-    }
-
-    const nextModels = Array.from(names)
-      .filter(Boolean)
-      .map((name) => buildModelState(name, sourceMaps))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const nextModels = buildDerivedAdvancedPricingModels({
+      options,
+      enabledModelNames,
+      launchModelName,
+    });
 
     setModels(nextModels);
-    setDraftRules(
-      nextModels.reduce((acc, model) => {
-        acc[model.name] = buildRuleDraft(
-          model.advancedRuleType || RULE_TYPE_TEXT_SEGMENT,
-          model.rule,
-        );
-        return acc;
-      }, {}),
+    setDraftRules((previous) =>
+      mergeAdvancedPricingDraftRules({
+        models: nextModels,
+        previousDraftRules: previous,
+      }),
     );
-    setDraftBillingModes(
-      nextModels.reduce((acc, model) => {
-        acc[model.name] = model.billingMode;
-        return acc;
-      }, {}),
+    setDraftBillingModes((previous) =>
+      mergeAdvancedPricingDraftBillingModes({
+        models: nextModels,
+        previousDraftBillingModes: previous,
+      }),
     );
     setSelectedModelName((previous) => {
-      if (launchModelName && nextModels.some((model) => model.name === launchModelName)) {
-        return launchModelName;
-      }
-      if (previous && nextModels.some((model) => model.name === previous)) {
-        return previous;
-      }
-      return nextModels[0]?.name || '';
+      return resolveDerivedSelectedModelName({
+        models: nextModels,
+        launchModelName,
+        previousSelectedModelName: previous,
+      });
     });
   }, [enabledModelNames, launchModelName, options]);
 

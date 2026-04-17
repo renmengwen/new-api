@@ -31,12 +31,31 @@ test('advanced pricing state parses advanced mode and rules and derives searchab
     source,
     /const \[enabledModelNames, setEnabledModelNames\] = useState\(\[\]\);/,
   );
-  assert.match(source, /AdvancedPricingMode:\s*parseOptionJSON\(options\.AdvancedPricingMode\)/);
-  assert.match(source, /AdvancedPricingRules:\s*parseOptionJSON\(options\.AdvancedPricingRules\)/);
-  assert.match(source, /ModelPrice:\s*parseOptionJSON\(options\.ModelPrice\)/);
-  assert.match(source, /ModelRatio:\s*parseOptionJSON\(options\.ModelRatio\)/);
+  assert.match(
+    source,
+    /buildAdvancedPricingModels as buildDerivedAdvancedPricingModels/,
+  );
+  assert.match(
+    source,
+    /buildAdvancedPricingDraftRules as mergeAdvancedPricingDraftRules/,
+  );
+  assert.match(
+    source,
+    /buildAdvancedPricingDraftBillingModes as mergeAdvancedPricingDraftBillingModes/,
+  );
   assert.match(source, /const res = await API\.get\('\/api\/channel\/models_enabled'\);/);
-  assert.match(source, /\.\.\.enabledModelNames,/);
+  assert.match(
+    source,
+    /const nextModels = buildDerivedAdvancedPricingModels\(\{[\s\S]*options,[\s\S]*enabledModelNames,[\s\S]*launchModelName,[\s\S]*\}\);/s,
+  );
+  assert.match(
+    source,
+    /setDraftRules\(\(previous\) =>\s*mergeAdvancedPricingDraftRules\(\{[\s\S]*models: nextModels,[\s\S]*previousDraftRules: previous,[\s\S]*\}\),/s,
+  );
+  assert.match(
+    source,
+    /setDraftBillingModes\(\(previous\) =>\s*mergeAdvancedPricingDraftBillingModes\(\{[\s\S]*models: nextModels,[\s\S]*previousDraftBillingModes: previous,[\s\S]*\}\),/s,
+  );
   assert.match(source, /const \[searchText, setSearchText\] = useState\(''\);/);
   assert.match(source, /model\.name\.toLowerCase\(\)\.includes\(keyword\)/);
   assert.match(source, /const \[selectedModelName, setSelectedModelName\] = useState\(''\);/);
@@ -49,8 +68,14 @@ test('advanced pricing state treats launch model selection as a one-shot event i
     source,
     /useEffect\(\(\) => \{\s*if \(!initialModelSelectionKey\) \{\s*return;\s*\}\s*setLaunchModelName\(initialModelName \|\| ''\);/s,
   );
-  assert.match(source, /if \(launchModelName\) \{\s*names\.add\(launchModelName\);/);
-  assert.match(source, /if \(launchModelName && nextModels\.some\(\(model\) => model\.name === launchModelName\)\) \{/);
+  assert.match(
+    source,
+    /resolveAdvancedPricingSelectedModelName as resolveDerivedSelectedModelName/,
+  );
+  assert.match(
+    source,
+    /return resolveDerivedSelectedModelName\(\{[\s\S]*models: nextModels,[\s\S]*launchModelName,[\s\S]*previousSelectedModelName: previous,[\s\S]*\}\);/s,
+  );
   assert.match(source, /setLaunchModelName\(''\);/);
 });
 
