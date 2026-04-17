@@ -256,6 +256,62 @@ test('buildRuleDraft clears fields from the other rule type when switching modes
   });
 });
 
+test('buildRuleDraft hydrates canonical backend rules into shell fields', async () => {
+  const { buildRuleDraft } = await loadHelpers();
+
+  assert.equal(typeof buildRuleDraft, 'function');
+
+  assert.deepEqual(
+    buildRuleDraft('text_segment', {
+      rule_type: 'text_segment',
+      segments: [
+        {
+          priority: 10,
+          input_min: 0,
+          input_max: 100,
+          input_price: 1.2,
+        },
+        {
+          priority: 20,
+          input_min: 101,
+          input_max: 200,
+          input_price: 2.4,
+        },
+      ],
+    }),
+    {
+      display_name: '',
+      note: '',
+      rule_type: 'text_segment',
+      segment_basis: 'token',
+      billing_unit: '1K tokens',
+      default_price: '',
+      segments_text: '0-100: 1.2\n101-200: 2.4',
+    },
+  );
+
+  assert.deepEqual(
+    buildRuleDraft('media_task', {
+      rule_type: 'media_task',
+      segments: [
+        {
+          priority: 10,
+          unit_price: 8.8,
+          remark: 'saved remark',
+        },
+      ],
+    }),
+    {
+      display_name: '',
+      note: 'saved remark',
+      rule_type: 'media_task',
+      task_type: 'image_generation',
+      billing_unit: 'task',
+      unit_price: '8.8',
+    },
+  );
+});
+
 test('advanced pricing state merges enabled models, stored json models, and the launch model', async () => {
   const { buildAdvancedPricingState } = await loadHelpers();
 
@@ -289,4 +345,142 @@ test('advanced pricing state merges enabled models, stored json models, and the 
     ['enabled-only', 'launch-only', 'mode-only', 'price-only', 'ratio-only', 'rule-only'],
   );
   assert.equal(state.selectedModelName, 'launch-only');
+});
+
+test('advanced pricing helpers normalize text shell drafts into backend rule payloads', async () => {
+  const { normalizeAdvancedPricingDraftRule } = await loadHelpers();
+
+  assert.equal(typeof normalizeAdvancedPricingDraftRule, 'function');
+
+  assert.deepEqual(
+    normalizeAdvancedPricingDraftRule({
+      rule_type: 'text_segment',
+      display_name: 'ignored shell field',
+      billing_unit: '1K tokens',
+      default_price: '9.9',
+      segments_text: '0-100: 1.2\n101-200: 2.4',
+      note: 'ignored note',
+    }),
+    {
+      rule_type: 'text_segment',
+      segments: [
+        {
+          priority: 10,
+          input_min: 0,
+          input_max: 100,
+          input_price: 1.2,
+        },
+        {
+          priority: 20,
+          input_min: 101,
+          input_max: 200,
+          input_price: 2.4,
+        },
+      ],
+    },
+  );
+});
+
+test('advanced pricing helpers normalize media shell drafts into backend rule payloads', async () => {
+  const { normalizeAdvancedPricingDraftRule } = await loadHelpers();
+
+  assert.equal(typeof normalizeAdvancedPricingDraftRule, 'function');
+
+  assert.deepEqual(
+    normalizeAdvancedPricingDraftRule({
+      rule_type: 'media_task',
+      display_name: 'ignored shell field',
+      task_type: 'video_generation',
+      billing_unit: 'task',
+      unit_price: '8.8',
+      note: 'preserved as remark',
+    }),
+    {
+      rule_type: 'media_task',
+      segments: [
+        {
+          priority: 10,
+          unit_price: 8.8,
+          remark: 'preserved as remark',
+        },
+      ],
+    },
+  );
+});
+
+test('advanced pricing helpers merge normalized rules into a single AdvancedPricingConfig payload', async () => {
+  const { buildAdvancedPricingSavePayload } = await loadHelpers();
+
+  assert.equal(typeof buildAdvancedPricingSavePayload, 'function');
+
+  const payload = buildAdvancedPricingSavePayload({
+    modelName: 'beta',
+    billingMode: 'advanced',
+    draftRule: {
+      rule_type: 'text_segment',
+      segments_text: '0-100: 1.2',
+    },
+    latestModeMap: {
+      alpha: 'per_token',
+    },
+    latestRulesMap: {
+      alpha: {
+        rule_type: 'media_task',
+        segments: [
+          {
+            priority: 10,
+            unit_price: 9.9,
+          },
+        ],
+      },
+    },
+  });
+
+  assert.deepEqual(payload.previewPayload, {
+    AdvancedPricingMode: {
+      beta: 'advanced',
+    },
+    AdvancedPricingRules: {
+      beta: {
+        rule_type: 'text_segment',
+        segments: [
+          {
+            priority: 10,
+            input_min: 0,
+            input_max: 100,
+            input_price: 1.2,
+          },
+        ],
+      },
+    },
+  });
+
+  assert.deepEqual(JSON.parse(payload.optionValue), {
+    billing_mode: {
+      alpha: 'per_token',
+      beta: 'advanced',
+    },
+    rules: {
+      alpha: {
+        rule_type: 'media_task',
+        segments: [
+          {
+            priority: 10,
+            unit_price: 9.9,
+          },
+        ],
+      },
+      beta: {
+        rule_type: 'text_segment',
+        segments: [
+          {
+            priority: 10,
+            input_min: 0,
+            input_max: 100,
+            input_price: 1.2,
+          },
+        ],
+      },
+    },
+  });
 });

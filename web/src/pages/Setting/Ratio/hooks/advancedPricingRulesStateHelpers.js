@@ -57,9 +57,12 @@ const formatSegmentLine = (segment) => {
     return '';
   }
 
-  const start = segment.start ?? segment.from ?? segment.min ?? '';
-  const end = segment.end ?? segment.to ?? segment.max ?? '';
-  const price = segment.price ?? segment.value ?? '';
+  const start =
+    segment.input_min ?? segment.start ?? segment.from ?? segment.min ?? '';
+  const end =
+    segment.input_max ?? segment.end ?? segment.to ?? segment.max ?? '';
+  const price =
+    segment.input_price ?? segment.price ?? segment.value ?? '';
 
   return `${start}-${end}: ${price}`.trim();
 };
@@ -74,10 +77,17 @@ const cloneRule = (rule) => {
 export const buildRuleDraft = (ruleType, rule = {}) => {
   const normalized = cloneRule(rule);
   const shouldPreserveTypeSpecificFields = normalized.rule_type === ruleType;
+  const firstSegment = Array.isArray(normalized.segments) ? normalized.segments[0] : null;
+  const normalizedUnitPrice = normalized.unit_price ?? firstSegment?.unit_price;
   const sharedFields = {
     display_name:
       typeof normalized.display_name === 'string' ? normalized.display_name : '',
-    note: typeof normalized.note === 'string' ? normalized.note : '',
+    note:
+      typeof normalized.note === 'string'
+        ? normalized.note
+        : typeof firstSegment?.remark === 'string'
+          ? firstSegment.remark
+          : '',
   };
 
   if (ruleType === RULE_TYPE_MEDIA_TASK) {
@@ -97,8 +107,8 @@ export const buildRuleDraft = (ruleType, rule = {}) => {
           ? normalized.billing_unit
           : 'task',
       unit_price:
-        shouldPreserveTypeSpecificFields && hasValue(normalized.unit_price)
-          ? String(normalized.unit_price)
+        shouldPreserveTypeSpecificFields && hasValue(normalizedUnitPrice)
+          ? String(normalizedUnitPrice)
           : '',
     };
   }
@@ -292,5 +302,155 @@ export const buildAdvancedPricingState = ({
       previousSelectedModelName,
     }),
     defaultBillingMode: BILLING_MODE_PER_TOKEN,
+  };
+};
+
+const parseAdvancedPricingNumber = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const parseAdvancedPricingInteger = (value) => {
+  const parsed = parseAdvancedPricingNumber(value);
+  if (parsed === null || !Number.isInteger(parsed)) {
+    return null;
+  }
+  return parsed;
+};
+
+const parseTextSegmentLine = (line, index) => {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const matches = trimmed.match(/^(\d+)\s*-\s*(\d+)\s*:\s*(-?\d+(?:\.\d+)?)$/);
+  if (!matches) {
+    throw new Error(`Invalid advanced pricing segment on line ${index + 1}`);
+  }
+
+  const start = parseAdvancedPricingInteger(matches[1]);
+  const end = parseAdvancedPricingInteger(matches[2]);
+  const price = parseAdvancedPricingNumber(matches[3]);
+
+  if (start === null || end === null || price === null) {
+    throw new Error(`Invalid advanced pricing segment on line ${index + 1}`);
+  }
+  if (end < start) {
+    throw new Error(`Advanced pricing segment end must be >= start on line ${index + 1}`);
+  }
+  if (price < 0) {
+    throw new Error(`Advanced pricing segment price cannot be negative on line ${index + 1}`);
+  }
+
+  return {
+    priority: (index + 1) * 10,
+    input_min: start,
+    input_max: end,
+    input_price: price,
+  };
+};
+
+export const normalizeAdvancedPricingDraftRule = (draftRule = {}) => {
+  const ruleType =
+    typeof draftRule?.rule_type === 'string' && draftRule.rule_type
+      ? draftRule.rule_type
+      : RULE_TYPE_TEXT_SEGMENT;
+
+  if (ruleType === RULE_TYPE_MEDIA_TASK) {
+    const unitPrice = parseAdvancedPricingNumber(draftRule.unit_price);
+    if (unitPrice === null) {
+      throw new Error('Advanced media task pricing requires unit_price');
+    }
+    if (unitPrice < 0) {
+      throw new Error('Advanced media task unit_price cannot be negative');
+    }
+
+    const segment = {
+      priority: 10,
+      unit_price: unitPrice,
+    };
+    if (typeof draftRule.note === 'string' && draftRule.note.trim()) {
+      segment.remark = draftRule.note.trim();
+    }
+
+    return {
+      rule_type: RULE_TYPE_MEDIA_TASK,
+      segments: [segment],
+    };
+  }
+
+  const rawLines =
+    typeof draftRule.segments_text === 'string'
+      ? draftRule.segments_text
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+      : [];
+
+  if (rawLines.length === 0) {
+    throw new Error('Advanced text pricing requires at least one segment');
+  }
+
+  return {
+    rule_type: RULE_TYPE_TEXT_SEGMENT,
+    segments: rawLines
+      .map((line, index) => parseTextSegmentLine(line, index))
+      .filter(Boolean),
+  };
+};
+
+export const buildAdvancedPricingSavePayload = ({
+  modelName = '',
+  billingMode = BILLING_MODE_PER_TOKEN,
+  draftRule = {},
+  latestModeMap = {},
+  latestRulesMap = {},
+}) => {
+  if (!modelName) {
+    throw new Error('Advanced pricing save requires a model name');
+  }
+
+  const normalizedRule = normalizeAdvancedPricingDraftRule(draftRule);
+  const nextModeMap = {
+    ...latestModeMap,
+    [modelName]: billingMode,
+  };
+  const nextRulesMap = {
+    ...latestRulesMap,
+    [modelName]: normalizedRule,
+  };
+
+  return {
+    normalizedRule,
+    previewPayload: {
+      AdvancedPricingMode: {
+        [modelName]: billingMode,
+      },
+      AdvancedPricingRules: {
+        [modelName]: normalizedRule,
+      },
+    },
+    optionValue: JSON.stringify(
+      {
+        billing_mode: nextModeMap,
+        rules: nextRulesMap,
+      },
+      null,
+      2,
+    ),
   };
 };

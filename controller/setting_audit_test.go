@@ -207,6 +207,49 @@ func TestUpdateOptionPrefersRequestAuditContext(t *testing.T) {
 	require.Equal(t, "https://pay.example.com", afterPayload["value"])
 }
 
+func TestUpdateOptionRejectsInvalidAdvancedPricingConfigBeforePersisting(t *testing.T) {
+	db := setupSettingAuditTestDB(t)
+	originalValue := `{
+      "billing_mode": {
+        "gpt-5": "advanced"
+      },
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 100,
+              "input_price": 1.2
+            }
+          ]
+        }
+      }
+    }`
+	require.NoError(t, db.Create(&model.Option{Key: "AdvancedPricingConfig", Value: originalValue}).Error)
+
+	common.OptionMapRWMutex.Lock()
+	common.OptionMap["AdvancedPricingConfig"] = originalValue
+	common.OptionMapRWMutex.Unlock()
+
+	ctx, recorder := newSettingAuditContext(t, http.MethodPut, "/api/option/", map[string]any{
+		"key":   "AdvancedPricingConfig",
+		"value": `{"rules":{"gpt-5":{"rule_type":"text_segment","segments":[]}}}`,
+	})
+
+	UpdateOption(ctx)
+
+	var response settingAuditResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+	require.Contains(t, response.Message, "advanced pricing config update failed")
+
+	var option model.Option
+	require.NoError(t, db.Where("key = ?", "AdvancedPricingConfig").First(&option).Error)
+	require.JSONEq(t, originalValue, option.Value)
+}
+
 func TestResetModelRatioCreatesAuditLog(t *testing.T) {
 	db := setupSettingAuditTestDB(t)
 	require.NoError(t, db.Create(&model.Option{Key: "ModelRatio", Value: `{"gpt-4":2}`}).Error)

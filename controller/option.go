@@ -254,6 +254,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "AdvancedPricingConfig":
+		err = ratio_setting.ValidateAdvancedPricingConfigJSONString(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "advanced pricing config update failed: " + err.Error(),
+			})
+			return
+		}
 	case "ModelRequestRateLimitGroup":
 		err = setting.CheckModelRequestRateLimitGroup(option.Value.(string))
 		if err != nil {

@@ -397,6 +397,22 @@ func AdvancedPricingRules2JSONString() string {
 	return advancedPricingRulesMap.MarshalJSONString()
 }
 
+func AdvancedPricingConfig2JSONString() string {
+	jsonBytes, err := common.Marshal(AdvancedPricingConfig{
+		ModelModes: advancedPricingModeMap.ReadAll(),
+		ModelRules: advancedPricingRulesMap.ReadAll(),
+	})
+	if err != nil {
+		return "{}"
+	}
+	return string(jsonBytes)
+}
+
+func ValidateAdvancedPricingConfigJSONString(jsonStr string) error {
+	_, err := ParseAdvancedPricingConfig(jsonStr)
+	return err
+}
+
 func ValidateAdvancedPricingModeJSONString(jsonStr string) error {
 	_, err := parseAdvancedPricingModeMap(normalizeAdvancedPricingJSON(jsonStr))
 	return err
@@ -421,6 +437,18 @@ func UpdateAdvancedPricingRulesByJSONString(jsonStr string) error {
 		return err
 	}
 	return types.LoadFromJsonString(advancedPricingRulesMap, jsonStr)
+}
+
+func UpdateAdvancedPricingConfigByJSONString(jsonStr string) error {
+	cfg, err := ParseAdvancedPricingConfig(jsonStr)
+	if err != nil {
+		return err
+	}
+	advancedPricingModeMap.Clear()
+	advancedPricingModeMap.AddAll(cfg.ModelModes)
+	advancedPricingRulesMap.Clear()
+	advancedPricingRulesMap.AddAll(cfg.ModelRules)
+	return nil
 }
 
 func ParseAdvancedPricingConfig(jsonStr string) (*AdvancedPricingConfig, error) {

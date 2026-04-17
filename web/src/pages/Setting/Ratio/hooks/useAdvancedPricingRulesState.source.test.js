@@ -121,8 +121,11 @@ test('advanced pricing state exposes current rule type and a minimal save api fo
   assert.match(source, /const saveSelectedRule = async \(\) => \{/);
   assert.match(source, /const latestOptionsRes = await API\.get\('\/api\/option\/'\);/);
   assert.match(source, /const latestOptionsByKey = reduceOptionsByKey\(latestOptionsData\);/);
-  assert.match(source, /const nextModeMap = parseOptionJSON\(latestOptionsByKey\.AdvancedPricingMode\);/);
-  assert.match(source, /const nextRulesMap = parseOptionJSON\(latestOptionsByKey\.AdvancedPricingRules\);/);
-  assert.match(source, /API\.put\('\/api\/option\/', \{\s*key: 'AdvancedPricingMode'/);
-  assert.match(source, /API\.put\('\/api\/option\/', \{\s*key: 'AdvancedPricingRules'/);
+  assert.match(source, /const savePayload = buildAdvancedPricingSavePayload\(\{/);
+  assert.match(source, /latestModeMap: parseOptionJSON\(latestOptionsByKey\.AdvancedPricingMode\),/);
+  assert.match(source, /latestRulesMap: parseOptionJSON\(latestOptionsByKey\.AdvancedPricingRules\),/);
+  assert.match(source, /API\.put\('\/api\/option\/', \{\s*key: 'AdvancedPricingConfig'/);
+  assert.doesNotMatch(source, /Promise\.all\(\[/);
+  assert.doesNotMatch(source, /key: 'AdvancedPricingMode'/);
+  assert.doesNotMatch(source, /key: 'AdvancedPricingRules'/);
 });

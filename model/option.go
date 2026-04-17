@@ -19,6 +19,21 @@ type Option struct {
 	Value string `json:"value"`
 }
 
+func syncAdvancedPricingOptionViews() {
+	common.OptionMap["AdvancedPricingConfig"] = ratio_setting.AdvancedPricingConfig2JSONString()
+	common.OptionMap["AdvancedPricingMode"] = ratio_setting.AdvancedPricingMode2JSONString()
+	common.OptionMap["AdvancedPricingRules"] = ratio_setting.AdvancedPricingRules2JSONString()
+}
+
+func isAdvancedPricingOptionKey(key string) bool {
+	switch key {
+	case "AdvancedPricingConfig", "AdvancedPricingMode", "AdvancedPricingRules":
+		return true
+	default:
+		return false
+	}
+}
+
 func AllOption() ([]*Option, error) {
 	var options []*Option
 	var err error
@@ -139,8 +154,7 @@ func InitOptionMap() {
 	common.OptionMap["ImageRatio"] = ratio_setting.ImageRatio2JSONString()
 	common.OptionMap["AudioRatio"] = ratio_setting.AudioRatio2JSONString()
 	common.OptionMap["AudioCompletionRatio"] = ratio_setting.AudioCompletionRatio2JSONString()
-	common.OptionMap["AdvancedPricingMode"] = ratio_setting.AdvancedPricingMode2JSONString()
-	common.OptionMap["AdvancedPricingRules"] = ratio_setting.AdvancedPricingRules2JSONString()
+	syncAdvancedPricingOptionViews()
 	common.OptionMap["TopUpLink"] = common.TopUpLink
 	//common.OptionMap["ChatLink"] = common.ChatLink
 	//common.OptionMap["ChatLink2"] = common.ChatLink2
@@ -488,6 +502,8 @@ func updateOptionMap(key string, value string) (err error) {
 		err = ratio_setting.UpdateAudioRatioByJSONString(value)
 	case "AudioCompletionRatio":
 		err = ratio_setting.UpdateAudioCompletionRatioByJSONString(value)
+	case "AdvancedPricingConfig":
+		err = ratio_setting.UpdateAdvancedPricingConfigByJSONString(value)
 	case "AdvancedPricingMode":
 		err = ratio_setting.UpdateAdvancedPricingModeByJSONString(value)
 	case "AdvancedPricingRules":
@@ -518,6 +534,9 @@ func updateOptionMap(key string, value string) (err error) {
 		// WaffoPayMethods is read directly from OptionMap via setting.GetWaffoPayMethods().
 		// The value is already stored in OptionMap at the top of this function (line: common.OptionMap[key] = value).
 		// No additional in-memory variable to update.
+	}
+	if isAdvancedPricingOptionKey(key) {
+		syncAdvancedPricingOptionViews()
 	}
 	return err
 }

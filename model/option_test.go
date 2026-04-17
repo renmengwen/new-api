@@ -47,3 +47,60 @@ func TestUpdateOptionDoesNotMutateRuntimeStateWhenDBWriteFails(t *testing.T) {
 	require.Equal(t, `{"existing":"per_token"}`, common.OptionMap["AdvancedPricingMode"])
 	require.Equal(t, `{"existing":"per_token"}`, ratio_setting.AdvancedPricingMode2JSONString())
 }
+
+func TestUpdateOptionAdvancedPricingConfigSyncsLegacyViews(t *testing.T) {
+	originalDB := DB
+	originalOptionMap := common.OptionMap
+	originalConfigValue := ""
+	if originalOptionMap != nil {
+		originalConfigValue = originalOptionMap["AdvancedPricingConfig"]
+	} else {
+		common.OptionMap = make(map[string]string)
+	}
+	originalModeValue := ratio_setting.AdvancedPricingMode2JSONString()
+	originalRulesValue := ratio_setting.AdvancedPricingRules2JSONString()
+
+	tempDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, tempDB.AutoMigrate(&Option{}))
+
+	DB = tempDB
+	common.OptionMap["AdvancedPricingConfig"] = "{}"
+
+	t.Cleanup(func() {
+		DB = originalDB
+		common.OptionMap = originalOptionMap
+		if common.OptionMap != nil {
+			common.OptionMap["AdvancedPricingConfig"] = originalConfigValue
+		}
+		require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(originalModeValue))
+		require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(originalRulesValue))
+	})
+
+	value := `{
+      "billing_mode": {
+        "gpt-5": "advanced"
+      },
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 100,
+              "input_price": 1.2
+            }
+          ]
+        }
+      }
+    }`
+
+	err = UpdateOption("AdvancedPricingConfig", value)
+	require.NoError(t, err)
+	require.JSONEq(t, value, common.OptionMap["AdvancedPricingConfig"])
+	require.JSONEq(t, `{"gpt-5":"advanced"}`, common.OptionMap["AdvancedPricingMode"])
+	require.JSONEq(t, `{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}`, common.OptionMap["AdvancedPricingRules"])
+	require.JSONEq(t, `{"gpt-5":"advanced"}`, ratio_setting.AdvancedPricingMode2JSONString())
+	require.JSONEq(t, `{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}`, ratio_setting.AdvancedPricingRules2JSONString())
+}

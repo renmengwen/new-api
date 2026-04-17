@@ -23,6 +23,7 @@ import { API, showError, showSuccess } from '../../../../helpers';
 import { BILLING_MODE_PER_TOKEN } from './modelPricingEditorHelpers';
 import {
   RULE_TYPE_TEXT_SEGMENT,
+  buildAdvancedPricingSavePayload,
   buildAdvancedPricingState,
   buildRuleDraft,
   parseOptionJSON,
@@ -150,17 +151,21 @@ export default function useAdvancedPricingRulesState({
   const currentRuleType = selectedRule.rule_type || RULE_TYPE_TEXT_SEGMENT;
   const currentBillingMode = selectedModel?.billingMode || BILLING_MODE_PER_TOKEN;
   const draftBillingMode = draftBillingModes[selectedModelName] || currentBillingMode;
+  const previewPayload = useMemo(() => {
+    if (!selectedModel) {
+      return null;
+    }
 
-  const previewPayload = selectedModel
-    ? {
-        AdvancedPricingMode: {
-          [selectedModel.name]: draftBillingMode,
-        },
-        AdvancedPricingRules: {
-          [selectedModel.name]: selectedRule,
-        },
-      }
-    : null;
+    try {
+      return buildAdvancedPricingSavePayload({
+        modelName: selectedModel.name,
+        billingMode: draftBillingMode,
+        draftRule: selectedRule,
+      }).previewPayload;
+    } catch (error) {
+      return null;
+    }
+  }, [draftBillingMode, selectedModel, selectedRule]);
 
   const updateSelectedRuleType = (ruleType) => {
     if (!selectedModelName) {
@@ -215,7 +220,7 @@ export default function useAdvancedPricingRulesState({
 
   const saveSelectedRule = async () => {
     if (!selectedModel) {
-      showError(t('请先选择一个模型'));
+      showError(t('璇峰厛閫夋嫨涓€涓ā鍨?));
       return false;
     }
 
@@ -229,41 +234,35 @@ export default function useAdvancedPricingRulesState({
       } = latestOptionsRes?.data || {};
 
       if (!latestOptionsSuccess) {
-        throw new Error(latestOptionsMessage || t('获取配置失败'));
+        throw new Error(latestOptionsMessage || t('鑾峰彇閰嶇疆澶辫触'));
       }
 
       const latestOptionsByKey = reduceOptionsByKey(latestOptionsData);
-      const nextModeMap = parseOptionJSON(latestOptionsByKey.AdvancedPricingMode);
-      const nextRulesMap = parseOptionJSON(latestOptionsByKey.AdvancedPricingRules);
+      const savePayload = buildAdvancedPricingSavePayload({
+        modelName: selectedModel.name,
+        billingMode: draftBillingMode,
+        draftRule: selectedRule,
+        latestModeMap: parseOptionJSON(latestOptionsByKey.AdvancedPricingMode),
+        latestRulesMap: parseOptionJSON(latestOptionsByKey.AdvancedPricingRules),
+      });
 
-      nextModeMap[selectedModel.name] = draftBillingMode;
-      nextRulesMap[selectedModel.name] = selectedRule;
+      const saveRes = await API.put('/api/option/', {
+        key: 'AdvancedPricingConfig',
+        value: savePayload.optionValue,
+      });
 
-      const results = await Promise.all([
-        API.put('/api/option/', {
-          key: 'AdvancedPricingMode',
-          value: JSON.stringify(nextModeMap, null, 2),
-        }),
-        API.put('/api/option/', {
-          key: 'AdvancedPricingRules',
-          value: JSON.stringify(nextRulesMap, null, 2),
-        }),
-      ]);
-
-      for (const res of results) {
-        if (!res?.data?.success) {
-          throw new Error(res?.data?.message || t('保存失败，请重试'));
-        }
+      if (!saveRes?.data?.success) {
+        throw new Error(saveRes?.data?.message || t('淇濆瓨澶辫触锛岃閲嶈瘯'));
       }
 
-      showSuccess(t('高级定价规则已保存'));
+      showSuccess(t('楂樼骇瀹氫环瑙勫垯宸蹭繚瀛?));
       await refresh();
       dirtyRuleModelNamesRef.current.delete(selectedModel.name);
       dirtyBillingModeModelNamesRef.current.delete(selectedModel.name);
       return true;
     } catch (error) {
-      console.error('保存高级定价规则失败:', error);
-      showError(error.message || t('保存失败，请重试'));
+      console.error('淇濆瓨楂樼骇瀹氫环瑙勫垯澶辫触:', error);
+      showError(error.message || t('淇濆瓨澶辫触锛岃閲嶈瘯'));
       return false;
     } finally {
       setSaving(false);

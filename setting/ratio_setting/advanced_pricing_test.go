@@ -206,6 +206,49 @@ func TestValidateAdvancedPricingRulesJSONStringDoesNotMutateRuntimeMap(t *testin
 	require.NotContains(t, current, "new-model")
 }
 
+func TestUpdateAdvancedPricingConfigByJSONStringUpdatesBothRuntimeMaps(t *testing.T) {
+	originalModes := advancedPricingModeMap.ReadAll()
+	originalRules := advancedPricingRulesMap.ReadAll()
+	advancedPricingModeMap.Clear()
+	advancedPricingRulesMap.Clear()
+	t.Cleanup(func() {
+		advancedPricingModeMap.Clear()
+		advancedPricingModeMap.AddAll(originalModes)
+		advancedPricingRulesMap.Clear()
+		advancedPricingRulesMap.AddAll(originalRules)
+	})
+
+	err := UpdateAdvancedPricingConfigByJSONString(`{
+      "billing_mode": {
+        "gpt-5": "advanced"
+      },
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 100,
+              "input_price": 1.2
+            }
+          ]
+        }
+      }
+    }`)
+	require.NoError(t, err)
+
+	mode, ok := advancedPricingModeMap.Get("gpt-5")
+	require.True(t, ok)
+	require.Equal(t, BillingModeAdvanced, mode)
+
+	ruleSet, ok := advancedPricingRulesMap.Get("gpt-5")
+	require.True(t, ok)
+	require.Equal(t, RuleTypeTextSegment, ruleSet.RuleType)
+	require.Len(t, ruleSet.Segments, 1)
+	require.Equal(t, 1.2, *ruleSet.Segments[0].InputPrice)
+}
+
 func intPtr(v int) *int {
 	return &v
 }
