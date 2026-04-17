@@ -122,8 +122,11 @@ func loadPersistedAdvancedPricingOptionValues(tx *gorm.DB) (map[string]string, e
 }
 
 func buildAdvancedPricingConfigFromOptionValues(optionValues map[string]string) (*ratio_setting.AdvancedPricingConfig, error) {
-	if value, ok := optionValues["AdvancedPricingConfig"]; ok {
-		return ratio_setting.ParseAdvancedPricingConfig(value)
+	if value, ok := optionValues["AdvancedPricingConfig"]; ok && strings.TrimSpace(value) != "" {
+		cfg, err := ratio_setting.ParseAdvancedPricingConfig(value)
+		if err == nil {
+			return cfg, nil
+		}
 	}
 
 	modeValue := "{}"
@@ -314,13 +317,6 @@ func loadOptionsFromDatabase() {
 }
 
 func loadAdvancedPricingOptions(optionValues map[string]string) {
-	if value, ok := optionValues["AdvancedPricingConfig"]; ok {
-		if err := updateOptionMap("AdvancedPricingConfig", value); err != nil {
-			common.SysLog("failed to update option map: " + err.Error())
-		}
-		return
-	}
-
 	cfg, err := buildAdvancedPricingConfigFromOptionValues(optionValues)
 	if err != nil {
 		common.SysLog("failed to build advanced pricing config from database: " + err.Error())

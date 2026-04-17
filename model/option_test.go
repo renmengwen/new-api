@@ -423,6 +423,66 @@ func TestLoadOptionsFromDatabasePrefersAdvancedPricingConfigOverLegacyRows(t *te
 	require.JSONEq(t, `{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}`, ratio_setting.AdvancedPricingRules2JSONString())
 }
 
+func TestLoadOptionsFromDatabaseFallsBackToLegacyRowsWhenAdvancedPricingConfigIsEmpty(t *testing.T) {
+	setupAdvancedPricingOptionTest(t)
+
+	require.NoError(t, DB.Create(&Option{
+		Key:   "AdvancedPricingConfig",
+		Value: "",
+	}).Error)
+	require.NoError(t, DB.Create(&Option{
+		Key:   "AdvancedPricingMode",
+		Value: `{"gpt-5":"advanced"}`,
+	}).Error)
+	require.NoError(t, DB.Create(&Option{
+		Key:   "AdvancedPricingRules",
+		Value: `{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}`,
+	}).Error)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingConfigByJSONString(`{}`))
+	common.OptionMap = make(map[string]string)
+
+	loadOptionsFromDatabase()
+
+	expectedConfig := `{"billing_mode":{"gpt-5":"advanced"},"rules":{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}}`
+	require.JSONEq(t, expectedConfig, common.OptionMap["AdvancedPricingConfig"])
+	require.JSONEq(t, `{"gpt-5":"advanced"}`, common.OptionMap["AdvancedPricingMode"])
+	require.JSONEq(t, `{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}`, common.OptionMap["AdvancedPricingRules"])
+	require.JSONEq(t, expectedConfig, ratio_setting.AdvancedPricingConfig2JSONString())
+	require.JSONEq(t, `{"gpt-5":"advanced"}`, ratio_setting.AdvancedPricingMode2JSONString())
+	require.JSONEq(t, `{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}`, ratio_setting.AdvancedPricingRules2JSONString())
+}
+
+func TestLoadOptionsFromDatabaseFallsBackToLegacyRowsWhenAdvancedPricingConfigIsInvalid(t *testing.T) {
+	setupAdvancedPricingOptionTest(t)
+
+	require.NoError(t, DB.Create(&Option{
+		Key:   "AdvancedPricingConfig",
+		Value: `{"billing_mode":`,
+	}).Error)
+	require.NoError(t, DB.Create(&Option{
+		Key:   "AdvancedPricingMode",
+		Value: `{"gpt-5":"advanced"}`,
+	}).Error)
+	require.NoError(t, DB.Create(&Option{
+		Key:   "AdvancedPricingRules",
+		Value: `{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}`,
+	}).Error)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingConfigByJSONString(`{}`))
+	common.OptionMap = make(map[string]string)
+
+	loadOptionsFromDatabase()
+
+	expectedConfig := `{"billing_mode":{"gpt-5":"advanced"},"rules":{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}}`
+	require.JSONEq(t, expectedConfig, common.OptionMap["AdvancedPricingConfig"])
+	require.JSONEq(t, `{"gpt-5":"advanced"}`, common.OptionMap["AdvancedPricingMode"])
+	require.JSONEq(t, `{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}`, common.OptionMap["AdvancedPricingRules"])
+	require.JSONEq(t, expectedConfig, ratio_setting.AdvancedPricingConfig2JSONString())
+	require.JSONEq(t, `{"gpt-5":"advanced"}`, ratio_setting.AdvancedPricingMode2JSONString())
+	require.JSONEq(t, `{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}`, ratio_setting.AdvancedPricingRules2JSONString())
+}
+
 func TestLoadOptionsFromDatabaseDoesNotReviveMissingLegacySiblingFromRuntimeState(t *testing.T) {
 	setupAdvancedPricingOptionTest(t)
 
