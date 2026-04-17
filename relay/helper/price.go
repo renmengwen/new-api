@@ -13,32 +13,26 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// https://docs.claude.com/en/docs/build-with-claude/prompt-caching#1-hour-cache-duration
 const claudeCacheCreation1hMultiplier = 6 / 3.75
 
-// HandleGroupRatio checks for "auto_group" in the context and updates the group ratio and relayInfo.UsingGroup if present
 func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.GroupRatioInfo {
 	groupRatioInfo := types.GroupRatioInfo{
-		GroupRatio:        1.0, // default ratio
+		GroupRatio:        1.0,
 		GroupSpecialRatio: -1,
 	}
 
-	// check auto group
 	autoGroup, exists := ctx.Get("auto_group")
 	if exists {
 		logger.LogDebug(ctx, fmt.Sprintf("final group: %s", autoGroup))
 		relayInfo.UsingGroup = autoGroup.(string)
 	}
 
-	// check user group special ratio
 	userGroupRatio, ok := ratio_setting.GetGroupGroupRatio(relayInfo.UserGroup, relayInfo.UsingGroup)
 	if ok {
-		// user group special ratio
 		groupRatioInfo.GroupSpecialRatio = userGroupRatio
 		groupRatioInfo.GroupRatio = userGroupRatio
 		groupRatioInfo.HasSpecialRatio = true
 	} else {
-		// normal group ratio
 		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
 
@@ -47,8 +41,35 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 
 func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
 	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
-
 	groupRatioInfo := HandleGroupRatio(c, info)
+
+	if ratio_setting.GetEffectiveBillingMode(info.OriginModelName) == ratio_setting.BillingModeAdvanced {
+		advancedPriceData, ok, err := ratio_setting.ResolveAdvancedPriceData(info.OriginModelName, ratio_setting.AdvancedPricingRuntimeContext{
+			PromptTokens: promptTokens,
+			Meta:         meta,
+			Request:      info.Request,
+		})
+		if err != nil {
+			return types.PriceData{}, err
+		}
+		if ok {
+			advancedPriceData.GroupRatioInfo = groupRatioInfo
+			advancedPriceData.UsePrice = false
+			advancedPriceData.ImageRatio, _ = ratio_setting.GetImageRatio(info.OriginModelName)
+			advancedPriceData.AudioRatio = ratio_setting.GetAudioRatio(info.OriginModelName)
+			advancedPriceData.AudioCompletionRatio = ratio_setting.GetAudioCompletionRatio(info.OriginModelName)
+			advancedPriceData.CacheCreation5mRatio = advancedPriceData.CacheCreationRatio
+			advancedPriceData.CacheCreation1hRatio = advancedPriceData.CacheCreationRatio * claudeCacheCreation1hMultiplier
+			advancedPriceData.QuotaToPreConsume = int(float64(getPreConsumedTokens(promptTokens, meta)) * advancedPriceData.ModelRatio * groupRatioInfo.GroupRatio)
+			applyFreeModelPreConsume(&advancedPriceData)
+
+			if common.DebugEnabled {
+				println(fmt.Sprintf("model_price_helper result: %s", advancedPriceData.ToSetting()))
+			}
+			info.PriceData = advancedPriceData
+			return advancedPriceData, nil
+		}
+	}
 
 	var preConsumedQuota int
 	var modelRatio float64
@@ -60,12 +81,9 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	var cacheCreationRatio1h float64
 	var audioRatio float64
 	var audioCompletionRatio float64
-	var freeModel bool
+
 	if !usePrice {
-		preConsumedTokens := common.Max(promptTokens, common.PreConsumedQuota)
-		if meta.MaxTokens != 0 {
-			preConsumedTokens += meta.MaxTokens
-		}
+		preConsumedTokens := getPreConsumedTokens(promptTokens, meta)
 		var success bool
 		var matchName string
 		modelRatio, success, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
@@ -82,55 +100,35 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		cacheRatio, _ = ratio_setting.GetCacheRatio(info.OriginModelName)
 		cacheCreationRatio, _ = ratio_setting.GetCreateCacheRatio(info.OriginModelName)
 		cacheCreationRatio5m = cacheCreationRatio
-		// 固定1h和5min缓存写入价格的比例
 		cacheCreationRatio1h = cacheCreationRatio * claudeCacheCreation1hMultiplier
 		imageRatio, _ = ratio_setting.GetImageRatio(info.OriginModelName)
 		audioRatio = ratio_setting.GetAudioRatio(info.OriginModelName)
 		audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(info.OriginModelName)
-		ratio := modelRatio * groupRatioInfo.GroupRatio
-		preConsumedQuota = int(float64(preConsumedTokens) * ratio)
+		preConsumedQuota = int(float64(preConsumedTokens) * modelRatio * groupRatioInfo.GroupRatio)
 	} else {
-		if meta.ImagePriceRatio != 0 {
+		if meta != nil && meta.ImagePriceRatio != 0 {
 			modelPrice = modelPrice * meta.ImagePriceRatio
 		}
 		preConsumedQuota = int(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
 	}
 
-	// check if free model pre-consume is disabled
-	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
-		// if model price or ratio is 0, do not pre-consume quota
-		if groupRatioInfo.GroupRatio == 0 {
-			preConsumedQuota = 0
-			freeModel = true
-		} else if usePrice {
-			if modelPrice == 0 {
-				preConsumedQuota = 0
-				freeModel = true
-			}
-		} else {
-			if modelRatio == 0 {
-				preConsumedQuota = 0
-				freeModel = true
-			}
-		}
-	}
-
 	priceData := types.PriceData{
-		FreeModel:            freeModel,
 		ModelPrice:           modelPrice,
 		ModelRatio:           modelRatio,
 		CompletionRatio:      completionRatio,
-		GroupRatioInfo:       groupRatioInfo,
-		UsePrice:             usePrice,
 		CacheRatio:           cacheRatio,
-		ImageRatio:           imageRatio,
-		AudioRatio:           audioRatio,
-		AudioCompletionRatio: audioCompletionRatio,
 		CacheCreationRatio:   cacheCreationRatio,
 		CacheCreation5mRatio: cacheCreationRatio5m,
 		CacheCreation1hRatio: cacheCreationRatio1h,
+		ImageRatio:           imageRatio,
+		AudioRatio:           audioRatio,
+		AudioCompletionRatio: audioCompletionRatio,
+		BillingMode:          fixedTextBillingMode(usePrice),
+		GroupRatioInfo:       groupRatioInfo,
+		UsePrice:             usePrice,
 		QuotaToPreConsume:    preConsumedQuota,
 	}
+	applyFreeModelPreConsume(&priceData)
 
 	if common.DebugEnabled {
 		println(fmt.Sprintf("model_price_helper result: %s", priceData.ToSetting()))
@@ -139,20 +137,15 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	return priceData, nil
 }
 
-// ModelPriceHelperPerCall 按次计费的 PriceHelper (MJ、Task)
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
 	groupRatioInfo := HandleGroupRatio(c, info)
 
 	modelPrice, success := ratio_setting.GetModelPrice(info.OriginModelName, true)
-	// 如果没有配置价格，检查模型倍率配置
 	if !success {
-
-		// 没有配置费用，也要使用默认费用,否则按费率计费模型无法使用
 		defaultPrice, ok := ratio_setting.GetDefaultModelPriceMap()[info.OriginModelName]
 		if ok {
 			modelPrice = defaultPrice
 		} else {
-			// 没有配置倍率也不接受没配置,那就返回错误
 			_, ratioSuccess, matchName := ratio_setting.GetModelRatio(info.OriginModelName)
 			acceptUnsetRatio := false
 			if info.UserSetting.AcceptUnsetRatioModel {
@@ -161,14 +154,11 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 			if !ratioSuccess && !acceptUnsetRatio {
 				return types.PriceData{}, fmt.Errorf("模型 %s 倍率或价格未配置，请联系管理员设置或开始自用模式；Model %s ratio or price not set, please set or start self-use mode", matchName, matchName)
 			}
-			// 未配置价格但配置了倍率，使用默认预扣价格
 			modelPrice = float64(common.PreConsumedQuota) / common.QuotaPerUnit
 		}
-
 	}
-	quota := int(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
 
-	// 免费模型检测（与 ModelPriceHelper 对齐）
+	quota := int(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
 	freeModel := false
 	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
 		if groupRatioInfo.GroupRatio == 0 || modelPrice == 0 {
@@ -180,6 +170,7 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 	priceData := types.PriceData{
 		FreeModel:      freeModel,
 		ModelPrice:     modelPrice,
+		BillingMode:    types.BillingModePerRequest,
 		Quota:          quota,
 		GroupRatioInfo: groupRatioInfo,
 	}
@@ -196,4 +187,44 @@ func ContainPriceOrRatio(modelName string) bool {
 		return true
 	}
 	return false
+}
+
+func getPreConsumedTokens(promptTokens int, meta *types.TokenCountMeta) int {
+	preConsumedTokens := common.Max(promptTokens, common.PreConsumedQuota)
+	if meta != nil && meta.MaxTokens != 0 {
+		preConsumedTokens += meta.MaxTokens
+	}
+	return preConsumedTokens
+}
+
+func applyFreeModelPreConsume(priceData *types.PriceData) {
+	if operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
+		return
+	}
+
+	if priceData.GroupRatioInfo.GroupRatio == 0 {
+		priceData.QuotaToPreConsume = 0
+		priceData.FreeModel = true
+		return
+	}
+
+	if priceData.UsePrice {
+		if priceData.ModelPrice == 0 {
+			priceData.QuotaToPreConsume = 0
+			priceData.FreeModel = true
+		}
+		return
+	}
+
+	if priceData.ModelRatio == 0 {
+		priceData.QuotaToPreConsume = 0
+		priceData.FreeModel = true
+	}
+}
+
+func fixedTextBillingMode(usePrice bool) types.BillingMode {
+	if usePrice {
+		return types.BillingModePerRequest
+	}
+	return types.BillingModePerToken
 }

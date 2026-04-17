@@ -2,25 +2,27 @@ package ratio_setting
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/types"
 )
 
-type BillingMode string
+type BillingMode = types.BillingMode
 
 const (
-	BillingModePerToken   BillingMode = "per_token"
-	BillingModePerRequest BillingMode = "per_request"
-	BillingModeAdvanced   BillingMode = "advanced"
+	BillingModePerToken   = types.BillingModePerToken
+	BillingModePerRequest = types.BillingModePerRequest
+	BillingModeAdvanced   = types.BillingModeAdvanced
 )
 
-type AdvancedRuleType string
+type AdvancedRuleType = types.AdvancedRuleType
 
 const (
-	RuleTypeTextSegment AdvancedRuleType = "text_segment"
-	RuleTypeMediaTask   AdvancedRuleType = "media_task"
+	RuleTypeTextSegment = types.AdvancedRuleTypeTextSegment
+	RuleTypeMediaTask   = types.AdvancedRuleTypeMediaTask
 )
 
 type AdvancedPricingConfig struct {
@@ -72,6 +74,286 @@ type AdvancedPriceRule struct {
 
 var advancedPricingModeMap = types.NewRWMap[string, BillingMode]()
 var advancedPricingRulesMap = types.NewRWMap[string, AdvancedPricingRuleSet]()
+
+type AdvancedPricingRuntimeContext struct {
+	PromptTokens int
+	Meta         *types.TokenCountMeta
+	Request      dto.Request
+}
+
+type advancedTextRuntimeContext struct {
+	inputTokens  int
+	outputTokens int
+	serviceTier  string
+	cacheRead    *bool
+	cacheCreate  *bool
+}
+
+func GetEffectiveBillingMode(modelName string) BillingMode {
+	modelName = FormatMatchingModelName(modelName)
+	if mode, ok := advancedPricingModeMap.Get(modelName); ok {
+		return mode
+	}
+	if _, ok := GetModelPrice(modelName, false); ok {
+		return BillingModePerRequest
+	}
+	return BillingModePerToken
+}
+
+func ResolveAdvancedPriceData(modelName string, ctx AdvancedPricingRuntimeContext) (types.PriceData, bool, error) {
+	modelName = FormatMatchingModelName(modelName)
+	if GetEffectiveBillingMode(modelName) != BillingModeAdvanced {
+		return types.PriceData{}, false, nil
+	}
+
+	ruleSet, ok := advancedPricingRulesMap.Get(modelName)
+	if !ok {
+		return types.PriceData{}, false, nil
+	}
+
+	switch ruleSet.RuleType {
+	case RuleTypeTextSegment:
+		return resolveAdvancedTextPriceData(modelName, ctx, ruleSet)
+	case RuleTypeMediaTask:
+		return types.PriceData{}, false, nil
+	default:
+		return types.PriceData{}, false, fmt.Errorf("model %s has invalid advanced pricing rule type: %s", modelName, ruleSet.RuleType)
+	}
+}
+
+func resolveAdvancedTextPriceData(modelName string, ctx AdvancedPricingRuntimeContext, ruleSet AdvancedPricingRuleSet) (types.PriceData, bool, error) {
+	runtimeCtx := advancedTextRuntimeContext{
+		inputTokens:  ctx.PromptTokens,
+		outputTokens: getRuntimeOutputTokens(ctx.Meta),
+		serviceTier:  extractAdvancedPricingServiceTier(ctx.Request),
+	}
+
+	segment, ok := findMatchedTextSegment(ruleSet.Segments, runtimeCtx)
+	if !ok {
+		return types.PriceData{}, false, nil
+	}
+
+	modelRatio := 0.0
+	if segment.InputPrice != nil {
+		modelRatio = *segment.InputPrice / 2
+	}
+
+	completionRatio := GetCompletionRatio(modelName)
+	if segment.OutputPrice != nil {
+		derivedRatio, err := deriveAdvancedRelativeRatio(segment.InputPrice, segment.OutputPrice)
+		if err != nil {
+			return types.PriceData{}, false, err
+		}
+		completionRatio = derivedRatio
+	}
+
+	cacheRatio, _ := GetCacheRatio(modelName)
+	if segment.CacheReadPrice != nil {
+		derivedRatio, err := deriveAdvancedRelativeRatio(segment.InputPrice, segment.CacheReadPrice)
+		if err != nil {
+			return types.PriceData{}, false, err
+		}
+		cacheRatio = derivedRatio
+	}
+
+	cacheCreationRatio, _ := GetCreateCacheRatio(modelName)
+	if segment.CacheCreatePrice != nil {
+		derivedRatio, err := deriveAdvancedRelativeRatio(segment.InputPrice, segment.CacheCreatePrice)
+		if err != nil {
+			return types.PriceData{}, false, err
+		}
+		cacheCreationRatio = derivedRatio
+	}
+
+	return types.PriceData{
+		ModelRatio:           modelRatio,
+		CompletionRatio:      completionRatio,
+		CacheRatio:           cacheRatio,
+		CacheCreationRatio:   cacheCreationRatio,
+		BillingMode:          types.BillingModeAdvanced,
+		AdvancedRuleType:     ruleSet.RuleType,
+		AdvancedRuleSnapshot: buildAdvancedRuleSnapshot(ruleSet.RuleType, segment, runtimeCtx),
+	}, true, nil
+}
+
+func getRuntimeOutputTokens(meta *types.TokenCountMeta) int {
+	if meta == nil {
+		return 0
+	}
+	return meta.MaxTokens
+}
+
+func extractAdvancedPricingServiceTier(request dto.Request) string {
+	switch req := request.(type) {
+	case *dto.OpenAIResponsesRequest:
+		return strings.TrimSpace(req.ServiceTier)
+	case *dto.ClaudeRequest:
+		return strings.TrimSpace(req.ServiceTier)
+	case *dto.GeneralOpenAIRequest:
+		return normalizeAdvancedPricingRawString(req.ServiceTier)
+	default:
+		return ""
+	}
+}
+
+func normalizeAdvancedPricingRawString(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+
+	var value string
+	if err := common.Unmarshal(data, &value); err == nil {
+		return strings.TrimSpace(value)
+	}
+	return strings.Trim(strings.TrimSpace(string(data)), `"`)
+}
+
+func findMatchedTextSegment(segments []AdvancedPriceRule, runtimeCtx advancedTextRuntimeContext) (AdvancedPriceRule, bool) {
+	sortedSegments := append([]AdvancedPriceRule(nil), segments...)
+	sort.Slice(sortedSegments, func(i, j int) bool {
+		return *sortedSegments[i].Priority < *sortedSegments[j].Priority
+	})
+
+	for _, segment := range sortedSegments {
+		if matchAdvancedTextSegment(segment, runtimeCtx) {
+			return segment, true
+		}
+	}
+	return AdvancedPriceRule{}, false
+}
+
+func matchAdvancedTextSegment(segment AdvancedPriceRule, runtimeCtx advancedTextRuntimeContext) bool {
+	if hasIntRange(segment.InputMin, segment.InputMax) && !isAdvancedTokenCountInRange(runtimeCtx.inputTokens, segment.InputMin, segment.InputMax) {
+		return false
+	}
+	if hasIntRange(segment.OutputMin, segment.OutputMax) && !isAdvancedTokenCountInRange(runtimeCtx.outputTokens, segment.OutputMin, segment.OutputMax) {
+		return false
+	}
+	if serviceTier := strings.TrimSpace(segment.ServiceTier); serviceTier != "" && serviceTier != runtimeCtx.serviceTier {
+		return false
+	}
+	if segment.CacheRead != nil {
+		if runtimeCtx.cacheRead == nil || *segment.CacheRead != *runtimeCtx.cacheRead {
+			return false
+		}
+	}
+	if segment.CacheCreate != nil {
+		if runtimeCtx.cacheCreate == nil || *segment.CacheCreate != *runtimeCtx.cacheCreate {
+			return false
+		}
+	}
+	return true
+}
+
+func isAdvancedTokenCountInRange(value int, minVal, maxVal *int) bool {
+	if minVal == nil || maxVal == nil {
+		return true
+	}
+	return value >= *minVal && value <= *maxVal
+}
+
+func deriveAdvancedRelativeRatio(inputPrice *float64, targetPrice *float64) (float64, error) {
+	if targetPrice == nil {
+		return 0, nil
+	}
+	if inputPrice == nil {
+		return 0, fmt.Errorf("advanced pricing input price is required to derive relative ratio")
+	}
+	if *inputPrice == 0 {
+		if *targetPrice == 0 {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("advanced pricing input price cannot be zero when deriving relative ratio")
+	}
+	return *targetPrice / *inputPrice, nil
+}
+
+func buildAdvancedRuleSnapshot(ruleType AdvancedRuleType, segment AdvancedPriceRule, runtimeCtx advancedTextRuntimeContext) *types.AdvancedRuleSnapshot {
+	return &types.AdvancedRuleSnapshot{
+		RuleType:      ruleType,
+		MatchSummary:  buildAdvancedMatchSummary(segment, runtimeCtx),
+		ConditionTags: buildAdvancedConditionTags(segment),
+		Priority:      cloneAdvancedIntPtr(segment.Priority),
+		ServiceTier:   strings.TrimSpace(segment.ServiceTier),
+		CacheRead:     cloneAdvancedBoolPtr(segment.CacheRead),
+		CacheCreate:   cloneAdvancedBoolPtr(segment.CacheCreate),
+		PriceSnapshot: types.AdvancedRulePriceSnapshot{
+			InputPrice:       cloneAdvancedFloatPtr(segment.InputPrice),
+			OutputPrice:      cloneAdvancedFloatPtr(segment.OutputPrice),
+			CacheReadPrice:   cloneAdvancedFloatPtr(segment.CacheReadPrice),
+			CacheCreatePrice: cloneAdvancedFloatPtr(segment.CacheCreatePrice),
+		},
+		ThresholdSnapshot: types.AdvancedRuleThresholdSnapshot{
+			InputMin:  cloneAdvancedIntPtr(segment.InputMin),
+			InputMax:  cloneAdvancedIntPtr(segment.InputMax),
+			OutputMin: cloneAdvancedIntPtr(segment.OutputMin),
+			OutputMax: cloneAdvancedIntPtr(segment.OutputMax),
+		},
+	}
+}
+
+func buildAdvancedMatchSummary(segment AdvancedPriceRule, runtimeCtx advancedTextRuntimeContext) string {
+	parts := []string{
+		fmt.Sprintf("priority=%d", valueFromAdvancedIntPtr(segment.Priority)),
+		fmt.Sprintf("input_tokens=%d", runtimeCtx.inputTokens),
+		fmt.Sprintf("output_tokens=%d", runtimeCtx.outputTokens),
+	}
+	if runtimeCtx.serviceTier != "" {
+		parts = append(parts, fmt.Sprintf("service_tier=%s", runtimeCtx.serviceTier))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func buildAdvancedConditionTags(segment AdvancedPriceRule) []string {
+	tags := make([]string, 0, 5)
+	if hasIntRange(segment.InputMin, segment.InputMax) {
+		tags = append(tags, fmt.Sprintf("input:%d-%d", *segment.InputMin, *segment.InputMax))
+	}
+	if hasIntRange(segment.OutputMin, segment.OutputMax) {
+		tags = append(tags, fmt.Sprintf("output:%d-%d", *segment.OutputMin, *segment.OutputMax))
+	}
+	if serviceTier := strings.TrimSpace(segment.ServiceTier); serviceTier != "" {
+		tags = append(tags, fmt.Sprintf("service_tier:%s", serviceTier))
+	}
+	if segment.CacheRead != nil {
+		tags = append(tags, fmt.Sprintf("cache_read:%t", *segment.CacheRead))
+	}
+	if segment.CacheCreate != nil {
+		tags = append(tags, fmt.Sprintf("cache_create:%t", *segment.CacheCreate))
+	}
+	return tags
+}
+
+func cloneAdvancedIntPtr(v *int) *int {
+	if v == nil {
+		return nil
+	}
+	cloned := *v
+	return &cloned
+}
+
+func cloneAdvancedFloatPtr(v *float64) *float64 {
+	if v == nil {
+		return nil
+	}
+	cloned := *v
+	return &cloned
+}
+
+func cloneAdvancedBoolPtr(v *bool) *bool {
+	if v == nil {
+		return nil
+	}
+	cloned := *v
+	return &cloned
+}
+
+func valueFromAdvancedIntPtr(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
+}
 
 func AdvancedPricingMode2JSONString() string {
 	return advancedPricingModeMap.MarshalJSONString()

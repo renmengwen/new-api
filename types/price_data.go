@@ -2,6 +2,47 @@ package types
 
 import "fmt"
 
+type BillingMode string
+
+const (
+	BillingModePerToken   BillingMode = "per_token"
+	BillingModePerRequest BillingMode = "per_request"
+	BillingModeAdvanced   BillingMode = "advanced"
+)
+
+type AdvancedRuleType string
+
+const (
+	AdvancedRuleTypeTextSegment AdvancedRuleType = "text_segment"
+	AdvancedRuleTypeMediaTask   AdvancedRuleType = "media_task"
+)
+
+type AdvancedRulePriceSnapshot struct {
+	InputPrice       *float64
+	OutputPrice      *float64
+	CacheReadPrice   *float64
+	CacheCreatePrice *float64
+}
+
+type AdvancedRuleThresholdSnapshot struct {
+	InputMin  *int
+	InputMax  *int
+	OutputMin *int
+	OutputMax *int
+}
+
+type AdvancedRuleSnapshot struct {
+	RuleType          AdvancedRuleType
+	MatchSummary      string
+	ConditionTags     []string
+	Priority          *int
+	ServiceTier       string
+	CacheRead         *bool
+	CacheCreate       *bool
+	PriceSnapshot     AdvancedRulePriceSnapshot
+	ThresholdSnapshot AdvancedRuleThresholdSnapshot
+}
+
 type GroupRatioInfo struct {
 	GroupRatio        float64
 	GroupSpecialRatio float64
@@ -21,9 +62,12 @@ type PriceData struct {
 	AudioRatio           float64
 	AudioCompletionRatio float64
 	OtherRatios          map[string]float64
+	BillingMode          BillingMode
+	AdvancedRuleType     AdvancedRuleType
+	AdvancedRuleSnapshot *AdvancedRuleSnapshot
 	UsePrice             bool
-	Quota                int // 按次计费的最终额度（MJ / Task）
-	QuotaToPreConsume    int // 按量计费的预消耗额度
+	Quota                int
+	QuotaToPreConsume    int
 	GroupRatioInfo       GroupRatioInfo
 }
 
