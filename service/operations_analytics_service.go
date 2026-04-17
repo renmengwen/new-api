@@ -13,6 +13,7 @@ import (
 
 type operationsAnalyticsSummaryRow struct {
 	TotalCalls   int64 `gorm:"column:total_calls"`
+	TotalTokens  int64 `gorm:"column:total_tokens"`
 	TotalCost    int64 `gorm:"column:total_cost"`
 	ActiveUsers  int64 `gorm:"column:active_users"`
 	ActiveModels int64 `gorm:"column:active_models"`
@@ -41,6 +42,7 @@ func GetOperationsAnalyticsSummary(query dto.AdminAnalyticsQuery, requesterUserI
 
 	response := dto.AdminAnalyticsSummaryResponse{
 		TotalCalls:   current.TotalCalls,
+		TotalTokens:  current.TotalTokens,
 		TotalCost:    current.TotalCost,
 		ActiveUsers:  current.ActiveUsers,
 		ActiveModels: current.ActiveModels,
@@ -109,6 +111,7 @@ func GetOperationsAnalyticsUsers(query dto.AdminAnalyticsQuery, pageInfo *common
 			"COALESCE(NULLIF(MAX(analytics_users.username), ''), COALESCE(MAX(logs.username), '')) AS username, " +
 			"COUNT(*) AS call_count, " +
 			"COUNT(DISTINCT NULLIF(logs.model_name, '')) AS model_count, " +
+			"COALESCE(SUM(logs.prompt_tokens + logs.completion_tokens), 0) AS total_tokens, " +
 			"COALESCE(SUM(logs.quota), 0) AS total_cost, " +
 			"COALESCE(MAX(logs.created_at), 0) AS last_called_at",
 	).Group("logs.user_id")
@@ -237,6 +240,10 @@ func applyOperationsAnalyticsUserSort(query *gorm.DB, sortBy string, sortOrder s
 		return query.Order("model_count " + normalizeOperationsAnalyticsSortOrder(sortOrder)).
 			Order("last_called_at DESC").
 			Order("user_id ASC")
+	case "total_tokens":
+		return query.Order("total_tokens " + normalizeOperationsAnalyticsSortOrder(sortOrder)).
+			Order("last_called_at DESC").
+			Order("user_id ASC")
 	case "total_cost":
 		return query.Order("total_cost " + normalizeOperationsAnalyticsSortOrder(sortOrder)).
 			Order("last_called_at DESC").
@@ -318,6 +325,7 @@ func scanOperationsAnalyticsSummary(query *gorm.DB) (operationsAnalyticsSummaryR
 	row := operationsAnalyticsSummaryRow{}
 	err := query.Select(
 		"COUNT(*) AS total_calls, " +
+			"COALESCE(SUM(logs.prompt_tokens + logs.completion_tokens), 0) AS total_tokens, " +
 			"COALESCE(SUM(logs.quota), 0) AS total_cost, " +
 			"COUNT(DISTINCT logs.user_id) AS active_users, " +
 			"COUNT(DISTINCT NULLIF(logs.model_name, '')) AS active_models",
@@ -406,6 +414,7 @@ func buildOperationsAnalyticsWow(requesterUserId int, requesterRole int, endTime
 
 	return map[string]dto.AdminAnalyticsWowValue{
 		"total_calls":   buildOperationsAnalyticsWowValue(current.TotalCalls, previous.TotalCalls),
+		"total_tokens":  buildOperationsAnalyticsWowValue(current.TotalTokens, previous.TotalTokens),
 		"total_cost":    buildOperationsAnalyticsWowValue(current.TotalCost, previous.TotalCost),
 		"active_users":  buildOperationsAnalyticsWowValue(current.ActiveUsers, previous.ActiveUsers),
 		"active_models": buildOperationsAnalyticsWowValue(current.ActiveModels, previous.ActiveModels),

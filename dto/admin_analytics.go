@@ -41,6 +41,7 @@ type AdminAnalyticsWowValue struct {
 
 type AdminAnalyticsSummaryResponse struct {
 	TotalCalls   int64                             `json:"total_calls"`
+	TotalTokens  int64                             `json:"total_tokens"`
 	TotalCost    int64                             `json:"total_cost"`
 	ActiveUsers  int64                             `json:"active_users"`
 	ActiveModels int64                             `json:"active_models"`
@@ -87,6 +88,7 @@ type AdminAnalyticsUserItem struct {
 	Username     string `json:"username"`
 	CallCount    int64  `json:"call_count"`
 	ModelCount   int64  `json:"model_count"`
+	TotalTokens  int64  `json:"total_tokens"`
 	TotalCost    int64  `json:"total_cost"`
 	LastCalledAt int64  `json:"last_called_at"`
 }

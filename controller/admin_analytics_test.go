@@ -46,6 +46,7 @@ type adminAnalyticsUserItemResponse struct {
 	Username     string `json:"username"`
 	CallCount    int64  `json:"call_count"`
 	ModelCount   int64  `json:"model_count"`
+	TotalTokens  int64  `json:"total_tokens"`
 	TotalCost    int64  `json:"total_cost"`
 	LastCalledAt int64  `json:"last_called_at"`
 }
@@ -585,6 +586,31 @@ func TestGetAdminAnalyticsSummaryReturnsWowForLast7Days(t *testing.T) {
 	require.Equal(t, float64(2), totalCallsWow["previous"])
 }
 
+func TestGetAdminAnalyticsSummaryReturnsTotalTokensAndWowForLast7Days(t *testing.T) {
+	db := setupAdminAnalyticsTestDB(t)
+	fixture := seedAdminAnalyticsFixture(t, db)
+	grantPermissionActions(t, db, fixture.Admin.Id, model.UserTypeAdmin,
+		permissionGrant{Resource: service.ResourceAnalyticsManagement, Action: service.ActionRead},
+	)
+
+	target := "/api/admin/analytics/summary?date_preset=last7days&start_timestamp=" +
+		strconv.FormatInt(fixture.Last7Start, 10) + "&end_timestamp=" + strconv.FormatInt(fixture.Now, 10)
+	ctx, recorder := newAdminAnalyticsContext(t, http.MethodGet, target, nil, fixture.Admin.Id, fixture.Admin.Role)
+	GetAdminAnalyticsSummary(ctx)
+
+	var response adminAnalyticsAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, float64(76), response.Data["total_tokens"])
+
+	wow, ok := response.Data["wow"].(map[string]any)
+	require.True(t, ok)
+	totalTokensWow, ok := wow["total_tokens"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(76), totalTokensWow["current"])
+	require.Equal(t, float64(34), totalTokensWow["previous"])
+}
+
 func TestGetAdminAnalyticsSummaryOmitsWowOutsideLast7Days(t *testing.T) {
 	db := setupAdminAnalyticsTestDB(t)
 	fixture := seedAdminAnalyticsFixture(t, db)
@@ -742,6 +768,28 @@ func TestGetAdminAnalyticsUsersReturnsLastCallTime(t *testing.T) {
 	require.Equal(t, fixture.OwnedA.Username, response.Data.Items[3].Username)
 	require.EqualValues(t, 1, response.Data.Items[3].CallCount)
 	require.EqualValues(t, time.Date(2026, 4, 13, 9, 0, 0, 0, time.Local).Unix(), response.Data.Items[3].LastCalledAt)
+}
+
+func TestGetAdminAnalyticsUsersReturnsTotalTokens(t *testing.T) {
+	db := setupAdminAnalyticsTestDB(t)
+	fixture := seedAdminAnalyticsFixture(t, db)
+	grantPermissionActions(t, db, fixture.Admin.Id, model.UserTypeAdmin,
+		permissionGrant{Resource: service.ResourceAnalyticsManagement, Action: service.ActionRead},
+	)
+
+	target := "/api/admin/analytics/users?date_preset=last7days&start_timestamp=" +
+		strconv.FormatInt(fixture.Last7Start, 10) +
+		"&end_timestamp=" + strconv.FormatInt(fixture.Now, 10) +
+		"&sort_by=last_called_at&sort_order=desc&p=1&page_size=10"
+	ctx, recorder := newAdminAnalyticsContext(t, http.MethodGet, target, nil, fixture.Admin.Id, fixture.Admin.Role)
+	GetAdminAnalyticsUsers(ctx)
+
+	var response adminAnalyticsUserPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.NotEmpty(t, response.Data.Items)
+	require.GreaterOrEqual(t, response.Data.Items[0].TotalTokens, int64(1))
+	require.EqualValues(t, 24, response.Data.Items[0].TotalTokens)
 }
 
 func TestGetAdminAnalyticsModelsNegativePageSizeStillPaginates(t *testing.T) {
