@@ -174,6 +174,7 @@ var settingOptionAuditMeta = func() map[string]SettingAuditActionMeta {
 		"ImageRatio",
 		"AudioRatio",
 		"AudioCompletionRatio",
+		"AdvancedPricingConfig",
 		"AdvancedPricingMode",
 		"AdvancedPricingRules",
 		"ExposeRatioEnabled",

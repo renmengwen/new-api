@@ -250,6 +250,74 @@ func TestUpdateOptionRejectsInvalidAdvancedPricingConfigBeforePersisting(t *test
 	require.JSONEq(t, originalValue, option.Value)
 }
 
+func TestUpdateOptionCreatesAuditLogForAdvancedPricingConfig(t *testing.T) {
+	db := setupSettingAuditTestDB(t)
+	originalValue := `{
+      "billing_mode": {
+        "gpt-5": "advanced"
+      },
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 100,
+              "input_price": 1.2
+            }
+          ]
+        }
+      }
+    }`
+	updatedValue := `{
+      "billing_mode": {
+        "gpt-5": "advanced"
+      },
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 200,
+              "input_price": 2.4
+            }
+          ]
+        }
+      }
+    }`
+
+	require.NoError(t, db.Create(&model.Option{Key: "AdvancedPricingConfig", Value: originalValue}).Error)
+
+	common.OptionMapRWMutex.Lock()
+	common.OptionMap["AdvancedPricingConfig"] = originalValue
+	common.OptionMapRWMutex.Unlock()
+
+	ctx, recorder := newSettingAuditContext(t, http.MethodPut, "/api/option/", map[string]any{
+		"key":   "AdvancedPricingConfig",
+		"value": updatedValue,
+	})
+
+	UpdateOption(ctx)
+
+	var response settingAuditResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+
+	var audit model.AdminAuditLog
+	require.NoError(t, db.Where("action_module = ? AND action_type = ?", "setting_ratio", "save_model_ratio").First(&audit).Error)
+	require.Equal(t, "option_key", audit.TargetType)
+
+	beforePayload := mustLoadSettingAuditPayload(t, audit.BeforeJSON)
+	afterPayload := mustLoadSettingAuditPayload(t, audit.AfterJSON)
+	require.Equal(t, "AdvancedPricingConfig", beforePayload["key"])
+	require.Equal(t, "AdvancedPricingConfig", afterPayload["key"])
+	require.JSONEq(t, originalValue, beforePayload["value"].(string))
+	require.JSONEq(t, updatedValue, afterPayload["value"].(string))
+}
+
 func TestResetModelRatioCreatesAuditLog(t *testing.T) {
 	db := setupSettingAuditTestDB(t)
 	require.NoError(t, db.Create(&model.Option{Key: "ModelRatio", Value: `{"gpt-4":2}`}).Error)
