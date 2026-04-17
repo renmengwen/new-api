@@ -356,7 +356,7 @@ test('ModelAnalyticsTab defines sortable analytics columns and VChart usage', ()
   assert.doesNotMatch(modelTabSource, /const \[sortOrder, setSortOrder\] = useState\(''\);/);
 });
 
-test('UserAnalyticsTab defines sortable analytics columns and quota plus timestamp rendering', () => {
+test('UserAnalyticsTab defines sortable analytics columns plus top cost/token charts and full-width table layout', () => {
   assert.match(userTabSource, /@visactor\/react-vchart/);
   assert.match(
     userTabSource,
@@ -373,6 +373,18 @@ test('UserAnalyticsTab defines sortable analytics columns and quota plus timesta
   assert.match(userTabSource, /timestamp2string\(value\)/);
   assert.match(userTabSource, /const sortBy = sortState\?\.sortBy \|\| '';/);
   assert.match(userTabSource, /const sortOrder = sortState\?\.sortOrder \|\| '';/);
+  assert.match(
+    userTabSource,
+    /const costSpec = useMemo\([\s\S]*?costTopUsers\.map[\s\S]*?total_cost:\s*item\.total_cost \|\| 0[\s\S]*?title:\s*t\('Top 用户使用金额'\)[\s\S]*?xField:\s*'username'[\s\S]*?yField:\s*'total_cost'[\s\S]*?valueField:\s*'total_cost'/,
+  );
+  assert.match(
+    userTabSource,
+    /const tokenSpec = useMemo\([\s\S]*?tokenTopUsers\.map[\s\S]*?total_tokens:\s*item\.total_tokens \|\| 0[\s\S]*?title:\s*t\('Top 用户 Token 总量'\)[\s\S]*?xField:\s*'username'[\s\S]*?yField:\s*'total_tokens'[\s\S]*?valueField:\s*'total_tokens'/,
+  );
+  assert.match(
+    userTabSource,
+    /className='grid gap-4 lg:grid-cols-2'[\s\S]*?<\/div>\s*<div\s+className='rounded-2xl border p-4 flex flex-col gap-4 w-full'/,
+  );
   assert.match(
     userTabSource,
     /onSortStateChange\(\{\s*sortBy:\s*nextSortBy,\s*sortOrder:\s*nextSortOrder,\s*\}\)/,
@@ -436,6 +448,10 @@ test('UserAnalyticsTab separates table and chart loading, splits error state, an
   assert.match(
     userTabSource,
     /const loadChartData = useCallback\(async \(\) => \{[\s\S]*?\}, \[activeTab, appliedFilters, t\]\);/,
+  );
+  assert.match(
+    userTabSource,
+    /sort_by:\s*'total_cost'[\s\S]*sort_by:\s*'total_tokens'/,
   );
   assert.doesNotMatch(
     userTabSource,

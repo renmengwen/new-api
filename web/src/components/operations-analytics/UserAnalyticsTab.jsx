@@ -85,7 +85,7 @@ const UserAnalyticsTab = ({
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
   const [costTopUsers, setCostTopUsers] = useState([]);
-  const [callTopUsers, setCallTopUsers] = useState([]);
+  const [tokenTopUsers, setTokenTopUsers] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -175,7 +175,7 @@ const UserAnalyticsTab = ({
     setChartError('');
 
     try {
-      const [costTopRes, callTopRes] = await Promise.all([
+      const [costTopRes, tokenTopRes] = await Promise.all([
         API.get('/api/admin/analytics/users', {
           params: buildRequestParams(appliedFilters, {
             p: 1,
@@ -188,7 +188,7 @@ const UserAnalyticsTab = ({
           params: buildRequestParams(appliedFilters, {
             p: 1,
             page_size: CHART_LIMIT,
-            sort_by: 'call_count',
+            sort_by: 'total_tokens',
             sort_order: 'desc',
           }),
         }),
@@ -198,24 +198,24 @@ const UserAnalyticsTab = ({
         return;
       }
 
-      const responses = [costTopRes, callTopRes];
+      const responses = [costTopRes, tokenTopRes];
       const failedResponse = responses.find((response) => !response?.data?.success);
       if (failedResponse) {
         setCostTopUsers([]);
-        setCallTopUsers([]);
+        setTokenTopUsers([]);
         setChartError(failedResponse?.data?.message || t('加载用户分析数据失败'));
         return;
       }
 
       setCostTopUsers(costTopRes.data.data?.items || []);
-      setCallTopUsers(callTopRes.data.data?.items || []);
+      setTokenTopUsers(tokenTopRes.data.data?.items || []);
     } catch (requestError) {
       if (chartRequestRef.current !== requestId) {
         return;
       }
 
       setCostTopUsers([]);
-      setCallTopUsers([]);
+      setTokenTopUsers([]);
       setChartError(t('加载用户分析数据失败，请稍后重试'));
       showError(requestError);
     }
@@ -302,31 +302,33 @@ const UserAnalyticsTab = ({
           username: buildUserChartLabel(item),
           total_cost: item.total_cost || 0,
         })),
-        title: t('Top 用户费用'),
+        title: t('Top 用户使用金额'),
         subtext: `${t('Top')} ${costTopUsers.length}`,
-        xField: 'total_cost',
-        yField: 'username',
+        xField: 'username',
+        yField: 'total_cost',
         seriesField: 'username',
+        valueField: 'total_cost',
         valueFormatter: (value) => renderQuota(value || 0),
       }),
     [costTopUsers, specBar, t],
   );
 
-  const callSpec = useMemo(
+  const tokenSpec = useMemo(
     () =>
       specBar({
-        data: callTopUsers.map((item) => ({
+        data: tokenTopUsers.map((item) => ({
           username: buildUserChartLabel(item),
-          call_count: item.call_count || 0,
+          total_tokens: item.total_tokens || 0,
         })),
-        title: t('Top 用户调用量'),
-        subtext: `${t('Top')} ${callTopUsers.length}`,
-        xField: 'call_count',
-        yField: 'username',
+        title: t('Top 用户 Token 总量'),
+        subtext: `${t('Top')} ${tokenTopUsers.length}`,
+        xField: 'username',
+        yField: 'total_tokens',
         seriesField: 'username',
+        valueField: 'total_tokens',
         valueFormatter: (value) => renderNumber(value || 0),
       }),
-    [callTopUsers, specBar, t],
+    [tokenTopUsers, specBar, t],
   );
 
   return (
@@ -348,13 +350,13 @@ const UserAnalyticsTab = ({
           style={{ borderColor: 'var(--semi-color-border)' }}
         >
           <div className='h-72'>
-            <VChart spec={callSpec} option={chartOption} />
+            <VChart spec={tokenSpec} option={chartOption} />
           </div>
         </div>
       </div>
 
       <div
-        className='rounded-2xl border p-4 flex flex-col gap-4'
+        className='rounded-2xl border p-4 flex flex-col gap-4 w-full'
         style={{ borderColor: 'var(--semi-color-border)' }}
       >
         <Table
