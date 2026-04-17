@@ -24,7 +24,8 @@ func TestParseAdvancedPricingConfigValidatesTextAndMediaRules(t *testing.T) {
               "cache_create": false,
               "input_price": 3.2,
               "output_price": 16,
-              "cache_price": 1.6
+              "cache_read_price": 1.6,
+              "cache_create_price": 2.4
             }
           ]
         },
@@ -38,8 +39,10 @@ func TestParseAdvancedPricingConfigValidatesTextAndMediaRules(t *testing.T) {
               "input_video": false,
               "resolution": "720p",
               "aspect_ratio": "16:9",
-              "output_duration": 5,
-              "input_video_duration": 0,
+              "output_duration_min": 5,
+              "output_duration_max": 5,
+              "input_video_duration_min": 0,
+              "input_video_duration_max": 0,
               "draft": true,
               "draft_coefficient": 0.5,
               "remark": "fast lane",
@@ -61,11 +64,14 @@ func TestParseAdvancedPricingConfigValidatesTextAndMediaRules(t *testing.T) {
 	require.Equal(t, "default", cfg.ModelRules["doubao-seed-2.0-pro"].Segments[0].ServiceTier)
 	require.Equal(t, true, *cfg.ModelRules["doubao-seed-2.0-pro"].Segments[0].CacheRead)
 	require.Equal(t, false, *cfg.ModelRules["doubao-seed-2.0-pro"].Segments[0].CacheCreate)
-	require.Equal(t, 1.6, *cfg.ModelRules["doubao-seed-2.0-pro"].Segments[0].CachePrice)
+	require.Equal(t, 1.6, *cfg.ModelRules["doubao-seed-2.0-pro"].Segments[0].CacheReadPrice)
+	require.Equal(t, 2.4, *cfg.ModelRules["doubao-seed-2.0-pro"].Segments[0].CacheCreatePrice)
 	require.Equal(t, true, *cfg.ModelRules["doubao-seedance-2.0"].Segments[0].Audio)
 	require.Equal(t, "16:9", cfg.ModelRules["doubao-seedance-2.0"].Segments[0].AspectRatio)
-	require.Equal(t, 5, *cfg.ModelRules["doubao-seedance-2.0"].Segments[0].OutputDuration)
-	require.Equal(t, 0, *cfg.ModelRules["doubao-seedance-2.0"].Segments[0].InputVideoDuration)
+	require.Equal(t, 5, *cfg.ModelRules["doubao-seedance-2.0"].Segments[0].OutputDurationMin)
+	require.Equal(t, 5, *cfg.ModelRules["doubao-seedance-2.0"].Segments[0].OutputDurationMax)
+	require.Equal(t, 0, *cfg.ModelRules["doubao-seedance-2.0"].Segments[0].InputVideoDurationMin)
+	require.Equal(t, 0, *cfg.ModelRules["doubao-seedance-2.0"].Segments[0].InputVideoDurationMax)
 	require.Equal(t, true, *cfg.ModelRules["doubao-seedance-2.0"].Segments[0].Draft)
 	require.Equal(t, 0.5, *cfg.ModelRules["doubao-seedance-2.0"].Segments[0].DraftCoefficient)
 	require.Equal(t, "fast lane", cfg.ModelRules["doubao-seedance-2.0"].Segments[0].Remark)
@@ -129,6 +135,30 @@ func TestParseAdvancedPricingConfigAllowsMediaRuleWithoutMinTokens(t *testing.T)
     }`)
 	require.NoError(t, err)
 	require.Nil(t, cfg.ModelRules["veo-3.1-fast-generate-preview"].Segments[0].MinTokens)
+}
+
+func TestParseAdvancedPricingConfigAllowsExactRanges(t *testing.T) {
+	cfg, err := ParseAdvancedPricingConfig(`{
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {"priority": 10, "input_min": 32, "input_max": 32, "input_price": 1}
+          ]
+        },
+        "veo-3.1-fast-generate-preview": {
+          "rule_type": "media_task",
+          "segments": [
+            {"priority": 10, "unit_price": 8, "output_duration_min": 5, "output_duration_max": 5}
+          ]
+        }
+      }
+    }`)
+	require.NoError(t, err)
+	require.Equal(t, 32, *cfg.ModelRules["gpt-5"].Segments[0].InputMin)
+	require.Equal(t, 32, *cfg.ModelRules["gpt-5"].Segments[0].InputMax)
+	require.Equal(t, 5, *cfg.ModelRules["veo-3.1-fast-generate-preview"].Segments[0].OutputDurationMin)
+	require.Equal(t, 5, *cfg.ModelRules["veo-3.1-fast-generate-preview"].Segments[0].OutputDurationMax)
 }
 
 func TestParseAdvancedPricingConfigRejectsDuplicatePriority(t *testing.T) {

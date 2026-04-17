@@ -46,9 +46,10 @@ type AdvancedPriceRule struct {
 	CacheRead   *bool  `json:"cache_read,omitempty"`
 	CacheCreate *bool  `json:"cache_create,omitempty"`
 
-	InputPrice  *float64 `json:"input_price,omitempty"`
-	OutputPrice *float64 `json:"output_price,omitempty"`
-	CachePrice  *float64 `json:"cache_price,omitempty"`
+	InputPrice       *float64 `json:"input_price,omitempty"`
+	OutputPrice      *float64 `json:"output_price,omitempty"`
+	CacheReadPrice   *float64 `json:"cache_read_price,omitempty"`
+	CacheCreatePrice *float64 `json:"cache_create_price,omitempty"`
 
 	InferenceMode string `json:"inference_mode,omitempty"`
 	Audio         *bool  `json:"audio,omitempty"`
@@ -56,8 +57,11 @@ type AdvancedPriceRule struct {
 	Resolution    string `json:"resolution,omitempty"`
 	AspectRatio   string `json:"aspect_ratio,omitempty"`
 
-	OutputDuration     *int `json:"output_duration,omitempty"`
-	InputVideoDuration *int `json:"input_video_duration,omitempty"`
+	OutputDurationMin *int `json:"output_duration_min,omitempty"`
+	OutputDurationMax *int `json:"output_duration_max,omitempty"`
+
+	InputVideoDurationMin *int `json:"input_video_duration_min,omitempty"`
+	InputVideoDurationMax *int `json:"input_video_duration_max,omitempty"`
 
 	Draft            *bool    `json:"draft,omitempty"`
 	DraftCoefficient *float64 `json:"draft_coefficient,omitempty"`
@@ -226,8 +230,11 @@ func validateTextSegmentRules(modelName string, segments []AdvancedPriceRule) er
 		if segment.OutputPrice != nil && *segment.OutputPrice < 0 {
 			return fmt.Errorf("model %s text segment output_price cannot be negative", modelName)
 		}
-		if segment.CachePrice != nil && *segment.CachePrice < 0 {
-			return fmt.Errorf("model %s text segment cache_price cannot be negative", modelName)
+		if segment.CacheReadPrice != nil && *segment.CacheReadPrice < 0 {
+			return fmt.Errorf("model %s text segment cache_read_price cannot be negative", modelName)
+		}
+		if segment.CacheCreatePrice != nil && *segment.CacheCreatePrice < 0 {
+			return fmt.Errorf("model %s text segment cache_create_price cannot be negative", modelName)
 		}
 	}
 
@@ -251,7 +258,7 @@ func validateTextRange(modelName, rangeName string, minVal, maxVal *int) error {
 	if *minVal < 0 || *maxVal < 0 {
 		return fmt.Errorf("model %s text segment %s 区间 cannot be negative", modelName, rangeName)
 	}
-	if *maxVal <= *minVal {
+	if *maxVal < *minVal {
 		return fmt.Errorf("model %s text segment %s 区间 is invalid", modelName, rangeName)
 	}
 	return nil
@@ -292,7 +299,7 @@ func intRangeOverlap(leftMin, leftMax, rightMin, rightMax *int) bool {
 	if !hasIntRange(leftMin, leftMax) || !hasIntRange(rightMin, rightMax) {
 		return true
 	}
-	return *leftMin < *rightMax && *rightMin < *leftMax
+	return *leftMin <= *rightMax && *rightMin <= *leftMax
 }
 
 func boolPointerEqual(left, right *bool) bool {
@@ -313,15 +320,31 @@ func validateMediaTaskRules(modelName string, segments []AdvancedPriceRule) erro
 		if segment.MinTokens != nil && *segment.MinTokens < 0 {
 			return fmt.Errorf("model %s media task segment min_tokens cannot be negative", modelName)
 		}
-		if segment.OutputDuration != nil && *segment.OutputDuration < 0 {
-			return fmt.Errorf("model %s media task segment output_duration cannot be negative", modelName)
+		if err := validateMediaRange(modelName, "output_duration", segment.OutputDurationMin, segment.OutputDurationMax); err != nil {
+			return err
 		}
-		if segment.InputVideoDuration != nil && *segment.InputVideoDuration < 0 {
-			return fmt.Errorf("model %s media task segment input_video_duration cannot be negative", modelName)
+		if err := validateMediaRange(modelName, "input_video_duration", segment.InputVideoDurationMin, segment.InputVideoDurationMax); err != nil {
+			return err
 		}
 		if segment.DraftCoefficient != nil && *segment.DraftCoefficient < 0 {
 			return fmt.Errorf("model %s media task segment draft_coefficient cannot be negative", modelName)
 		}
+	}
+	return nil
+}
+
+func validateMediaRange(modelName, rangeName string, minVal, maxVal *int) error {
+	if minVal == nil && maxVal == nil {
+		return nil
+	}
+	if minVal == nil || maxVal == nil {
+		return fmt.Errorf("model %s media task segment %s 区间 must include both min and max", modelName, rangeName)
+	}
+	if *minVal < 0 || *maxVal < 0 {
+		return fmt.Errorf("model %s media task segment %s 区间 cannot be negative", modelName, rangeName)
+	}
+	if *maxVal < *minVal {
+		return fmt.Errorf("model %s media task segment %s 区间 is invalid", modelName, rangeName)
 	}
 	return nil
 }
