@@ -25,8 +25,6 @@ var completionRatioMetaOptionKeys = []string{
 	"ImageRatio",
 	"AudioRatio",
 	"AudioCompletionRatio",
-	"AdvancedPricingMode",
-	"AdvancedPricingRules",
 }
 
 func collectModelNamesFromOptionValue(raw string, modelNames map[string]struct{}) {
@@ -239,7 +237,7 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "AdvancedPricingMode":
-		err = ratio_setting.UpdateAdvancedPricingModeByJSONString(option.Value.(string))
+		err = ratio_setting.ValidateAdvancedPricingModeJSONString(option.Value.(string))
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -248,7 +246,7 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "AdvancedPricingRules":
-		err = ratio_setting.UpdateAdvancedPricingRulesByJSONString(option.Value.(string))
+		err = ratio_setting.ValidateAdvancedPricingRulesJSONString(option.Value.(string))
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
