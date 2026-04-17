@@ -33,7 +33,7 @@ const summaryCardThemes = [
   {
     borderColor: 'var(--semi-color-blue-3)',
     background:
-      'linear-gradient(135deg, var(--semi-color-blue-0) 0%, rgba(255, 255, 255, 0.96) 100%)',
+      'linear-gradient(135deg, var(--semi-color-blue-0) 0%, var(--semi-color-bg-0) 100%)',
     iconBackground: 'rgba(59, 130, 246, 0.16)',
     iconColor: 'var(--semi-color-blue-6)',
     shadow: '0 18px 40px rgba(59, 130, 246, 0.12)',
@@ -41,7 +41,7 @@ const summaryCardThemes = [
   {
     borderColor: 'var(--semi-color-orange-3)',
     background:
-      'linear-gradient(135deg, var(--semi-color-orange-0) 0%, rgba(255, 255, 255, 0.96) 100%)',
+      'linear-gradient(135deg, var(--semi-color-orange-0) 0%, var(--semi-color-bg-0) 100%)',
     iconBackground: 'rgba(249, 115, 22, 0.16)',
     iconColor: 'var(--semi-color-orange-6)',
     shadow: '0 18px 40px rgba(249, 115, 22, 0.12)',
@@ -49,7 +49,7 @@ const summaryCardThemes = [
   {
     borderColor: 'var(--semi-color-green-3)',
     background:
-      'linear-gradient(135deg, var(--semi-color-green-0) 0%, rgba(255, 255, 255, 0.96) 100%)',
+      'linear-gradient(135deg, var(--semi-color-green-0) 0%, var(--semi-color-bg-0) 100%)',
     iconBackground: 'rgba(16, 185, 129, 0.16)',
     iconColor: 'var(--semi-color-green-6)',
     shadow: '0 18px 40px rgba(16, 185, 129, 0.12)',
@@ -57,7 +57,7 @@ const summaryCardThemes = [
   {
     borderColor: 'var(--semi-color-violet-3)',
     background:
-      'linear-gradient(135deg, var(--semi-color-violet-0) 0%, rgba(255, 255, 255, 0.96) 100%)',
+      'linear-gradient(135deg, var(--semi-color-violet-0) 0%, var(--semi-color-bg-0) 100%)',
     iconBackground: 'rgba(124, 58, 237, 0.16)',
     iconColor: 'var(--semi-color-violet-6)',
     shadow: '0 18px 40px rgba(124, 58, 237, 0.12)',
@@ -65,7 +65,7 @@ const summaryCardThemes = [
   {
     borderColor: 'var(--semi-color-cyan-3)',
     background:
-      'linear-gradient(135deg, var(--semi-color-cyan-0) 0%, rgba(255, 255, 255, 0.96) 100%)',
+      'linear-gradient(135deg, var(--semi-color-cyan-0) 0%, var(--semi-color-bg-0) 100%)',
     iconBackground: 'rgba(6, 182, 212, 0.16)',
     iconColor: 'var(--semi-color-cyan-6)',
     shadow: '0 18px 40px rgba(6, 182, 212, 0.12)',
@@ -191,8 +191,9 @@ const SummaryCards = ({ datePreset, summary, summaryLoading, t }) => (
             <div
               className='flex h-11 w-11 items-center justify-center rounded-2xl border'
               style={{
-                background: 'rgba(255, 255, 255, 0.78)',
-                borderColor: theme.iconBackground,
+                background:
+                  'linear-gradient(135deg, var(--semi-color-fill-0) 0%, var(--semi-color-bg-1) 100%)',
+                borderColor: 'var(--semi-color-border)',
                 color: theme.iconColor,
               }}
             >
@@ -202,8 +203,9 @@ const SummaryCards = ({ datePreset, summary, summaryLoading, t }) => (
           <div
             className='relative z-10 rounded-2xl border px-3 py-2'
             style={{
-              background: 'rgba(255, 255, 255, 0.78)',
-              borderColor: theme.iconBackground,
+              background:
+                'linear-gradient(135deg, var(--semi-color-fill-0) 0%, var(--semi-color-bg-1) 100%)',
+              borderColor: 'var(--semi-color-border)',
             }}
           >
             <Text type='tertiary' size='small'>

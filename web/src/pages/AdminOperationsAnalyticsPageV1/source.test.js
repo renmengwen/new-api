@@ -129,13 +129,14 @@ test('AdminOperationsAnalyticsPageV1 uses dedicated hook/components and preserve
   );
 });
 
-test('SummaryCards component exposes four summary cards and only shows natural-week wow when last7days is active', () => {
+test('SummaryCards component exposes five summary cards and only shows natural-week wow when last7days is active', () => {
   assert.ok(summaryCardsSource, 'SummaryCards.jsx should exist');
   assert.match(summaryCardsSource, /总调用量/);
   assert.match(summaryCardsSource, /总费用/);
   assert.match(summaryCardsSource, /活跃用户/);
   assert.match(summaryCardsSource, /活跃模型/);
   assert.match(summaryCardsSource, /datePreset === 'last7days'/);
+  assert.match(summaryCardsSource, /Token/);
   assert.match(summaryCardsSource, /自然周同比/);
   assert.match(summaryCardsSource, /\brenderQuota\(summary\.total_cost\)/);
   assert.doesNotMatch(summaryCardsSource, /formatSummaryValue\(summary\.total_cost\)/);
@@ -152,11 +153,28 @@ test('SummaryCards component exposes four summary cards and only shows natural-w
 test('SummaryCards component adds the fifth total-token card with wow support and Semi icons', () => {
   assert.ok(summaryCardsSource, 'SummaryCards.jsx should exist');
   assert.equal((summaryCardsSource.match(/title:\s*t\('/g) || []).length, 5);
+  assert.match(summaryCardsSource, /Token/);
   assert.match(summaryCardsSource, /总 Token/);
   assert.match(summaryCardsSource, /formatSummaryValue\(summary\.total_tokens\)/);
   assert.match(summaryCardsSource, /summary\.wow\?\.total_tokens/);
   assert.match(summaryCardsSource, /@douyinfe\/semi-icons/);
   assert.equal((summaryCardsSource.match(/\bicon:\s*</g) || []).length, 5);
+});
+
+test('SummaryCards keeps total-token wow scoped to last7days and avoids fixed light surfaces', () => {
+  assert.ok(summaryCardsSource, 'SummaryCards.jsx should exist');
+  assert.equal((summaryCardsSource.match(/summary\.wow\?\.total_tokens/g) || []).length, 1);
+  assert.match(
+    summaryCardsSource,
+    /title:\s*t\('[^']*Token'\),[\s\S]*helper:\s*datePreset === 'last7days'\s*\?\s*formatWowText\(t,\s*summary\.wow\?\.total_tokens\)\s*:\s*t\('[^']+'\)/,
+  );
+  assert.match(
+    summaryCardsSource,
+    /summary\.wow\?\.total_calls\)\s*:\s*(t\('[^']+'\))[\s\S]*summary\.wow\?\.total_tokens\)\s*:\s*\1/,
+  );
+  assert.doesNotMatch(summaryCardsSource, /rgba\(255,\s*255,\s*255,\s*0\.\d+\)/);
+  assert.match(summaryCardsSource, /var\(--semi-color-bg-0\)/);
+  assert.match(summaryCardsSource, /var\(--semi-color-fill-0\)/);
 });
 
 test('AnalyticsToolbar component exposes three date presets plus reset apply export and custom date controls', () => {
