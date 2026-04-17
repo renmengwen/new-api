@@ -19,12 +19,25 @@ For commercial licensing, please contact support@quantumnous.com
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const source = fs.readFileSync(
-  new URL('./useAdvancedPricingRulesState.js', import.meta.url),
-  'utf8',
-);
+const sourceFileUrl = new URL('./useAdvancedPricingRulesState.js', import.meta.url);
+const source = fs.readFileSync(sourceFileUrl, 'utf8');
+
+test('advanced pricing state hook source passes node syntax check', () => {
+  const sourcePath = fileURLToPath(sourceFileUrl);
+  const result = spawnSync(process.execPath, ['--check', sourcePath], {
+    encoding: 'utf8',
+  });
+
+  assert.equal(
+    result.status,
+    0,
+    `node --check failed:\n${result.stderr || result.stdout}`,
+  );
+});
 
 test('advanced pricing state parses advanced mode and rules and derives searchable models', () => {
   assert.match(

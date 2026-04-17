@@ -220,7 +220,7 @@ export default function useAdvancedPricingRulesState({
 
   const saveSelectedRule = async () => {
     if (!selectedModel) {
-      showError(t('璇峰厛閫夋嫨涓€涓ā鍨?));
+      showError(t('请先选择模型！'));
       return false;
     }
 
@@ -234,7 +234,7 @@ export default function useAdvancedPricingRulesState({
       } = latestOptionsRes?.data || {};
 
       if (!latestOptionsSuccess) {
-        throw new Error(latestOptionsMessage || t('鑾峰彇閰嶇疆澶辫触'));
+        throw new Error(latestOptionsMessage || t('保存失败，请重试'));
       }
 
       const latestOptionsByKey = reduceOptionsByKey(latestOptionsData);
@@ -252,17 +252,17 @@ export default function useAdvancedPricingRulesState({
       });
 
       if (!saveRes?.data?.success) {
-        throw new Error(saveRes?.data?.message || t('淇濆瓨澶辫触锛岃閲嶈瘯'));
+        throw new Error(saveRes?.data?.message || t('保存失败，请重试'));
       }
 
-      showSuccess(t('楂樼骇瀹氫环瑙勫垯宸蹭繚瀛?));
+      showSuccess(t('保存成功'));
       dirtyRuleModelNamesRef.current.delete(selectedModel.name);
       dirtyBillingModeModelNamesRef.current.delete(selectedModel.name);
       await refresh();
       return true;
     } catch (error) {
-      console.error('淇濆瓨楂樼骇瀹氫环瑙勫垯澶辫触:', error);
-      showError(error.message || t('淇濆瓨澶辫触锛岃閲嶈瘯'));
+      console.error('保存高级定价规则失败:', error);
+      showError(error.message || t('保存失败，请重试'));
       return false;
     } finally {
       setSaving(false);
