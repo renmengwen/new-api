@@ -27,10 +27,14 @@ import {
 export const PAGE_SIZE = 10;
 export const PRICE_SUFFIX = '$/1M tokens';
 const EMPTY_CANDIDATE_MODEL_NAMES = [];
+const BILLING_MODE_PER_TOKEN = 'per_token';
+const BILLING_MODE_PER_REQUEST = 'per_request';
+const BILLING_MODE_ADVANCED = 'advanced';
 
 const EMPTY_MODEL = {
   name: '',
-  billingMode: 'per-token',
+  billingMode: BILLING_MODE_PER_TOKEN,
+  advancedRuleType: '',
   fixedPrice: '',
   inputPrice: '',
   completionPrice: '',
@@ -120,6 +124,26 @@ const normalizeCompletionRatioMeta = (rawMeta) => {
   };
 };
 
+const resolveBillingMode = ({ explicitMode, fixedPrice }) => {
+  if (
+    explicitMode === 'per_token' ||
+    explicitMode === 'per_request' ||
+    explicitMode === 'advanced'
+  ) {
+    return explicitMode;
+  }
+
+  return hasValue(fixedPrice) ? 'per_request' : 'per_token';
+};
+
+const resolveAdvancedRuleType = (rawRuleSet) => {
+  if (!rawRuleSet || typeof rawRuleSet !== 'object' || Array.isArray(rawRuleSet)) {
+    return '';
+  }
+
+  return typeof rawRuleSet.rule_type === 'string' ? rawRuleSet.rule_type : '';
+};
+
 const buildModelState = (name, sourceMaps) => {
   const modelRatio = toNumericString(sourceMaps.ModelRatio[name]);
   const completionRatio = toNumericString(sourceMaps.CompletionRatio[name]);
@@ -134,6 +158,13 @@ const buildModelState = (name, sourceMaps) => {
     sourceMaps.AudioCompletionRatio[name],
   );
   const fixedPrice = toNumericString(sourceMaps.ModelPrice[name]);
+  const billingMode = resolveBillingMode({
+    explicitMode: sourceMaps.AdvancedPricingMode[name],
+    fixedPrice,
+  });
+  const advancedRuleType = resolveAdvancedRuleType(
+    sourceMaps.AdvancedPricingRules?.[name],
+  );
   const inputPrice = ratioToBasePrice(modelRatio);
   const inputPriceNumber = toNumberOrNull(inputPrice);
   const audioInputPrice =
@@ -144,7 +175,8 @@ const buildModelState = (name, sourceMaps) => {
   return {
     ...EMPTY_MODEL,
     name,
-    billingMode: hasValue(fixedPrice) ? 'per-request' : 'per-token',
+    billingMode,
+    advancedRuleType,
     fixedPrice,
     inputPrice,
     completionRatioLocked: completionRatioMeta.locked,
@@ -206,7 +238,10 @@ const buildModelState = (name, sourceMaps) => {
 };
 
 export const isBasePricingUnset = (model) =>
-  !hasValue(model.fixedPrice) && !hasValue(model.inputPrice);
+  !hasValue(model.fixedPrice) &&
+  !hasValue(model.inputPrice) &&
+  model.billingMode !== BILLING_MODE_ADVANCED &&
+  !hasValue(model.advancedRuleType);
 
 export const getModelWarnings = (model, t) => {
   if (!model) {
@@ -225,7 +260,7 @@ export const getModelWarnings = (model, t) => {
 
   if (model.hasConflict) {
     warnings.push(
-      t('当前模型同时存在按次价格和倍率配置，保存时会按当前计费方式覆盖。'),
+      t('当前模型同时存在按次价格和倍率配置，未生效配置会保留，仅当前计费模式生效。'),
     );
   }
 
@@ -248,7 +283,7 @@ export const getModelWarnings = (model, t) => {
   }
 
   if (
-    model.billingMode === 'per-token' &&
+    model.billingMode === BILLING_MODE_PER_TOKEN &&
     hasDerivedPricing &&
     !hasValue(model.inputPrice)
   ) {
@@ -256,7 +291,7 @@ export const getModelWarnings = (model, t) => {
   }
 
   if (
-    model.billingMode === 'per-token' &&
+    model.billingMode === BILLING_MODE_PER_TOKEN &&
     hasValue(model.audioOutputPrice) &&
     !hasValue(model.audioInputPrice)
   ) {
@@ -267,7 +302,16 @@ export const getModelWarnings = (model, t) => {
 };
 
 export const buildSummaryText = (model, t) => {
-  if (model.billingMode === 'per-request' && hasValue(model.fixedPrice)) {
+  if (model.billingMode === BILLING_MODE_ADVANCED) {
+    return model.advancedRuleType
+      ? `${t('高级规则')} · ${model.advancedRuleType}`
+      : t('高级规则');
+  }
+
+  if (
+    model.billingMode === BILLING_MODE_PER_REQUEST &&
+    hasValue(model.fixedPrice)
+  ) {
     return `${t('按次')} $${model.fixedPrice} / ${t('次')}`;
   }
 
@@ -310,11 +354,8 @@ const serializeModel = (model, t) => {
     AudioCompletionRatio: null,
   };
 
-  if (model.billingMode === 'per-request') {
-    if (hasValue(model.fixedPrice)) {
-      result.ModelPrice = toNormalizedNumber(model.fixedPrice);
-    }
-    return result;
+  if (hasValue(model.fixedPrice)) {
+    result.ModelPrice = toNormalizedNumber(model.fixedPrice);
   }
 
   const inputPrice = toNumberOrNull(model.inputPrice);
@@ -418,20 +459,25 @@ const serializeModel = (model, t) => {
 
 export const buildPreviewRows = (model, t) => {
   if (!model) return [];
+  const rows = [
+    {
+      key: 'AdvancedPricingMode',
+      label: 'AdvancedPricingMode',
+      value: model.billingMode,
+    },
+  ];
 
-  if (model.billingMode === 'per-request') {
-    return [
-      {
-        key: 'ModelPrice',
-        label: 'ModelPrice',
-        value: hasValue(model.fixedPrice) ? model.fixedPrice : t('空'),
-      },
-    ];
+  if (hasValue(model.fixedPrice)) {
+    rows.push({
+      key: 'ModelPrice',
+      label: 'ModelPrice',
+      value: model.fixedPrice,
+    });
   }
 
   const inputPrice = toNumberOrNull(model.inputPrice);
   if (inputPrice === null) {
-    return [
+    return rows.concat([
       {
         key: 'ModelRatio',
         label: 'ModelRatio',
@@ -481,7 +527,7 @@ export const buildPreviewRows = (model, t) => {
           ? model.rawRatios.audioCompletionRatio
           : t('空'),
       },
-    ];
+    ]);
   }
 
   const completionPrice = toNumberOrNull(model.completionPrice);
@@ -491,7 +537,7 @@ export const buildPreviewRows = (model, t) => {
   const audioInputPrice = toNumberOrNull(model.audioInputPrice);
   const audioOutputPrice = toNumberOrNull(model.audioOutputPrice);
 
-  return [
+  return rows.concat([
     {
       key: 'ModelRatio',
       label: 'ModelRatio',
@@ -544,7 +590,7 @@ export const buildPreviewRows = (model, t) => {
           ? formatNumber(audioOutputPrice / audioInputPrice)
           : t('空'),
     },
-  ];
+  ]);
 };
 
 export function useModelPricingEditorState({
@@ -566,6 +612,8 @@ export function useModelPricingEditorState({
 
   useEffect(() => {
     const sourceMaps = {
+      AdvancedPricingMode: parseOptionJSON(options.AdvancedPricingMode),
+      AdvancedPricingRules: parseOptionJSON(options.AdvancedPricingRules),
       ModelPrice: parseOptionJSON(options.ModelPrice),
       ModelRatio: parseOptionJSON(options.ModelRatio),
       CompletionRatio: parseOptionJSON(options.CompletionRatio),
@@ -579,6 +627,8 @@ export function useModelPricingEditorState({
 
     const names = new Set([
       ...candidateModelNames,
+      ...Object.keys(sourceMaps.AdvancedPricingMode),
+      ...Object.keys(sourceMaps.AdvancedPricingRules),
       ...Object.keys(sourceMaps.ModelPrice),
       ...Object.keys(sourceMaps.ModelRatio),
       ...Object.keys(sourceMaps.CompletionRatio),
@@ -887,7 +937,7 @@ export function useModelPricingEditorState({
         };
 
         if (
-          nextModel.billingMode === 'per-token' &&
+          nextModel.billingMode === BILLING_MODE_PER_TOKEN &&
           nextModel.completionRatioLocked &&
           hasValue(nextModel.inputPrice) &&
           hasValue(nextModel.lockedCompletionRatio)
@@ -935,6 +985,7 @@ export function useModelPricingEditorState({
     setLoading(true);
     try {
       const output = {
+        AdvancedPricingMode: {},
         ModelPrice: {},
         ModelRatio: {},
         CompletionRatio: {},
@@ -947,6 +998,7 @@ export function useModelPricingEditorState({
 
       for (const model of models) {
         const serialized = serializeModel(model, t);
+        output.AdvancedPricingMode[model.name] = model.billingMode;
         Object.entries(serialized).forEach(([key, value]) => {
           if (value !== null) {
             output[key][model.name] = value;

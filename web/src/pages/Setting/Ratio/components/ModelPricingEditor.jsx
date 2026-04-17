@@ -95,6 +95,7 @@ export default function ModelPricingEditor({
   listDescription = '',
   emptyTitle = '',
   emptyDescription = '',
+  onEditAdvancedRules,
 }) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
@@ -171,16 +172,25 @@ export default function ModelPricingEditor({
         ),
       },
       {
-        title: t('计费方式'),
+        title: t('计费模式'),
         dataIndex: 'billingMode',
         key: 'billingMode',
         render: (_, record) => (
-          <Tag color={record.billingMode === 'per-request' ? 'teal' : 'violet'}>
-            {record.billingMode === 'per-request'
-              ? t('按次计费')
-              : t('按量计费')}
+          <Tag color={getBillingModeColor(record.billingMode)}>
+            {getBillingModeText(record.billingMode)}
           </Tag>
         ),
+      },
+      {
+        title: t('规则类型'),
+        dataIndex: 'advancedRuleType',
+        key: 'advancedRuleType',
+        render: (_, record) =>
+          record.billingMode === 'advanced'
+            ? record.advancedRuleType
+              ? record.advancedRuleType
+              : '—'
+            : '—',
       },
       {
         title: t('价格摘要'),
@@ -208,6 +218,8 @@ export default function ModelPricingEditor({
     [
       allowDeleteModel,
       deleteModel,
+      getBillingModeColor,
+      getBillingModeText,
       selectedModelName,
       selectedModelNames,
       setSelectedModelName,
@@ -226,6 +238,26 @@ export default function ModelPricingEditor({
     selectedRowKeys: selectedModelNames,
     onChange: (selectedRowKeys) => setSelectedModelNames(selectedRowKeys),
   };
+
+  function getBillingModeText(billingMode) {
+    if (billingMode === 'advanced') {
+      return t('高级规则');
+    }
+    if (billingMode === 'per_request') {
+      return t('按次计费');
+    }
+    return t('按量计费');
+  }
+
+  function getBillingModeColor(billingMode) {
+    if (billingMode === 'advanced') {
+      return 'orange';
+    }
+    if (billingMode === 'per_request') {
+      return 'teal';
+    }
+    return 'violet';
+  }
 
   return (
     <>
@@ -344,7 +376,7 @@ export default function ModelPricingEditor({
                   },
                   onClick: () => setSelectedModelName(record.name),
                 })}
-                scroll={isMobile ? { x: 720 } : undefined}
+                scroll={isMobile ? { x: 860 } : undefined}
               />
             </div>
           </Card>
@@ -354,10 +386,8 @@ export default function ModelPricingEditor({
             title={selectedModel ? selectedModel.name : t('模型计费编辑器')}
             headerExtraContent={
               selectedModel ? (
-                <Tag color='blue'>
-                  {selectedModel.billingMode === 'per-request'
-                    ? t('按次计费')
-                    : t('按量计费')}
+                <Tag color={getBillingModeColor(selectedModel.billingMode)}>
+                  {getBillingModeText(selectedModel.billingMode)}
                 </Tag>
               ) : null
             }
@@ -373,19 +403,20 @@ export default function ModelPricingEditor({
               <div>
                 <div className='mb-4'>
                   <div className='mb-2 font-medium text-gray-700'>
-                    {t('计费方式')}
+                    {t('计费模式')}
                   </div>
                   <RadioGroup
                     type='button'
                     value={selectedModel.billingMode}
                     onChange={(event) => handleBillingModeChange(event.target.value)}
                   >
-                    <Radio value='per-token'>{t('按量计费')}</Radio>
-                    <Radio value='per-request'>{t('按次计费')}</Radio>
+                    <Radio value='per_token'>{t('按量计费')}</Radio>
+                    <Radio value='per_request'>{t('按次计费')}</Radio>
+                    <Radio value='advanced'>{t('高级规则')}</Radio>
                   </RadioGroup>
                   <div className='mt-2 text-xs text-gray-500'>
                     {t(
-                      '这个界面默认按价格填写，保存时会自动换算回后端需要的倍率 JSON。',
+                      '这个界面默认按价格填写，保存时会自动换算回后端需要的倍率 JSON，并保留未生效配置。',
                     )}
                   </div>
                 </div>
@@ -407,7 +438,46 @@ export default function ModelPricingEditor({
                   </Card>
                 ) : null}
 
-                {selectedModel.billingMode === 'per-request' ? (
+                {selectedModel.billingMode === 'advanced' ? (
+                  <Card
+                    bodyStyle={{ padding: 16 }}
+                    style={{
+                      marginBottom: 16,
+                      background: 'var(--semi-color-fill-0)',
+                    }}
+                  >
+                    <div className='flex items-center justify-between gap-3 mb-3'>
+                      <div>
+                        <div className='font-medium'>{t('高级规则')}</div>
+                        <div className='text-xs text-gray-500 mt-1'>
+                          {t('固定价格配置保留但不生效。')}
+                        </div>
+                      </div>
+                      <Tag color='orange'>
+                        {selectedModel.advancedRuleType
+                          ? selectedModel.advancedRuleType
+                          : '—'}
+                      </Tag>
+                    </div>
+                    <div className='text-sm text-gray-600 mb-3'>
+                      {t('规则类型')}：{' '}
+                      {selectedModel.advancedRuleType
+                        ? selectedModel.advancedRuleType
+                        : '—'}
+                    </div>
+                    <div className='text-sm text-gray-500 mb-4'>
+                      {t('高级规则内容将在后续任务中接入，此处仅展示当前状态。')}
+                    </div>
+                    <Button
+                      type='primary'
+                      theme='light'
+                      disabled={typeof onEditAdvancedRules !== 'function'}
+                      onClick={() => onEditAdvancedRules?.(selectedModel)}
+                    >
+                      {t('编辑高级规则')}
+                    </Button>
+                  </Card>
+                ) : selectedModel.billingMode === 'per_request' ? (
                   <PriceInput
                     label={t('固定价格')}
                     value={selectedModel.fixedPrice}

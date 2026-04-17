@@ -31,3 +31,19 @@ test('pricing state hook resolves visible models separately from full-model save
   assert.match(source, /resolveVisibleModels/);
   assert.match(source, /for \(const model of models\)/);
 });
+
+test('pricing state hook reads advanced pricing mode and rules while keeping advanced rules read-only on save', () => {
+  assert.match(source, /AdvancedPricingMode:\s*parseOptionJSON\(options\.AdvancedPricingMode\)/);
+  assert.match(source, /AdvancedPricingRules:\s*parseOptionJSON\(options\.AdvancedPricingRules\)/);
+  assert.match(source, /const billingMode = resolveBillingMode\(/);
+  assert.match(source, /const advancedRuleType = resolveAdvancedRuleType\(/);
+  assert.match(source, /AdvancedPricingMode:\s*\{\}/);
+  assert.match(source, /output\.AdvancedPricingMode\[model\.name\]\s*=\s*model\.billingMode/);
+  assert.doesNotMatch(source, /AdvancedPricingRules:\s*\{\}/);
+});
+
+test('pricing state hook keeps legacy billing fallback when AdvancedPricingMode is absent', () => {
+  assert.match(source, /const resolveBillingMode = \(\{ explicitMode, fixedPrice \}\) => \{/);
+  assert.match(source, /explicitMode === 'per_token'[\s\S]*explicitMode === 'per_request'[\s\S]*explicitMode === 'advanced'/);
+  assert.match(source, /return hasValue\(fixedPrice\) \? 'per_request' : 'per_token';/);
+});
