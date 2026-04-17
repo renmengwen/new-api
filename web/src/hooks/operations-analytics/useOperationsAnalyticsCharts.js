@@ -129,6 +129,8 @@ export const useOperationsAnalyticsCharts = ({ t }) => {
       xField,
       yField,
       seriesField,
+      categoryField = seriesField || yField,
+      valueField = xField,
       valueFormatter,
       colorMap = {},
       legendVisible = false,
@@ -165,17 +167,17 @@ export const useOperationsAnalyticsCharts = ({ t }) => {
             {
               key: (datum) =>
                 seriesField
-                  ? datum?.[seriesField] || datum?.[yField] || title
-                  : datum?.[yField] || title,
+                  ? datum?.[seriesField] || datum?.[categoryField] || title
+                  : datum?.[categoryField] || title,
               value: (datum) =>
-                formatTooltipValue(valueFormatter, datum?.[xField]),
+                formatTooltipValue(valueFormatter, datum?.[valueField]),
             },
           ],
         },
       },
       color: {
         specified: createSpecifiedColors(
-          data.map((item) => item?.[seriesField || yField]).filter(Boolean),
+          data.map((item) => item?.[seriesField || categoryField]).filter(Boolean),
           colorMap,
         ),
       },

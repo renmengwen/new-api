@@ -74,6 +74,14 @@ const buildRequestParams = (appliedFilters, extraParams = {}) => {
 
 const buildModelChartLabel = (item) => item.model_name || '(empty)';
 
+const hasNoTokenDetails = (record) =>
+  Number(record?.prompt_tokens || 0) === 0 &&
+  Number(record?.completion_tokens || 0) === 0 &&
+  Number(record?.total_cost || 0) > 0;
+
+const renderTokenValue = (value, record, t) =>
+  hasNoTokenDetails(record) ? t('暂无 token 数据') : renderNumber(value || 0);
+
 const ModelAnalyticsTab = ({
   activeTab,
   appliedFilters,
@@ -264,7 +272,7 @@ const ModelAnalyticsTab = ({
         sorter: true,
         sortOrder: sortBy === 'prompt_tokens' ? tableSortOrder : false,
         width: 130,
-        render: (value) => renderNumber(value || 0),
+        render: (value, record) => renderTokenValue(value, record, t),
       },
       {
         title: t('输出Token'),
@@ -272,7 +280,7 @@ const ModelAnalyticsTab = ({
         sorter: true,
         sortOrder: sortBy === 'completion_tokens' ? tableSortOrder : false,
         width: 130,
-        render: (value) => renderNumber(value || 0),
+        render: (value, record) => renderTokenValue(value, record, t),
       },
       {
         title: t('总费用'),
@@ -341,9 +349,10 @@ const ModelAnalyticsTab = ({
         })),
         title: t('模型调用量柱状图'),
         subtext: `${t('Top')} ${callRankItems.length}`,
-        xField: 'call_count',
-        yField: 'model_name',
+        xField: 'model_name',
+        yField: 'call_count',
         seriesField: 'model_name',
+        valueField: 'call_count',
         valueFormatter: (value) => renderNumber(value || 0),
       }),
     [callRankItems, specBar, t],

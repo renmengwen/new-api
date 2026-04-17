@@ -318,6 +318,10 @@ test('useOperationsAnalyticsCharts defines line pie and bar specs with semi them
   assert.match(chartsHookSource, /specLine/);
   assert.match(chartsHookSource, /specPie/);
   assert.match(chartsHookSource, /specBar/);
+  assert.match(
+    chartsHookSource,
+    /const specBar = useCallback\([\s\S]*?valueField\s*=\s*xField[\s\S]*?formatTooltipValue\(valueFormatter,\s*datum\?\.\[valueField\]\)/,
+  );
 });
 
 test('ModelAnalyticsTab defines sortable analytics columns and VChart usage', () => {
@@ -339,6 +343,11 @@ test('ModelAnalyticsTab defines sortable analytics columns and VChart usage', ()
   assert.match(modelTabSource, /sort_order/);
   assert.match(modelTabSource, /const sortBy = sortState\?\.sortBy \|\| '';/);
   assert.match(modelTabSource, /const sortOrder = sortState\?\.sortOrder \|\| '';/);
+  assert.match(modelTabSource, /暂无 token 数据/);
+  assert.match(
+    modelTabSource,
+    /const barSpec = useMemo\([\s\S]*?callRankItems\.map[\s\S]*?xField:\s*'model_name'[\s\S]*?yField:\s*'call_count'[\s\S]*?valueField:\s*'call_count'/,
+  );
   assert.match(
     modelTabSource,
     /onSortStateChange\(\{\s*sortBy:\s*nextSortBy,\s*sortOrder:\s*nextSortOrder,\s*\}\)/,
