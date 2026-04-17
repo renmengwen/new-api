@@ -2,6 +2,7 @@ package helper
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -40,10 +41,13 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 }
 
 func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
-	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
 	groupRatioInfo := HandleGroupRatio(c, info)
+	mode, hasExplicitMode := ratio_setting.GetExplicitBillingMode(info.OriginModelName)
+	if !hasExplicitMode {
+		mode = ratio_setting.GetEffectiveBillingMode(info.OriginModelName)
+	}
 
-	if ratio_setting.GetEffectiveBillingMode(info.OriginModelName) == ratio_setting.BillingModeAdvanced {
+	if mode == ratio_setting.BillingModeAdvanced {
 		advancedPriceData, ok, err := ratio_setting.ResolveAdvancedPriceData(info.OriginModelName, ratio_setting.AdvancedPricingRuntimeContext{
 			PromptTokens: promptTokens,
 			Meta:         meta,
@@ -53,88 +57,143 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 			return types.PriceData{}, err
 		}
 		if ok {
-			advancedPriceData.GroupRatioInfo = groupRatioInfo
-			advancedPriceData.UsePrice = false
-			advancedPriceData.ImageRatio, _ = ratio_setting.GetImageRatio(info.OriginModelName)
-			advancedPriceData.AudioRatio = ratio_setting.GetAudioRatio(info.OriginModelName)
-			advancedPriceData.AudioCompletionRatio = ratio_setting.GetAudioCompletionRatio(info.OriginModelName)
-			advancedPriceData.CacheCreation5mRatio = advancedPriceData.CacheCreationRatio
-			advancedPriceData.CacheCreation1hRatio = advancedPriceData.CacheCreationRatio * claudeCacheCreation1hMultiplier
-			advancedPriceData.QuotaToPreConsume = int(float64(getPreConsumedTokens(promptTokens, meta)) * advancedPriceData.ModelRatio * groupRatioInfo.GroupRatio)
-			applyFreeModelPreConsume(&advancedPriceData)
-
-			if common.DebugEnabled {
-				println(fmt.Sprintf("model_price_helper result: %s", advancedPriceData.ToSetting()))
-			}
-			info.PriceData = advancedPriceData
-			return advancedPriceData, nil
+			priceData := finalizeAdvancedPriceData(info.OriginModelName, promptTokens, meta, groupRatioInfo, advancedPriceData)
+			return finalizeModelPriceData(info, priceData), nil
 		}
+
+		mode = ratio_setting.GetLegacyBillingMode(info.OriginModelName)
+		hasExplicitMode = false
 	}
 
-	var preConsumedQuota int
-	var modelRatio float64
-	var completionRatio float64
-	var cacheRatio float64
-	var imageRatio float64
-	var cacheCreationRatio float64
-	var cacheCreationRatio5m float64
-	var cacheCreationRatio1h float64
-	var audioRatio float64
-	var audioCompletionRatio float64
+	var (
+		priceData types.PriceData
+		err       error
+	)
 
-	if !usePrice {
-		preConsumedTokens := getPreConsumedTokens(promptTokens, meta)
-		var success bool
-		var matchName string
-		modelRatio, success, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
-		if !success {
-			acceptUnsetRatio := false
-			if info.UserSetting.AcceptUnsetRatioModel {
-				acceptUnsetRatio = true
-			}
-			if !acceptUnsetRatio {
-				return types.PriceData{}, fmt.Errorf("模型 %s 倍率或价格未配置，请联系管理员设置或开始自用模式；Model %s ratio or price not set, please set or start self-use mode", matchName, matchName)
-			}
-		}
-		completionRatio = ratio_setting.GetCompletionRatio(info.OriginModelName)
-		cacheRatio, _ = ratio_setting.GetCacheRatio(info.OriginModelName)
-		cacheCreationRatio, _ = ratio_setting.GetCreateCacheRatio(info.OriginModelName)
-		cacheCreationRatio5m = cacheCreationRatio
-		cacheCreationRatio1h = cacheCreationRatio * claudeCacheCreation1hMultiplier
-		imageRatio, _ = ratio_setting.GetImageRatio(info.OriginModelName)
-		audioRatio = ratio_setting.GetAudioRatio(info.OriginModelName)
-		audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(info.OriginModelName)
-		preConsumedQuota = int(float64(preConsumedTokens) * modelRatio * groupRatioInfo.GroupRatio)
-	} else {
-		if meta != nil && meta.ImagePriceRatio != 0 {
-			modelPrice = modelPrice * meta.ImagePriceRatio
-		}
-		preConsumedQuota = int(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
+	switch mode {
+	case ratio_setting.BillingModePerToken:
+		priceData, err = buildPerTokenPriceData(info, promptTokens, meta, groupRatioInfo, hasExplicitMode)
+	case ratio_setting.BillingModePerRequest:
+		priceData, err = buildPerRequestPriceData(info, meta, groupRatioInfo)
+	default:
+		err = fmt.Errorf("unsupported billing mode: %s", mode)
 	}
+	if err != nil {
+		return types.PriceData{}, err
+	}
+
+	return finalizeModelPriceData(info, priceData), nil
+}
+
+func finalizeAdvancedPriceData(modelName string, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo types.GroupRatioInfo, priceData types.PriceData) types.PriceData {
+	priceData.GroupRatioInfo = groupRatioInfo
+	priceData.UsePrice = false
+	priceData.ImageRatio, _ = ratio_setting.GetImageRatio(modelName)
+	priceData.AudioRatio = ratio_setting.GetAudioRatio(modelName)
+	priceData.AudioCompletionRatio = ratio_setting.GetAudioCompletionRatio(modelName)
+	priceData.CacheCreation5mRatio = priceData.CacheCreationRatio
+	priceData.CacheCreation1hRatio = priceData.CacheCreationRatio * claudeCacheCreation1hMultiplier
+	priceData.QuotaToPreConsume = int(float64(getPreConsumedTokens(promptTokens, meta)) * priceData.ModelRatio * groupRatioInfo.GroupRatio)
+	applyFreeModelPreConsume(&priceData)
+	return priceData
+}
+
+func buildPerTokenPriceData(info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo types.GroupRatioInfo, strict bool) (types.PriceData, error) {
+	preConsumedTokens := getPreConsumedTokens(promptTokens, meta)
+	modelRatio, _, err := resolvePerTokenModelRatio(info, strict)
+	if err != nil {
+		return types.PriceData{}, err
+	}
+
+	completionRatio := ratio_setting.GetCompletionRatio(info.OriginModelName)
+	cacheRatio, _ := ratio_setting.GetCacheRatio(info.OriginModelName)
+	cacheCreationRatio, _ := ratio_setting.GetCreateCacheRatio(info.OriginModelName)
+	imageRatio, _ := ratio_setting.GetImageRatio(info.OriginModelName)
+	audioRatio := ratio_setting.GetAudioRatio(info.OriginModelName)
+	audioCompletionRatio := ratio_setting.GetAudioCompletionRatio(info.OriginModelName)
 
 	priceData := types.PriceData{
-		ModelPrice:           modelPrice,
 		ModelRatio:           modelRatio,
 		CompletionRatio:      completionRatio,
 		CacheRatio:           cacheRatio,
 		CacheCreationRatio:   cacheCreationRatio,
-		CacheCreation5mRatio: cacheCreationRatio5m,
-		CacheCreation1hRatio: cacheCreationRatio1h,
+		CacheCreation5mRatio: cacheCreationRatio,
+		CacheCreation1hRatio: cacheCreationRatio * claudeCacheCreation1hMultiplier,
 		ImageRatio:           imageRatio,
 		AudioRatio:           audioRatio,
 		AudioCompletionRatio: audioCompletionRatio,
-		BillingMode:          fixedTextBillingMode(usePrice),
+		BillingMode:          types.BillingModePerToken,
 		GroupRatioInfo:       groupRatioInfo,
-		UsePrice:             usePrice,
-		QuotaToPreConsume:    preConsumedQuota,
+		UsePrice:             false,
+		QuotaToPreConsume:    int(float64(preConsumedTokens) * modelRatio * groupRatioInfo.GroupRatio),
 	}
 	applyFreeModelPreConsume(&priceData)
 
+	return priceData, nil
+}
+
+func resolvePerTokenModelRatio(info *relaycommon.RelayInfo, strict bool) (float64, string, error) {
+	if strict {
+		modelRatio, ok, matchName := getConfiguredModelRatio(info.OriginModelName)
+		if !ok {
+			return 0, matchName, fmt.Errorf("model %s requires model_ratio for billing_mode=per_token", matchName)
+		}
+		return modelRatio, matchName, nil
+	}
+
+	modelRatio, success, matchName := ratio_setting.GetModelRatio(info.OriginModelName)
+	if success {
+		return modelRatio, matchName, nil
+	}
+	if info.UserSetting.AcceptUnsetRatioModel {
+		return modelRatio, matchName, nil
+	}
+	return 0, matchName, fmt.Errorf("model %s ratio or price not set, please set it or enable self-use mode", matchName)
+}
+
+func buildPerRequestPriceData(info *relaycommon.RelayInfo, meta *types.TokenCountMeta, groupRatioInfo types.GroupRatioInfo) (types.PriceData, error) {
+	modelPrice, ok := ratio_setting.GetModelPrice(info.OriginModelName, false)
+	if !ok {
+		matchName := ratio_setting.FormatMatchingModelName(info.OriginModelName)
+		return types.PriceData{}, fmt.Errorf("model %s requires model_price for billing_mode=per_request", matchName)
+	}
+
+	if meta != nil && meta.ImagePriceRatio != 0 {
+		modelPrice = modelPrice * meta.ImagePriceRatio
+	}
+
+	priceData := types.PriceData{
+		ModelPrice:        modelPrice,
+		BillingMode:       types.BillingModePerRequest,
+		GroupRatioInfo:    groupRatioInfo,
+		UsePrice:          true,
+		QuotaToPreConsume: int(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio),
+	}
+	applyFreeModelPreConsume(&priceData)
+	return priceData, nil
+}
+
+func finalizeModelPriceData(info *relaycommon.RelayInfo, priceData types.PriceData) types.PriceData {
 	if common.DebugEnabled {
 		println(fmt.Sprintf("model_price_helper result: %s", priceData.ToSetting()))
 	}
 	info.PriceData = priceData
-	return priceData, nil
+	return priceData
+}
+
+func getConfiguredModelRatio(modelName string) (float64, bool, string) {
+	matchName := ratio_setting.FormatMatchingModelName(modelName)
+	modelRatioMap := ratio_setting.GetModelRatioCopy()
+
+	if modelRatio, ok := modelRatioMap[matchName]; ok {
+		return modelRatio, true, matchName
+	}
+	if strings.HasSuffix(matchName, ratio_setting.CompactModelSuffix) {
+		if modelRatio, ok := modelRatioMap[ratio_setting.CompactWildcardModelKey]; ok {
+			return modelRatio, true, matchName
+		}
+	}
+	return 0, false, matchName
 }
 
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
@@ -147,12 +206,8 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 			modelPrice = defaultPrice
 		} else {
 			_, ratioSuccess, matchName := ratio_setting.GetModelRatio(info.OriginModelName)
-			acceptUnsetRatio := false
-			if info.UserSetting.AcceptUnsetRatioModel {
-				acceptUnsetRatio = true
-			}
-			if !ratioSuccess && !acceptUnsetRatio {
-				return types.PriceData{}, fmt.Errorf("模型 %s 倍率或价格未配置，请联系管理员设置或开始自用模式；Model %s ratio or price not set, please set or start self-use mode", matchName, matchName)
+			if !ratioSuccess && !info.UserSetting.AcceptUnsetRatioModel {
+				return types.PriceData{}, fmt.Errorf("model %s ratio or price not set, please set it or enable self-use mode", matchName)
 			}
 			modelPrice = float64(common.PreConsumedQuota) / common.QuotaPerUnit
 		}
@@ -167,14 +222,13 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 		}
 	}
 
-	priceData := types.PriceData{
+	return types.PriceData{
 		FreeModel:      freeModel,
 		ModelPrice:     modelPrice,
 		BillingMode:    types.BillingModePerRequest,
 		Quota:          quota,
 		GroupRatioInfo: groupRatioInfo,
-	}
-	return priceData, nil
+	}, nil
 }
 
 func ContainPriceOrRatio(modelName string) bool {
@@ -220,11 +274,4 @@ func applyFreeModelPreConsume(priceData *types.PriceData) {
 		priceData.QuotaToPreConsume = 0
 		priceData.FreeModel = true
 	}
-}
-
-func fixedTextBillingMode(usePrice bool) types.BillingMode {
-	if usePrice {
-		return types.BillingModePerRequest
-	}
-	return types.BillingModePerToken
 }

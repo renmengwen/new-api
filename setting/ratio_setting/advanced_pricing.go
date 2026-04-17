@@ -89,15 +89,24 @@ type advancedTextRuntimeContext struct {
 	cacheCreate  *bool
 }
 
-func GetEffectiveBillingMode(modelName string) BillingMode {
+func GetExplicitBillingMode(modelName string) (BillingMode, bool) {
 	modelName = FormatMatchingModelName(modelName)
-	if mode, ok := advancedPricingModeMap.Get(modelName); ok {
-		return mode
-	}
+	return advancedPricingModeMap.Get(modelName)
+}
+
+func GetLegacyBillingMode(modelName string) BillingMode {
+	modelName = FormatMatchingModelName(modelName)
 	if _, ok := GetModelPrice(modelName, false); ok {
 		return BillingModePerRequest
 	}
 	return BillingModePerToken
+}
+
+func GetEffectiveBillingMode(modelName string) BillingMode {
+	if mode, ok := GetExplicitBillingMode(modelName); ok {
+		return mode
+	}
+	return GetLegacyBillingMode(modelName)
 }
 
 func ResolveAdvancedPriceData(modelName string, ctx AdvancedPricingRuntimeContext) (types.PriceData, bool, error) {
@@ -500,6 +509,9 @@ func validateTextSegmentRules(modelName string, segments []AdvancedPriceRule) er
 		if err := validateTextRange(modelName, "output", segment.OutputMin, segment.OutputMax); err != nil {
 			return err
 		}
+		if err := validateUnsupportedTextRuntimeFields(modelName, segment); err != nil {
+			return err
+		}
 		if !hasTextCondition(segment) {
 			return fmt.Errorf("model %s text segment requires at least one condition", modelName)
 		}
@@ -508,6 +520,9 @@ func validateTextSegmentRules(modelName string, segments []AdvancedPriceRule) er
 		}
 		if *segment.InputPrice < 0 {
 			return fmt.Errorf("model %s text segment input_price cannot be negative", modelName)
+		}
+		if err := validateTextPriceDependencies(modelName, segment); err != nil {
+			return err
 		}
 		if segment.OutputPrice != nil && *segment.OutputPrice < 0 {
 			return fmt.Errorf("model %s text segment output_price cannot be negative", modelName)
@@ -549,9 +564,31 @@ func validateTextRange(modelName, rangeName string, minVal, maxVal *int) error {
 func hasTextCondition(segment AdvancedPriceRule) bool {
 	return hasIntRange(segment.InputMin, segment.InputMax) ||
 		hasIntRange(segment.OutputMin, segment.OutputMax) ||
-		strings.TrimSpace(segment.ServiceTier) != "" ||
-		segment.CacheRead != nil ||
-		segment.CacheCreate != nil
+		strings.TrimSpace(segment.ServiceTier) != ""
+}
+
+func validateUnsupportedTextRuntimeFields(modelName string, segment AdvancedPriceRule) error {
+	if segment.CacheRead != nil || segment.CacheCreate != nil {
+		return fmt.Errorf("model %s text segment cache_read/cache_create conditions are not supported in advanced runtime", modelName)
+	}
+	return nil
+}
+
+func validateTextPriceDependencies(modelName string, segment AdvancedPriceRule) error {
+	if segment.InputPrice == nil {
+		return nil
+	}
+	if *segment.InputPrice > 0 {
+		return nil
+	}
+	if hasPositiveAdvancedPrice(segment.OutputPrice) || hasPositiveAdvancedPrice(segment.CacheReadPrice) || hasPositiveAdvancedPrice(segment.CacheCreatePrice) {
+		return fmt.Errorf("model %s text segment input_price must be greater than zero when output/cache prices are non-zero", modelName)
+	}
+	return nil
+}
+
+func hasPositiveAdvancedPrice(price *float64) bool {
+	return price != nil && *price > 0
 }
 
 func hasIntRange(minVal, maxVal *int) bool {

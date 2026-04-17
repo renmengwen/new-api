@@ -135,6 +135,137 @@ func TestModelPriceHelperFallsBackToFixedLogicWhenAdvancedRuleDoesNotMatch(t *te
 	require.Nil(t, priceData.AdvancedRuleSnapshot)
 }
 
+func TestModelPriceHelperHonorsExplicitPerTokenModeWhenPriceAndRatioBothExist(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"explicit-per-token-model":6}`))
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"explicit-per-token-model":0.25}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"explicit-per-token-model":2.5}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"explicit-per-token-model":"per_token"}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "explicit-per-token-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{MaxTokens: 512})
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModePerToken, priceData.BillingMode)
+	require.False(t, priceData.UsePrice)
+	require.Equal(t, 0.0, priceData.ModelPrice)
+	require.Equal(t, 6.0, priceData.ModelRatio)
+	require.Equal(t, 2.5, priceData.CompletionRatio)
+}
+
+func TestModelPriceHelperHonorsExplicitPerRequestModeWhenPriceAndRatioBothExist(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"explicit-per-request-model":6}`))
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"explicit-per-request-model":0.25}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"explicit-per-request-model":2.5}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"explicit-per-request-model":"per_request"}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "explicit-per-request-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{MaxTokens: 512})
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModePerRequest, priceData.BillingMode)
+	require.True(t, priceData.UsePrice)
+	require.Equal(t, 0.25, priceData.ModelPrice)
+	require.Equal(t, 0.0, priceData.ModelRatio)
+}
+
+func TestModelPriceHelperReturnsErrorWhenExplicitPerTokenModeHasNoRatio(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{}`))
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"missing-ratio-model":0.25}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"missing-ratio-model":"per_token"}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "missing-ratio-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+
+	_, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{MaxTokens: 512})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "per_token")
+	require.ErrorContains(t, err, "ratio")
+}
+
+func TestModelPriceHelperReturnsErrorWhenExplicitPerRequestModeHasNoModelPrice(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{}`))
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"missing-price-model":6}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"missing-price-model":"per_request"}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "missing-price-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+
+	_, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{MaxTokens: 512})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "per_request")
+	require.ErrorContains(t, err, "model_price")
+}
+
+func TestValidateAdvancedPricingRulesRejectsUnsupportedCacheConditions(t *testing.T) {
+	err := ratio_setting.ValidateAdvancedPricingRulesJSONString(`{
+		"cache-condition-model": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000,
+					"cache_read": true,
+					"input_price": 4
+				}
+			]
+		}
+	}`)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "cache")
+	require.ErrorContains(t, err, "not supported")
+}
+
+func TestValidateAdvancedPricingRulesRejectsPositiveDependentPricesWhenInputPriceIsZero(t *testing.T) {
+	err := ratio_setting.ValidateAdvancedPricingRulesJSONString(`{
+		"zero-input-price-model": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000,
+					"input_price": 0,
+					"output_price": 1
+				}
+			]
+		}
+	}`)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "input_price")
+	require.ErrorContains(t, err, "zero")
+}
+
 func restoreRatioSettings(t *testing.T) {
 	t.Helper()
 

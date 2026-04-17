@@ -20,8 +20,6 @@ func TestParseAdvancedPricingConfigValidatesTextAndMediaRules(t *testing.T) {
               "output_min": 0,
               "output_max": 8192,
               "service_tier": "default",
-              "cache_read": true,
-              "cache_create": false,
               "input_price": 3.2,
               "output_price": 16,
               "cache_read_price": 1.6,
@@ -62,8 +60,6 @@ func TestParseAdvancedPricingConfigValidatesTextAndMediaRules(t *testing.T) {
 	require.Equal(t, 0, *cfg.ModelRules["doubao-seed-2.0-pro"].Segments[0].OutputMin)
 	require.Equal(t, 8192, *cfg.ModelRules["doubao-seed-2.0-pro"].Segments[0].OutputMax)
 	require.Equal(t, "default", cfg.ModelRules["doubao-seed-2.0-pro"].Segments[0].ServiceTier)
-	require.Equal(t, true, *cfg.ModelRules["doubao-seed-2.0-pro"].Segments[0].CacheRead)
-	require.Equal(t, false, *cfg.ModelRules["doubao-seed-2.0-pro"].Segments[0].CacheCreate)
 	require.Equal(t, 1.6, *cfg.ModelRules["doubao-seed-2.0-pro"].Segments[0].CacheReadPrice)
 	require.Equal(t, 2.4, *cfg.ModelRules["doubao-seed-2.0-pro"].Segments[0].CacheCreatePrice)
 	require.Equal(t, true, *cfg.ModelRules["doubao-seedance-2.0"].Segments[0].Audio)
