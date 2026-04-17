@@ -35,8 +35,13 @@ test('pricing editor list exposes billing mode and advanced rule type columns', 
 });
 
 test('pricing editor advanced mode hides fixed forms and shows advanced rule summary entry point', () => {
-  assert.match(source, /<Radio value='advanced'>\{t\('高级规则'\)\}<\/Radio>/);
+  assert.match(source, /const advancedBillingAvailable = canUseAdvancedBilling\(selectedModel\);/);
+  assert.match(source, /<Radio value='advanced' disabled=\{!advancedBillingAvailable\}>/);
   assert.match(source, /selectedModel\.billingMode === 'advanced' \?/);
   assert.match(source, /t\('固定价格配置保留但不生效。'\)/);
   assert.match(source, /t\('编辑高级规则'\)/);
+  assert.match(
+    source,
+    /t\(\s*'当前模型未配置高级规则，需先配置高级规则后才能切换为高级规则计费模式。',?\s*\)/,
+  );
 });

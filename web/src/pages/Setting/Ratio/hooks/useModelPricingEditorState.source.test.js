@@ -25,6 +25,10 @@ const source = fs.readFileSync(
   new URL('./useModelPricingEditorState.js', import.meta.url),
   'utf8',
 );
+const helperSource = fs.readFileSync(
+  new URL('./modelPricingEditorHelpers.js', import.meta.url),
+  'utf8',
+);
 
 test('pricing state hook resolves visible models separately from full-model save serialization', () => {
   assert.match(source, /resolveInitialVisibleModelNames/);
@@ -35,15 +39,22 @@ test('pricing state hook resolves visible models separately from full-model save
 test('pricing state hook reads advanced pricing mode and rules while keeping advanced rules read-only on save', () => {
   assert.match(source, /AdvancedPricingMode:\s*parseOptionJSON\(options\.AdvancedPricingMode\)/);
   assert.match(source, /AdvancedPricingRules:\s*parseOptionJSON\(options\.AdvancedPricingRules\)/);
-  assert.match(source, /const billingMode = resolveBillingMode\(/);
+  assert.match(source, /const billingModeState = resolveBillingMode\(/);
   assert.match(source, /const advancedRuleType = resolveAdvancedRuleType\(/);
-  assert.match(source, /AdvancedPricingMode:\s*\{\}/);
-  assert.match(source, /output\.AdvancedPricingMode\[model\.name\]\s*=\s*model\.billingMode/);
+  assert.match(source, /const latestOptionsRes = await API\.get\('\/api\/option\/'\)/);
+  assert.match(source, /output\.AdvancedPricingMode = buildAdvancedPricingModePayload\(/);
   assert.doesNotMatch(source, /AdvancedPricingRules:\s*\{\}/);
+  assert.doesNotMatch(source, /output\.AdvancedPricingMode\[model\.name\]\s*=\s*model\.billingMode/);
 });
 
 test('pricing state hook keeps legacy billing fallback when AdvancedPricingMode is absent', () => {
-  assert.match(source, /const resolveBillingMode = \(\{ explicitMode, fixedPrice \}\) => \{/);
-  assert.match(source, /explicitMode === 'per_token'[\s\S]*explicitMode === 'per_request'[\s\S]*explicitMode === 'advanced'/);
-  assert.match(source, /return hasValue\(fixedPrice\) \? 'per_request' : 'per_token';/);
+  assert.match(helperSource, /export const resolveBillingMode = \(\{ explicitMode, fixedPrice \}\) => \{/);
+  assert.match(helperSource, /hasExplicitBillingMode = VALID_BILLING_MODES\.has\(explicitMode\)/);
+  assert.match(helperSource, /hasValue\(fixedPrice\)/);
+  assert.match(helperSource, /explicitBillingMode: hasExplicitBillingMode \? explicitMode : ''/);
+});
+
+test('pricing state hook only previews AdvancedPricingMode when the model is explicit or user-dirty', () => {
+  assert.match(source, /shouldPersistAdvancedPricingMode\(/);
+  assert.match(source, /dirtyModeNames: model\.billingModeDirty \? \[model\.name\] : \[\]/);
 });

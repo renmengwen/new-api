@@ -48,6 +48,7 @@ import {
   hasValue,
   useModelPricingEditorState,
 } from '../hooks/useModelPricingEditorState';
+import { canUseAdvancedBilling } from '../hooks/modelPricingEditorHelpers';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
 const { Text } = Typography;
@@ -135,6 +136,7 @@ export default function ModelPricingEditor({
     candidateModelNames,
     filterMode,
   });
+  const advancedBillingAvailable = canUseAdvancedBilling(selectedModel);
 
   const columns = useMemo(
     () => [
@@ -412,13 +414,22 @@ export default function ModelPricingEditor({
                   >
                     <Radio value='per_token'>{t('按量计费')}</Radio>
                     <Radio value='per_request'>{t('按次计费')}</Radio>
-                    <Radio value='advanced'>{t('高级规则')}</Radio>
+                    <Radio value='advanced' disabled={!advancedBillingAvailable}>
+                      {t('高级规则')}
+                    </Radio>
                   </RadioGroup>
                   <div className='mt-2 text-xs text-gray-500'>
                     {t(
                       '这个界面默认按价格填写，保存时会自动换算回后端需要的倍率 JSON，并保留未生效配置。',
                     )}
                   </div>
+                  {!advancedBillingAvailable ? (
+                    <div className='mt-2 text-xs text-amber-600'>
+                      {t(
+                        '当前模型未配置高级规则，需先配置高级规则后才能切换为高级规则计费模式。',
+                      )}
+                    </div>
+                  ) : null}
                 </div>
 
                 {selectedWarnings.length > 0 ? (

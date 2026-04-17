@@ -23,17 +23,29 @@ import {
   resolveInitialVisibleModelNames,
   resolveVisibleModels,
 } from './modelPricingVisibility';
+import {
+  BILLING_MODE_ADVANCED,
+  BILLING_MODE_PER_REQUEST,
+  BILLING_MODE_PER_TOKEN,
+  buildAdvancedPricingModePayload,
+  canUseAdvancedBilling,
+  hasValue,
+  isBasePricingUnset,
+  resolveBillingMode,
+  shouldPersistAdvancedPricingMode,
+} from './modelPricingEditorHelpers';
 
 export const PAGE_SIZE = 10;
 export const PRICE_SUFFIX = '$/1M tokens';
 const EMPTY_CANDIDATE_MODEL_NAMES = [];
-const BILLING_MODE_PER_TOKEN = 'per_token';
-const BILLING_MODE_PER_REQUEST = 'per_request';
-const BILLING_MODE_ADVANCED = 'advanced';
+
+export { hasValue, isBasePricingUnset } from './modelPricingEditorHelpers';
 
 const EMPTY_MODEL = {
   name: '',
   billingMode: BILLING_MODE_PER_TOKEN,
+  explicitBillingMode: '',
+  hasExplicitBillingMode: false,
   advancedRuleType: '',
   fixedPrice: '',
   inputPrice: '',
@@ -58,9 +70,6 @@ const EMPTY_MODEL = {
 };
 
 const NUMERIC_INPUT_REGEX = /^(\d+(\.\d*)?|\.\d*)?$/;
-
-export const hasValue = (value) =>
-  value !== '' && value !== null && value !== undefined && value !== false;
 
 const toNumericString = (value) => {
   if (!hasValue(value) && value !== 0) {
@@ -104,6 +113,16 @@ const parseOptionJSON = (rawValue) => {
   }
 };
 
+const reduceOptionsByKey = (items) =>
+  Array.isArray(items)
+    ? items.reduce((acc, item) => {
+        if (item?.key) {
+          acc[item.key] = item.value;
+        }
+        return acc;
+      }, {})
+    : {};
+
 const ratioToBasePrice = (ratio) => {
   const num = toNumberOrNull(ratio);
   if (num === null) return '';
@@ -122,18 +141,6 @@ const normalizeCompletionRatioMeta = (rawMeta) => {
     locked: Boolean(rawMeta.locked),
     ratio: toNumericString(rawMeta.ratio),
   };
-};
-
-const resolveBillingMode = ({ explicitMode, fixedPrice }) => {
-  if (
-    explicitMode === 'per_token' ||
-    explicitMode === 'per_request' ||
-    explicitMode === 'advanced'
-  ) {
-    return explicitMode;
-  }
-
-  return hasValue(fixedPrice) ? 'per_request' : 'per_token';
 };
 
 const resolveAdvancedRuleType = (rawRuleSet) => {
@@ -158,7 +165,7 @@ const buildModelState = (name, sourceMaps) => {
     sourceMaps.AudioCompletionRatio[name],
   );
   const fixedPrice = toNumericString(sourceMaps.ModelPrice[name]);
-  const billingMode = resolveBillingMode({
+  const billingModeState = resolveBillingMode({
     explicitMode: sourceMaps.AdvancedPricingMode[name],
     fixedPrice,
   });
@@ -175,7 +182,9 @@ const buildModelState = (name, sourceMaps) => {
   return {
     ...EMPTY_MODEL,
     name,
-    billingMode,
+    billingMode: billingModeState.billingMode,
+    explicitBillingMode: billingModeState.explicitBillingMode,
+    hasExplicitBillingMode: billingModeState.hasExplicitBillingMode,
     advancedRuleType,
     fixedPrice,
     inputPrice,
@@ -236,12 +245,6 @@ const buildModelState = (name, sourceMaps) => {
       ].some(hasValue),
   };
 };
-
-export const isBasePricingUnset = (model) =>
-  !hasValue(model.fixedPrice) &&
-  !hasValue(model.inputPrice) &&
-  model.billingMode !== BILLING_MODE_ADVANCED &&
-  !hasValue(model.advancedRuleType);
 
 export const getModelWarnings = (model, t) => {
   if (!model) {
@@ -459,13 +462,18 @@ const serializeModel = (model, t) => {
 
 export const buildPreviewRows = (model, t) => {
   if (!model) return [];
-  const rows = [
-    {
-      key: 'AdvancedPricingMode',
-      label: 'AdvancedPricingMode',
-      value: model.billingMode,
-    },
-  ];
+  const rows = shouldPersistAdvancedPricingMode({
+    model,
+    dirtyModeNames: model.billingModeDirty ? [model.name] : [],
+  })
+    ? [
+        {
+          key: 'AdvancedPricingMode',
+          label: 'AdvancedPricingMode',
+          value: model.billingMode,
+        },
+      ]
+    : [];
 
   if (hasValue(model.fixedPrice)) {
     rows.push({
@@ -609,6 +617,7 @@ export function useModelPricingEditorState({
   const [loading, setLoading] = useState(false);
   const [conflictOnly, setConflictOnly] = useState(false);
   const [optionalFieldToggles, setOptionalFieldToggles] = useState({});
+  const [billingModeDirtyNames, setBillingModeDirtyNames] = useState(new Set());
 
   useEffect(() => {
     const sourceMaps = {
@@ -658,6 +667,7 @@ export function useModelPricingEditorState({
         return acc;
       }, {}),
     );
+    setBillingModeDirtyNames(new Set());
     setSelectedModelName((previous) => {
       if (previous && nextModels.some((model) => model.name === previous)) {
         return previous;
@@ -699,11 +709,19 @@ export function useModelPricingEditorState({
     return filteredModels.slice(start, start + PAGE_SIZE);
   }, [currentPage, filteredModels]);
 
-  const selectedModel = useMemo(
-    () =>
-      visibleModels.find((model) => model.name === selectedModelName) || null,
-    [selectedModelName, visibleModels],
-  );
+  const selectedModel = useMemo(() => {
+    const currentModel =
+      visibleModels.find((model) => model.name === selectedModelName) || null;
+
+    if (!currentModel) {
+      return null;
+    }
+
+    return {
+      ...currentModel,
+      billingModeDirty: billingModeDirtyNames.has(currentModel.name),
+    };
+  }, [billingModeDirtyNames, selectedModelName, visibleModels]);
 
   const selectedWarnings = useMemo(
     () => getModelWarnings(selectedModel, t),
@@ -744,6 +762,18 @@ export function useModelPricingEditorState({
         return typeof updater === 'function' ? updater(model) : updater;
       }),
     );
+  };
+
+  const markBillingModesDirty = (modelNames) => {
+    setBillingModeDirtyNames((previous) => {
+      const next = new Set(previous);
+      modelNames.forEach((name) => {
+        if (name) {
+          next.add(name);
+        }
+      });
+      return next;
+    });
   };
 
   const isOptionalFieldEnabled = (model, field) => {
@@ -856,6 +886,15 @@ export function useModelPricingEditorState({
 
   const handleBillingModeChange = (value) => {
     if (!selectedModel) return;
+    if (value === selectedModel.billingMode) {
+      return;
+    }
+    if (value === BILLING_MODE_ADVANCED && !canUseAdvancedBilling(selectedModel)) {
+      showError(t('当前模型未配置高级规则，无法切换到高级规则计费模式'));
+      return;
+    }
+
+    markBillingModesDirty([selectedModel.name]);
     upsertModel(selectedModel.name, (model) => ({
       ...model,
       billingMode: value,
@@ -916,6 +955,23 @@ export function useModelPricingEditorState({
     }
 
     const sourceToggles = optionalFieldToggles[selectedModel.name] || {};
+    const invalidAdvancedTargets =
+      selectedModel.billingMode === BILLING_MODE_ADVANCED
+        ? selectedModelNames.filter((modelName) => {
+            const targetModel = models.find((item) => item.name === modelName);
+            return targetModel && !canUseAdvancedBilling(targetModel);
+          })
+        : [];
+
+    if (invalidAdvancedTargets.length > 0) {
+      showError(t('选中的模型里存在未配置高级规则的项，无法批量应用高级规则计费模式'));
+      return false;
+    }
+
+    const changedBillingModeNames = selectedModelNames.filter((modelName) => {
+      const targetModel = models.find((item) => item.name === modelName);
+      return targetModel && targetModel.billingMode !== selectedModel.billingMode;
+    });
 
     setModels((previous) =>
       previous.map((model) => {
@@ -971,6 +1027,7 @@ export function useModelPricingEditorState({
       });
       return next;
     });
+    markBillingModesDirty(changedBillingModeNames);
 
     showSuccess(
       t('已将模型 {{name}} 的价格配置批量应用到 {{count}} 个模型', {
@@ -984,8 +1041,18 @@ export function useModelPricingEditorState({
   const handleSubmit = async () => {
     setLoading(true);
     try {
+      const latestOptionsRes = await API.get('/api/option/');
+      const {
+        success: latestOptionsSuccess,
+        message: latestOptionsMessage,
+        data: latestOptionsData,
+      } = latestOptionsRes?.data || {};
+      if (!latestOptionsSuccess) {
+        throw new Error(latestOptionsMessage || t('淇濆瓨澶辫触锛岃閲嶈瘯'));
+      }
+
+      const latestOptionsByKey = reduceOptionsByKey(latestOptionsData);
       const output = {
-        AdvancedPricingMode: {},
         ModelPrice: {},
         ModelRatio: {},
         CompletionRatio: {},
@@ -998,13 +1065,18 @@ export function useModelPricingEditorState({
 
       for (const model of models) {
         const serialized = serializeModel(model, t);
-        output.AdvancedPricingMode[model.name] = model.billingMode;
         Object.entries(serialized).forEach(([key, value]) => {
           if (value !== null) {
             output[key][model.name] = value;
           }
         });
       }
+
+      output.AdvancedPricingMode = buildAdvancedPricingModePayload({
+        latestModeMap: parseOptionJSON(latestOptionsByKey.AdvancedPricingMode),
+        models,
+        dirtyModeNames: billingModeDirtyNames,
+      });
 
       const requestQueue = Object.entries(output).map(([key, value]) =>
         API.put('/api/option/', {
