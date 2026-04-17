@@ -173,7 +173,7 @@ const buildModelState = (name, sourceMaps) => {
     explicitMode: sourceMaps.AdvancedPricingMode[name],
     fixedPrice,
     advancedRuleType,
-  );
+  });
   const inputPrice = ratioToBasePrice(modelRatio);
   const inputPriceNumber = toNumberOrNull(inputPrice);
   const audioInputPrice =
