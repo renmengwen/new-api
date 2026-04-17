@@ -330,6 +330,17 @@ func TestTaskBillingOther_IncludesAdvancedSnapshot(t *testing.T) {
 	assert.Same(t, snapshot, other["advanced_rule"])
 }
 
+func TestTaskBillingOther_FixedModeDoesNotIncludeBillingMode(t *testing.T) {
+	task := makeTask(1, 1, 1000, 0, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.BillingMode = types.BillingModePerToken
+
+	other := taskBillingOther(task)
+
+	assert.NotContains(t, other, "billing_mode")
+	assert.NotContains(t, other, "advanced_rule_type")
+	assert.NotContains(t, other, "advanced_rule")
+}
+
 // ===========================================================================
 // RecalculateTaskQuota tests
 // ===========================================================================

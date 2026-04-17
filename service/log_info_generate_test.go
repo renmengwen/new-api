@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -45,4 +46,11 @@ func TestGenerateTextOtherInfo_IncludesAdvancedBillingSnapshot(t *testing.T) {
 	rule, ok := other["advanced_rule"].(*types.AdvancedRuleSnapshot)
 	require.True(t, ok)
 	assert.Same(t, snapshot, rule)
+
+	otherJSON := common.MapToJsonStr(other)
+	assert.Contains(t, otherJSON, "\"rule_type\":\"text_segment\"")
+	assert.Contains(t, otherJSON, "\"match_summary\":")
+	assert.Contains(t, otherJSON, "\"condition_tags\":[\"input\"]")
+	assert.NotContains(t, otherJSON, "\"RuleType\"")
+	assert.NotContains(t, otherJSON, "\"MatchSummary\"")
 }

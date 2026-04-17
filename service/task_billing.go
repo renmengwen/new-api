@@ -163,7 +163,7 @@ func appendTaskPriceDataAdvancedInfo(other map[string]interface{}, priceData typ
 }
 
 func appendTaskBillingContextAdvancedInfo(other map[string]interface{}, billingContext *model.TaskBillingContext) {
-	if other == nil || billingContext == nil || billingContext.BillingMode == "" {
+	if other == nil || billingContext == nil || billingContext.BillingMode != types.BillingModeAdvanced {
 		return
 	}
 	other["billing_mode"] = string(billingContext.BillingMode)

@@ -18,29 +18,29 @@ const (
 )
 
 type AdvancedRulePriceSnapshot struct {
-	InputPrice       *float64
-	OutputPrice      *float64
-	CacheReadPrice   *float64
-	CacheCreatePrice *float64
+	InputPrice       *float64 `json:"input_price,omitempty"`
+	OutputPrice      *float64 `json:"output_price,omitempty"`
+	CacheReadPrice   *float64 `json:"cache_read_price,omitempty"`
+	CacheCreatePrice *float64 `json:"cache_create_price,omitempty"`
 }
 
 type AdvancedRuleThresholdSnapshot struct {
-	InputMin  *int
-	InputMax  *int
-	OutputMin *int
-	OutputMax *int
+	InputMin  *int `json:"input_min,omitempty"`
+	InputMax  *int `json:"input_max,omitempty"`
+	OutputMin *int `json:"output_min,omitempty"`
+	OutputMax *int `json:"output_max,omitempty"`
 }
 
 type AdvancedRuleSnapshot struct {
-	RuleType          AdvancedRuleType
-	MatchSummary      string
-	ConditionTags     []string
-	Priority          *int
-	ServiceTier       string
-	CacheRead         *bool
-	CacheCreate       *bool
-	PriceSnapshot     AdvancedRulePriceSnapshot
-	ThresholdSnapshot AdvancedRuleThresholdSnapshot
+	RuleType          AdvancedRuleType              `json:"rule_type,omitempty"`
+	MatchSummary      string                        `json:"match_summary,omitempty"`
+	ConditionTags     []string                      `json:"condition_tags,omitempty"`
+	Priority          *int                          `json:"priority,omitempty"`
+	ServiceTier       string                        `json:"service_tier,omitempty"`
+	CacheRead         *bool                         `json:"cache_read,omitempty"`
+	CacheCreate       *bool                         `json:"cache_create,omitempty"`
+	PriceSnapshot     AdvancedRulePriceSnapshot     `json:"price_snapshot,omitempty"`
+	ThresholdSnapshot AdvancedRuleThresholdSnapshot `json:"threshold_snapshot,omitempty"`
 }
 
 type GroupRatioInfo struct {
