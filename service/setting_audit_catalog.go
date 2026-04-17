@@ -174,6 +174,8 @@ var settingOptionAuditMeta = func() map[string]SettingAuditActionMeta {
 		"ImageRatio",
 		"AudioRatio",
 		"AudioCompletionRatio",
+		"AdvancedPricingMode",
+		"AdvancedPricingRules",
 		"ExposeRatioEnabled",
 	)
 	registerSettingAuditMeta(meta, SettingAuditActionMeta{"setting_rate_limit", "save_model_rate_limit", "系统设置-速率限制设置-保存模型速率限制", "option_key"},
