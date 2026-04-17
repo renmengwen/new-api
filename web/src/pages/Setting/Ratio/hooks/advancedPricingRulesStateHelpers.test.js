@@ -60,6 +60,52 @@ test('advanced pricing state uses launch model only as the initial selection', a
   assert.equal(secondPass.selectedModelName, 'alpha');
 });
 
+test('advanced pricing state keeps the current launch-only model until selection changes', async () => {
+  const { buildAdvancedPricingState } = await loadHelpers();
+
+  assert.equal(typeof buildAdvancedPricingState, 'function');
+
+  const firstPass = buildAdvancedPricingState({
+    options: createOptions(),
+    launchModelName: 'launch-only',
+  });
+
+  assert.deepEqual(firstPass.models.map((model) => model.name), ['launch-only']);
+  assert.equal(firstPass.selectedModelName, 'launch-only');
+
+  const secondPass = buildAdvancedPricingState({
+    options: createOptions(),
+    enabledModelNames: [],
+    previousDraftRules: {
+      ...firstPass.draftRules,
+      'launch-only': {
+        ...firstPass.draftRules['launch-only'],
+        display_name: 'Local draft',
+      },
+    },
+    previousDraftBillingModes: firstPass.draftBillingModes,
+    previousSelectedModelName: firstPass.selectedModelName,
+    preserveDraftRuleModelNames: new Set(['launch-only']),
+  });
+
+  assert.deepEqual(secondPass.models.map((model) => model.name), ['launch-only']);
+  assert.equal(secondPass.selectedModelName, 'launch-only');
+  assert.equal(secondPass.draftRules['launch-only'].display_name, 'Local draft');
+
+  const thirdPass = buildAdvancedPricingState({
+    options: createOptions(),
+    enabledModelNames: ['alpha'],
+    previousDraftRules: secondPass.draftRules,
+    previousDraftBillingModes: secondPass.draftBillingModes,
+    previousSelectedModelName: 'alpha',
+    preserveDraftRuleModelNames: new Set(['launch-only']),
+  });
+
+  assert.deepEqual(thirdPass.models.map((model) => model.name), ['alpha']);
+  assert.equal(thirdPass.selectedModelName, 'alpha');
+  assert.equal(thirdPass.draftRules['launch-only'], undefined);
+});
+
 test('advanced pricing state keeps existing drafts while appending defaults for newly enabled models', async () => {
   const { buildAdvancedPricingState, buildRuleDraft } = await loadHelpers();
 

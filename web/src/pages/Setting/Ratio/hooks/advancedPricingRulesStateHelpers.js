@@ -158,6 +158,7 @@ export const buildAdvancedPricingModels = ({
   options = {},
   enabledModelNames = [],
   launchModelName = '',
+  previousSelectedModelName = '',
 }) => {
   const sourceMaps = {
     AdvancedPricingMode: parseOptionJSON(options.AdvancedPricingMode),
@@ -176,6 +177,9 @@ export const buildAdvancedPricingModels = ({
 
   if (launchModelName) {
     names.add(launchModelName);
+  }
+  if (previousSelectedModelName) {
+    names.add(previousSelectedModelName);
   }
 
   return Array.from(names)
@@ -267,6 +271,7 @@ export const buildAdvancedPricingState = ({
     options,
     enabledModelNames,
     launchModelName,
+    previousSelectedModelName,
   });
 
   return {
