@@ -2,7 +2,9 @@ package ratio_setting
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -33,6 +35,14 @@ type AdvancedPricingConfig struct {
 type AdvancedPricingRuleSet struct {
 	RuleType AdvancedRuleType    `json:"rule_type"`
 	Segments []AdvancedPriceRule `json:"segments"`
+}
+
+type advancedPricingRuleSetPayload struct {
+	RuleType     AdvancedRuleType    `json:"rule_type"`
+	Segments     []AdvancedPriceRule `json:"segments"`
+	SegmentsText string              `json:"segments_text"`
+	Note         string              `json:"note"`
+	UnitPrice    any                 `json:"unit_price"`
 }
 
 type AdvancedPriceRule struct {
@@ -72,6 +82,8 @@ type AdvancedPriceRule struct {
 	MinTokens        *int     `json:"min_tokens,omitempty"`
 }
 
+var legacyAdvancedTextShellSegmentPattern = regexp.MustCompile(`^(\d+)\s*-\s*(\d+)\s*:\s*(-?\d+(?:\.\d+)?)$`)
+
 var advancedPricingModeMap = types.NewRWMap[string, BillingMode]()
 var advancedPricingRulesMap = types.NewRWMap[string, AdvancedPricingRuleSet]()
 
@@ -87,6 +99,32 @@ type advancedTextRuntimeContext struct {
 	serviceTier  string
 	cacheRead    *bool
 	cacheCreate  *bool
+}
+
+func (ruleSet *AdvancedPricingRuleSet) UnmarshalJSON(data []byte) error {
+	var payload advancedPricingRuleSetPayload
+	if err := common.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+
+	if len(payload.Segments) > 0 {
+		ruleSet.RuleType = payload.RuleType
+		ruleSet.Segments = payload.Segments
+		return nil
+	}
+
+	normalizedRuleSet, ok, err := normalizeLegacyAdvancedPricingRuleSet(payload)
+	if err != nil {
+		return err
+	}
+	if ok {
+		*ruleSet = normalizedRuleSet
+		return nil
+	}
+
+	ruleSet.RuleType = payload.RuleType
+	ruleSet.Segments = payload.Segments
+	return nil
 }
 
 func GetExplicitBillingMode(modelName string) (BillingMode, bool) {
@@ -215,6 +253,138 @@ func normalizeAdvancedPricingRawString(data []byte) string {
 		return strings.TrimSpace(value)
 	}
 	return strings.Trim(strings.TrimSpace(string(data)), `"`)
+}
+
+func normalizeLegacyAdvancedPricingRuleSet(payload advancedPricingRuleSetPayload) (AdvancedPricingRuleSet, bool, error) {
+	ruleType := payload.RuleType
+	if ruleType == "" {
+		switch {
+		case strings.TrimSpace(payload.SegmentsText) != "":
+			ruleType = RuleTypeTextSegment
+		case hasLegacyAdvancedPricingUnitPrice(payload.UnitPrice):
+			ruleType = RuleTypeMediaTask
+		default:
+			return AdvancedPricingRuleSet{}, false, nil
+		}
+	}
+
+	switch ruleType {
+	case RuleTypeTextSegment:
+		return normalizeLegacyAdvancedTextRuleSet(payload)
+	case RuleTypeMediaTask:
+		return normalizeLegacyAdvancedMediaRuleSet(payload)
+	default:
+		return AdvancedPricingRuleSet{}, false, nil
+	}
+}
+
+func normalizeLegacyAdvancedTextRuleSet(payload advancedPricingRuleSetPayload) (AdvancedPricingRuleSet, bool, error) {
+	rawLines := strings.Split(payload.SegmentsText, "\n")
+	segments := make([]AdvancedPriceRule, 0, len(rawLines))
+	for index, line := range rawLines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		segment, err := parseLegacyAdvancedTextShellSegment(trimmed, index)
+		if err != nil {
+			return AdvancedPricingRuleSet{}, false, err
+		}
+		segments = append(segments, segment)
+	}
+	if len(segments) == 0 {
+		return AdvancedPricingRuleSet{}, false, nil
+	}
+
+	return AdvancedPricingRuleSet{
+		RuleType: RuleTypeTextSegment,
+		Segments: segments,
+	}, true, nil
+}
+
+func parseLegacyAdvancedTextShellSegment(line string, index int) (AdvancedPriceRule, error) {
+	matches := legacyAdvancedTextShellSegmentPattern.FindStringSubmatch(line)
+	if matches == nil {
+		return AdvancedPriceRule{}, fmt.Errorf("invalid advanced pricing segment on line %d", index+1)
+	}
+
+	start, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return AdvancedPriceRule{}, fmt.Errorf("invalid advanced pricing segment on line %d", index+1)
+	}
+	end, err := strconv.Atoi(matches[2])
+	if err != nil {
+		return AdvancedPriceRule{}, fmt.Errorf("invalid advanced pricing segment on line %d", index+1)
+	}
+	price, err := strconv.ParseFloat(matches[3], 64)
+	if err != nil {
+		return AdvancedPriceRule{}, fmt.Errorf("invalid advanced pricing segment on line %d", index+1)
+	}
+
+	priority := (index + 1) * 10
+	return AdvancedPriceRule{
+		Priority:   &priority,
+		InputMin:   &start,
+		InputMax:   &end,
+		InputPrice: &price,
+	}, nil
+}
+
+func normalizeLegacyAdvancedMediaRuleSet(payload advancedPricingRuleSetPayload) (AdvancedPricingRuleSet, bool, error) {
+	unitPrice, ok, err := parseLegacyAdvancedPricingUnitPrice(payload.UnitPrice)
+	if err != nil {
+		return AdvancedPricingRuleSet{}, false, err
+	}
+	if !ok {
+		return AdvancedPricingRuleSet{}, false, nil
+	}
+
+	priority := 10
+	segment := AdvancedPriceRule{
+		Priority:  &priority,
+		UnitPrice: &unitPrice,
+	}
+	if remark := strings.TrimSpace(payload.Note); remark != "" {
+		segment.Remark = remark
+	}
+
+	return AdvancedPricingRuleSet{
+		RuleType: RuleTypeMediaTask,
+		Segments: []AdvancedPriceRule{segment},
+	}, true, nil
+}
+
+func hasLegacyAdvancedPricingUnitPrice(value any) bool {
+	switch data := value.(type) {
+	case nil:
+		return false
+	case string:
+		return strings.TrimSpace(data) != ""
+	default:
+		return true
+	}
+}
+
+func parseLegacyAdvancedPricingUnitPrice(value any) (float64, bool, error) {
+	switch data := value.(type) {
+	case nil:
+		return 0, false, nil
+	case float64:
+		return data, true, nil
+	case string:
+		trimmed := strings.TrimSpace(data)
+		if trimmed == "" {
+			return 0, false, nil
+		}
+		parsed, err := strconv.ParseFloat(trimmed, 64)
+		if err != nil {
+			return 0, false, fmt.Errorf("invalid advanced media task unit_price: %s", trimmed)
+		}
+		return parsed, true, nil
+	default:
+		return 0, false, fmt.Errorf("invalid advanced media task unit_price type")
+	}
 }
 
 func findMatchedTextSegment(segments []AdvancedPriceRule, runtimeCtx advancedTextRuntimeContext) (AdvancedPriceRule, bool) {

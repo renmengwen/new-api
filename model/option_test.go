@@ -265,3 +265,77 @@ func TestLoadOptionsFromDatabasePrefersAdvancedPricingConfigOverLegacyRows(t *te
 	require.JSONEq(t, `{"gpt-5":"advanced"}`, ratio_setting.AdvancedPricingMode2JSONString())
 	require.JSONEq(t, `{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}`, ratio_setting.AdvancedPricingRules2JSONString())
 }
+
+func TestLoadOptionsFromDatabaseNormalizesLegacyAdvancedPricingRulesShell(t *testing.T) {
+	setupAdvancedPricingOptionTest(t)
+
+	require.NoError(t, DB.Create(&Option{
+		Key:   "AdvancedPricingMode",
+		Value: `{"gpt-5":"advanced"}`,
+	}).Error)
+	require.NoError(t, DB.Create(&Option{
+		Key: "AdvancedPricingRules",
+		Value: `{
+      "gpt-5": {
+        "rule_type": "text_segment",
+        "display_name": "ignored shell field",
+        "segments_text": "0-100: 1.2\n101-200: 2.4"
+      }
+    }`,
+	}).Error)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingConfigByJSONString(`{}`))
+	common.OptionMap = make(map[string]string)
+
+	loadOptionsFromDatabase()
+
+	expectedRules := `{
+      "gpt-5": {
+        "rule_type": "text_segment",
+        "segments": [
+          {
+            "priority": 10,
+            "input_min": 0,
+            "input_max": 100,
+            "input_price": 1.2
+          },
+          {
+            "priority": 20,
+            "input_min": 101,
+            "input_max": 200,
+            "input_price": 2.4
+          }
+        ]
+      }
+    }`
+	expectedConfig := `{
+      "billing_mode": {
+        "gpt-5": "advanced"
+      },
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 100,
+              "input_price": 1.2
+            },
+            {
+              "priority": 20,
+              "input_min": 101,
+              "input_max": 200,
+              "input_price": 2.4
+            }
+          ]
+        }
+      }
+    }`
+
+	require.JSONEq(t, `{"gpt-5":"advanced"}`, common.OptionMap["AdvancedPricingMode"])
+	require.JSONEq(t, expectedRules, common.OptionMap["AdvancedPricingRules"])
+	require.JSONEq(t, expectedConfig, common.OptionMap["AdvancedPricingConfig"])
+	require.JSONEq(t, expectedRules, ratio_setting.AdvancedPricingRules2JSONString())
+	require.JSONEq(t, expectedConfig, ratio_setting.AdvancedPricingConfig2JSONString())
+}

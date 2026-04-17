@@ -168,8 +168,124 @@ func TestParseAdvancedPricingConfigRejectsDuplicatePriority(t *testing.T) {
           ]
         }
       }
-    }`)
+	}`)
 	require.ErrorContains(t, err, "priority")
+}
+
+func TestParseAdvancedPricingConfigNormalizesLegacyTextShellRule(t *testing.T) {
+	cfg, err := ParseAdvancedPricingConfig(`{
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "display_name": "ignored shell field",
+          "segments_text": "0-100: 1.2\n101-200: 2.4",
+          "note": "ignored note"
+        }
+      }
+    }`)
+	require.NoError(t, err)
+
+	ruleSet := cfg.ModelRules["gpt-5"]
+	require.Equal(t, RuleTypeTextSegment, ruleSet.RuleType)
+	require.Len(t, ruleSet.Segments, 2)
+	require.Equal(t, 10, *ruleSet.Segments[0].Priority)
+	require.Equal(t, 0, *ruleSet.Segments[0].InputMin)
+	require.Equal(t, 100, *ruleSet.Segments[0].InputMax)
+	require.Equal(t, 1.2, *ruleSet.Segments[0].InputPrice)
+	require.Equal(t, 20, *ruleSet.Segments[1].Priority)
+	require.Equal(t, 101, *ruleSet.Segments[1].InputMin)
+	require.Equal(t, 200, *ruleSet.Segments[1].InputMax)
+	require.Equal(t, 2.4, *ruleSet.Segments[1].InputPrice)
+}
+
+func TestParseAdvancedPricingConfigNormalizesLegacyMediaShellRule(t *testing.T) {
+	cfg, err := ParseAdvancedPricingConfig(`{
+      "rules": {
+        "veo-3.1-fast-generate-preview": {
+          "rule_type": "media_task",
+          "display_name": "ignored shell field",
+          "task_type": "video_generation",
+          "billing_unit": "task",
+          "unit_price": "8.8",
+          "note": "preserved as remark"
+        }
+      }
+    }`)
+	require.NoError(t, err)
+
+	ruleSet := cfg.ModelRules["veo-3.1-fast-generate-preview"]
+	require.Equal(t, RuleTypeMediaTask, ruleSet.RuleType)
+	require.Len(t, ruleSet.Segments, 1)
+	require.Equal(t, 10, *ruleSet.Segments[0].Priority)
+	require.Equal(t, 8.8, *ruleSet.Segments[0].UnitPrice)
+	require.Equal(t, "preserved as remark", ruleSet.Segments[0].Remark)
+}
+
+func TestUpdateAdvancedPricingRulesByJSONStringNormalizesLegacyShellToCanonical(t *testing.T) {
+	original := advancedPricingRulesMap.ReadAll()
+	advancedPricingRulesMap.Clear()
+	t.Cleanup(func() {
+		advancedPricingRulesMap.Clear()
+		advancedPricingRulesMap.AddAll(original)
+	})
+
+	err := UpdateAdvancedPricingRulesByJSONString(`{
+      "gpt-5": {
+        "rule_type": "text_segment",
+        "display_name": "ignored shell field",
+        "segments_text": "0-100: 1.2\n101-200: 2.4"
+      }
+    }`)
+	require.NoError(t, err)
+
+	ruleSet, ok := GetAdvancedPricingRuleSet("gpt-5")
+	require.True(t, ok)
+	require.Equal(t, RuleTypeTextSegment, ruleSet.RuleType)
+	require.Len(t, ruleSet.Segments, 2)
+	require.Equal(t, 10, *ruleSet.Segments[0].Priority)
+	require.Equal(t, 20, *ruleSet.Segments[1].Priority)
+
+	require.JSONEq(t, `{
+      "gpt-5": {
+        "rule_type": "text_segment",
+        "segments": [
+          {
+            "priority": 10,
+            "input_min": 0,
+            "input_max": 100,
+            "input_price": 1.2
+          },
+          {
+            "priority": 20,
+            "input_min": 101,
+            "input_max": 200,
+            "input_price": 2.4
+          }
+        ]
+      }
+    }`, AdvancedPricingRules2JSONString())
+	require.JSONEq(t, `{
+      "billing_mode": {},
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 100,
+              "input_price": 1.2
+            },
+            {
+              "priority": 20,
+              "input_min": 101,
+              "input_max": 200,
+              "input_price": 2.4
+            }
+          ]
+        }
+      }
+    }`, AdvancedPricingConfig2JSONString())
 }
 
 func TestValidateAdvancedPricingRulesJSONStringDoesNotMutateRuntimeMap(t *testing.T) {
