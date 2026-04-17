@@ -408,6 +408,17 @@ test('DailyAnalyticsTab loads daily endpoint and renders trends without a table'
   assert.doesNotMatch(dailyTabSource, /<Table/);
 });
 
+test('DailyAnalyticsTab formats the daily cost chart as quota values', () => {
+  assert.match(
+    dailyTabSource,
+    /const costSpec = useMemo\([\s\S]*?title:\s*t\('按日费用'\)[\s\S]*?valueFormatter:\s*\(value\)\s*=>\s*renderQuota\(value \|\| 0\)/,
+  );
+  assert.match(
+    dailyTabSource,
+    /const costSpec = useMemo\([\s\S]*?axes:\s*\[[\s\S]*?orient:\s*'left'[\s\S]*?label:\s*\{[\s\S]*?formatMethod:\s*\(value\)\s*=>\s*renderQuota\(Number\(value \|\| 0\)\)/,
+  );
+});
+
 test('operations analytics tabs remount tab content when applied filters change', () => {
   assert.match(pageSource, /const filtersCacheKey = JSON\.stringify\(appliedFilters\);/);
   assert.match(pageSource, /key=\{`models-\$\{filtersCacheKey\}`\}/);

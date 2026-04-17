@@ -117,8 +117,8 @@ const DailyAnalyticsTab = ({ activeTab, appliedFilters }) => {
   );
 
   const costSpec = useMemo(
-    () =>
-      specLine({
+    () => {
+      const baseSpec = specLine({
         data: createSeriesData('total_cost', t('总费用')),
         title: t('按日费用'),
         subtext: `${t('总计')}：${renderQuota(
@@ -128,7 +128,29 @@ const DailyAnalyticsTab = ({ activeTab, appliedFilters }) => {
         yField: 'total_cost',
         seriesField: 'metric',
         valueFormatter: (value) => renderQuota(value || 0),
-      }),
+      });
+
+      return {
+        ...baseSpec,
+        tooltip: {
+          ...baseSpec.tooltip,
+          dimension: {
+            visible: false,
+          },
+        },
+        axes: [
+          {
+            orient: 'bottom',
+          },
+          {
+            orient: 'left',
+            label: {
+              formatMethod: (value) => renderQuota(Number(value || 0)),
+            },
+          },
+        ],
+      };
+    },
     [createSeriesData, items, specLine, t],
   );
 
