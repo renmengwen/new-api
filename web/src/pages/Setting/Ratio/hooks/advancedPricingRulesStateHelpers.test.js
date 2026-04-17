@@ -427,6 +427,180 @@ test('advanced pricing helpers normalize media shell drafts into backend rule pa
   );
 });
 
+test('advanced pricing helpers preserve incompatible text canonical fields during metadata-only saves', async () => {
+  const { buildAdvancedPricingSavePayload, buildRuleDraft } = await loadHelpers();
+
+  assert.equal(typeof buildAdvancedPricingSavePayload, 'function');
+  assert.equal(typeof buildRuleDraft, 'function');
+
+  const canonicalRule = {
+    rule_type: 'text_segment',
+    display_name: 'Tiered text',
+    segment_basis: 'token',
+    billing_unit: '1M tokens',
+    default_price: 6.6,
+    note: 'server note',
+    segments: [
+      {
+        priority: 10,
+        input_min: 0,
+        input_max: 100,
+        input_price: 1.2,
+        output_min: 0,
+        output_max: 100,
+        output_price: 2.4,
+        cache_read_price: 0.3,
+        service_tier: 'premium',
+      },
+    ],
+  };
+
+  const draftRule = {
+    ...buildRuleDraft('text_segment', canonicalRule),
+    display_name: 'Edited text',
+    segment_basis: 'character',
+    billing_unit: '1K chars',
+    default_price: '9.9',
+    note: 'edited note',
+  };
+
+  const payload = buildAdvancedPricingSavePayload({
+    modelName: 'alpha',
+    billingMode: 'advanced',
+    draftRule,
+  });
+
+  assert.deepEqual(payload.normalizedRule, {
+    ...canonicalRule,
+    display_name: 'Edited text',
+    segment_basis: 'character',
+    billing_unit: '1K chars',
+    default_price: 9.9,
+    note: 'edited note',
+  });
+});
+
+test('advanced pricing helpers preserve incompatible media canonical fields during metadata-only saves', async () => {
+  const { buildAdvancedPricingSavePayload, buildRuleDraft } = await loadHelpers();
+
+  assert.equal(typeof buildAdvancedPricingSavePayload, 'function');
+  assert.equal(typeof buildRuleDraft, 'function');
+
+  const canonicalRule = {
+    rule_type: 'media_task',
+    display_name: 'Tiered media',
+    task_type: 'video_generation',
+    billing_unit: 'minute',
+    note: 'server note',
+    segments: [
+      {
+        priority: 10,
+        unit_price: 8.8,
+        resolution: '1080p',
+        aspect_ratio: '16:9',
+        min_tokens: 1024,
+        draft: false,
+        remark: 'legacy remark',
+      },
+    ],
+  };
+
+  const draftRule = {
+    ...buildRuleDraft('media_task', canonicalRule),
+    display_name: 'Edited media',
+    task_type: 'image_generation',
+    billing_unit: 'task',
+    note: 'edited note',
+  };
+
+  const payload = buildAdvancedPricingSavePayload({
+    modelName: 'beta',
+    billingMode: 'advanced',
+    draftRule,
+  });
+
+  assert.deepEqual(payload.normalizedRule, {
+    ...canonicalRule,
+    display_name: 'Edited media',
+    task_type: 'image_generation',
+    billing_unit: 'task',
+    note: 'edited note',
+  });
+});
+
+test('advanced pricing helpers reject shell edits for incompatible text canonical rules', async () => {
+  const { buildAdvancedPricingSavePayload, buildRuleDraft } = await loadHelpers();
+
+  assert.equal(typeof buildAdvancedPricingSavePayload, 'function');
+  assert.equal(typeof buildRuleDraft, 'function');
+
+  const canonicalRule = {
+    rule_type: 'text_segment',
+    display_name: 'Tiered text',
+    segment_basis: 'token',
+    billing_unit: '1M tokens',
+    default_price: 6.6,
+    segments: [
+      {
+        priority: 10,
+        input_min: 0,
+        input_max: 100,
+        input_price: 1.2,
+        output_price: 2.4,
+        service_tier: 'premium',
+      },
+    ],
+  };
+
+  assert.throws(
+    () =>
+      buildAdvancedPricingSavePayload({
+        modelName: 'alpha',
+        billingMode: 'advanced',
+        draftRule: {
+          ...buildRuleDraft('text_segment', canonicalRule),
+          segments_text: '0-100: 9.9',
+        },
+      }),
+    /cannot safely round-trip/i,
+  );
+});
+
+test('advanced pricing helpers reject shell edits for incompatible media canonical rules', async () => {
+  const { buildAdvancedPricingSavePayload, buildRuleDraft } = await loadHelpers();
+
+  assert.equal(typeof buildAdvancedPricingSavePayload, 'function');
+  assert.equal(typeof buildRuleDraft, 'function');
+
+  const canonicalRule = {
+    rule_type: 'media_task',
+    display_name: 'Tiered media',
+    task_type: 'video_generation',
+    billing_unit: 'minute',
+    segments: [
+      {
+        priority: 10,
+        unit_price: 8.8,
+        resolution: '1080p',
+        draft: false,
+      },
+    ],
+  };
+
+  assert.throws(
+    () =>
+      buildAdvancedPricingSavePayload({
+        modelName: 'beta',
+        billingMode: 'advanced',
+        draftRule: {
+          ...buildRuleDraft('media_task', canonicalRule),
+          unit_price: '12.3',
+        },
+      }),
+    /cannot safely round-trip/i,
+  );
+});
+
 test('advanced pricing helpers merge normalized rules into a single AdvancedPricingConfig payload', async () => {
   const { buildAdvancedPricingSavePayload } = await loadHelpers();
 

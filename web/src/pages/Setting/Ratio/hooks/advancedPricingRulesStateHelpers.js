@@ -74,72 +74,268 @@ const cloneRule = (rule) => {
   return JSON.parse(JSON.stringify(rule));
 };
 
-export const buildRuleDraft = (ruleType, rule = {}) => {
-  const normalized = cloneRule(rule);
-  const shouldPreserveTypeSpecificFields = normalized.rule_type === ruleType;
-  const firstSegment = Array.isArray(normalized.segments) ? normalized.segments[0] : null;
-  const normalizedUnitPrice = normalized.unit_price ?? firstSegment?.unit_price;
-  const sharedFields = {
-    display_name:
-      typeof normalized.display_name === 'string' ? normalized.display_name : '',
-    note:
-      typeof normalized.note === 'string'
-        ? normalized.note
-        : typeof firstSegment?.remark === 'string'
-          ? firstSegment.remark
-          : '',
-  };
+const DRAFT_ROUND_TRIP_MODE = '__roundtrip_mode';
+const DRAFT_ORIGINAL_CANONICAL_RULE = '__original_canonical_rule';
+const DRAFT_ORIGINAL_SHELL_RULE = '__original_shell_rule';
+const ROUND_TRIP_MODE_PRESERVE_CANONICAL = 'preserve_canonical';
+
+const TEXT_SEGMENT_METADATA_FIELDS = [
+  'display_name',
+  'segment_basis',
+  'billing_unit',
+  'default_price',
+  'note',
+];
+const MEDIA_TASK_METADATA_FIELDS = [
+  'display_name',
+  'task_type',
+  'billing_unit',
+  'note',
+];
+const TEXT_SEGMENT_UNSAFE_SHELL_FIELDS = ['segments_text'];
+const MEDIA_TASK_UNSAFE_SHELL_FIELDS = ['unit_price'];
+
+const valueToComparableString = (value) =>
+  value === null || value === undefined ? '' : String(value);
+
+const hasOnlyAllowedKeys = (value, allowedKeys) =>
+  Object.keys(value).every((key) => allowedKeys.has(key));
+
+const hasScalarDraftValue = (value) =>
+  value !== null && value !== undefined && String(value).trim() !== '';
+
+const extractTextSegmentShellFields = (segment = {}) => ({
+  start: segment.input_min ?? segment.start ?? segment.from ?? segment.min,
+  end: segment.input_max ?? segment.end ?? segment.to ?? segment.max,
+  price: segment.input_price ?? segment.price ?? segment.value,
+});
+
+const isTextSegmentShellCompatible = (segment) => {
+  if (!segment || typeof segment !== 'object' || Array.isArray(segment)) {
+    return false;
+  }
+
+  const allowedKeys = new Set([
+    'priority',
+    'input_min',
+    'input_max',
+    'input_price',
+    'start',
+    'end',
+    'from',
+    'to',
+    'min',
+    'max',
+    'price',
+    'value',
+  ]);
+  const { start, end, price } = extractTextSegmentShellFields(segment);
+
+  return (
+    hasOnlyAllowedKeys(segment, allowedKeys) &&
+    hasScalarDraftValue(start) &&
+    hasScalarDraftValue(end) &&
+    hasScalarDraftValue(price)
+  );
+};
+
+const isMediaTaskSegmentShellCompatible = (segment) => {
+  if (!segment || typeof segment !== 'object' || Array.isArray(segment)) {
+    return false;
+  }
+
+  const allowedKeys = new Set(['priority', 'unit_price', 'remark']);
+
+  return hasOnlyAllowedKeys(segment, allowedKeys) && hasScalarDraftValue(segment.unit_price);
+};
+
+const isTextRuleShellCompatible = (rule) => {
+  if (!rule || typeof rule !== 'object' || Array.isArray(rule)) {
+    return false;
+  }
+
+  const allowedKeys = new Set([
+    'rule_type',
+    'display_name',
+    'segment_basis',
+    'billing_unit',
+    'default_price',
+    'note',
+    'segments',
+  ]);
+
+  return (
+    hasOnlyAllowedKeys(rule, allowedKeys) &&
+    Array.isArray(rule.segments) &&
+    rule.segments.length > 0 &&
+    rule.segments.every(isTextSegmentShellCompatible)
+  );
+};
+
+const isMediaRuleShellCompatible = (rule) => {
+  if (!rule || typeof rule !== 'object' || Array.isArray(rule)) {
+    return false;
+  }
+
+  const allowedKeys = new Set([
+    'rule_type',
+    'display_name',
+    'task_type',
+    'billing_unit',
+    'note',
+    'unit_price',
+    'segments',
+  ]);
+
+  if (!hasOnlyAllowedKeys(rule, allowedKeys)) {
+    return false;
+  }
+
+  if (Array.isArray(rule.segments)) {
+    return rule.segments.length === 1 && rule.segments.every(isMediaTaskSegmentShellCompatible);
+  }
+
+  return hasScalarDraftValue(rule.unit_price);
+};
+
+const shouldPreserveCanonicalShellState = (ruleType, rule) => {
+  if (!rule || typeof rule !== 'object' || Array.isArray(rule)) {
+    return false;
+  }
+  if (rule.rule_type !== ruleType) {
+    return false;
+  }
 
   if (ruleType === RULE_TYPE_MEDIA_TASK) {
-    return {
-      ...sharedFields,
-      rule_type: ruleType,
-      task_type:
-        shouldPreserveTypeSpecificFields &&
-        typeof normalized.task_type === 'string' &&
-        normalized.task_type
-          ? normalized.task_type
-          : 'image_generation',
-      billing_unit:
-        shouldPreserveTypeSpecificFields &&
-        typeof normalized.billing_unit === 'string' &&
-        normalized.billing_unit
-          ? normalized.billing_unit
-          : 'task',
-      unit_price:
-        shouldPreserveTypeSpecificFields && hasValue(normalizedUnitPrice)
-          ? String(normalizedUnitPrice)
-          : '',
-    };
+    return Array.isArray(rule.segments) && !isMediaRuleShellCompatible(rule);
+  }
+
+  return Array.isArray(rule.segments) && !isTextRuleShellCompatible(rule);
+};
+
+const getDraftRoundTripState = (rule = {}) => {
+  if (
+    rule?.[DRAFT_ROUND_TRIP_MODE] !== ROUND_TRIP_MODE_PRESERVE_CANONICAL ||
+    !rule?.[DRAFT_ORIGINAL_CANONICAL_RULE] ||
+    !rule?.[DRAFT_ORIGINAL_SHELL_RULE]
+  ) {
+    return null;
+  }
+
+  const originalRule = cloneRule(rule[DRAFT_ORIGINAL_CANONICAL_RULE]);
+  const originalShell = cloneRule(rule[DRAFT_ORIGINAL_SHELL_RULE]);
+
+  if (!originalRule.rule_type || !originalShell.rule_type) {
+    return null;
   }
 
   return {
-    ...sharedFields,
-    rule_type: ruleType,
-    segment_basis:
+    originalRule,
+    originalShell,
+  };
+};
+
+const withDraftRoundTripState = (draftRule, roundTripState) => {
+  if (!roundTripState) {
+    return draftRule;
+  }
+
+  return {
+    ...draftRule,
+    [DRAFT_ROUND_TRIP_MODE]: ROUND_TRIP_MODE_PRESERVE_CANONICAL,
+    [DRAFT_ORIGINAL_CANONICAL_RULE]: cloneRule(roundTripState.originalRule),
+    [DRAFT_ORIGINAL_SHELL_RULE]: cloneRule(roundTripState.originalShell),
+  };
+};
+
+const buildSharedDraftFields = (normalized, firstSegment) => ({
+  display_name:
+    typeof normalized.display_name === 'string' ? normalized.display_name : '',
+  note:
+    typeof normalized.note === 'string'
+      ? normalized.note
+      : typeof firstSegment?.remark === 'string'
+        ? firstSegment.remark
+        : '',
+});
+
+const buildMediaTaskDraftFields = (normalized, shouldPreserveTypeSpecificFields) => {
+  const firstSegment = Array.isArray(normalized.segments) ? normalized.segments[0] : null;
+  const normalizedUnitPrice = normalized.unit_price ?? firstSegment?.unit_price;
+
+  return {
+    ...buildSharedDraftFields(normalized, firstSegment),
+    rule_type: RULE_TYPE_MEDIA_TASK,
+    task_type:
       shouldPreserveTypeSpecificFields &&
-      typeof normalized.segment_basis === 'string' &&
-      normalized.segment_basis
-        ? normalized.segment_basis
-        : 'token',
+      typeof normalized.task_type === 'string' &&
+      normalized.task_type
+        ? normalized.task_type
+        : 'image_generation',
     billing_unit:
       shouldPreserveTypeSpecificFields &&
       typeof normalized.billing_unit === 'string' &&
       normalized.billing_unit
         ? normalized.billing_unit
-        : '1K tokens',
-    default_price:
-      shouldPreserveTypeSpecificFields && hasValue(normalized.default_price)
-        ? String(normalized.default_price)
+        : 'task',
+    unit_price:
+      shouldPreserveTypeSpecificFields && hasValue(normalizedUnitPrice)
+        ? String(normalizedUnitPrice)
         : '',
-    segments_text:
-      shouldPreserveTypeSpecificFields &&
-      typeof normalized.segments_text === 'string'
-        ? normalized.segments_text
-        : shouldPreserveTypeSpecificFields && Array.isArray(normalized.segments)
-          ? normalized.segments.map(formatSegmentLine).filter(Boolean).join('\n')
-          : '',
   };
+};
+
+const buildTextSegmentDraftFields = (normalized, shouldPreserveTypeSpecificFields) => ({
+  ...buildSharedDraftFields(
+    normalized,
+    Array.isArray(normalized.segments) ? normalized.segments[0] : null,
+  ),
+  rule_type: RULE_TYPE_TEXT_SEGMENT,
+  segment_basis:
+    shouldPreserveTypeSpecificFields &&
+    typeof normalized.segment_basis === 'string' &&
+    normalized.segment_basis
+      ? normalized.segment_basis
+      : 'token',
+  billing_unit:
+    shouldPreserveTypeSpecificFields &&
+    typeof normalized.billing_unit === 'string' &&
+    normalized.billing_unit
+      ? normalized.billing_unit
+      : '1K tokens',
+  default_price:
+    shouldPreserveTypeSpecificFields && hasValue(normalized.default_price)
+      ? String(normalized.default_price)
+      : '',
+  segments_text:
+    shouldPreserveTypeSpecificFields && typeof normalized.segments_text === 'string'
+      ? normalized.segments_text
+      : shouldPreserveTypeSpecificFields && Array.isArray(normalized.segments)
+        ? normalized.segments.map(formatSegmentLine).filter(Boolean).join('\n')
+        : '',
+});
+
+export const buildRuleDraft = (ruleType, rule = {}) => {
+  const normalized = cloneRule(rule);
+  const roundTripState = getDraftRoundTripState(normalized);
+  const shouldPreserveTypeSpecificFields = normalized.rule_type === ruleType;
+  const nextDraft =
+    ruleType === RULE_TYPE_MEDIA_TASK
+      ? buildMediaTaskDraftFields(normalized, shouldPreserveTypeSpecificFields)
+      : buildTextSegmentDraftFields(normalized, shouldPreserveTypeSpecificFields);
+
+  if (roundTripState) {
+    return withDraftRoundTripState(nextDraft, roundTripState);
+  }
+
+  if (shouldPreserveCanonicalShellState(ruleType, normalized)) {
+    return withDraftRoundTripState(nextDraft, {
+      originalRule: normalized,
+      originalShell: nextDraft,
+    });
+  }
+
+  return nextDraft;
 };
 
 const buildModelState = (name, sourceMaps) => {
@@ -371,11 +567,139 @@ const parseTextSegmentLine = (line, index) => {
   };
 };
 
+const getUnsupportedRoundTripError = (ruleType) =>
+  ruleType === RULE_TYPE_MEDIA_TASK
+    ? 'Advanced media task pricing rule cannot safely round-trip through the simplified editor. Only metadata fields can be edited.'
+    : 'Advanced text pricing rule cannot safely round-trip through the simplified editor. Only metadata fields can be edited.';
+
+const assertUnsafeShellFieldsUnchanged = ({
+  draftRule,
+  originalShell,
+  ruleType,
+}) => {
+  if (originalShell.rule_type !== ruleType) {
+    throw new Error(getUnsupportedRoundTripError(ruleType));
+  }
+
+  const unsafeFields =
+    ruleType === RULE_TYPE_MEDIA_TASK
+      ? MEDIA_TASK_UNSAFE_SHELL_FIELDS
+      : TEXT_SEGMENT_UNSAFE_SHELL_FIELDS;
+
+  for (const field of unsafeFields) {
+    if (
+      valueToComparableString(draftRule[field]) !==
+      valueToComparableString(originalShell[field])
+    ) {
+      throw new Error(getUnsupportedRoundTripError(ruleType));
+    }
+  }
+};
+
+const applyChangedStringMetadata = ({
+  targetRule,
+  draftRule,
+  originalShell,
+  field,
+}) => {
+  if (
+    valueToComparableString(draftRule[field]) ===
+    valueToComparableString(originalShell[field])
+  ) {
+    return;
+  }
+
+  const normalizedValue = parseAdvancedPricingString(draftRule[field]);
+
+  if (normalizedValue) {
+    targetRule[field] = normalizedValue;
+    return;
+  }
+
+  delete targetRule[field];
+};
+
+const applyChangedNumberMetadata = ({
+  targetRule,
+  draftRule,
+  originalShell,
+  field,
+}) => {
+  if (
+    valueToComparableString(draftRule[field]) ===
+    valueToComparableString(originalShell[field])
+  ) {
+    return;
+  }
+
+  const normalizedValue = parseAdvancedPricingNumber(draftRule[field]);
+
+  if (normalizedValue !== null) {
+    targetRule[field] = normalizedValue;
+    return;
+  }
+
+  delete targetRule[field];
+};
+
+const mergeMetadataIntoPreservedCanonicalRule = ({
+  draftRule,
+  originalRule,
+  originalShell,
+  ruleType,
+}) => {
+  const mergedRule = cloneRule(originalRule);
+  const stringFields =
+    ruleType === RULE_TYPE_MEDIA_TASK
+      ? MEDIA_TASK_METADATA_FIELDS
+      : TEXT_SEGMENT_METADATA_FIELDS.filter((field) => field !== 'default_price');
+
+  stringFields.forEach((field) =>
+    applyChangedStringMetadata({
+      targetRule: mergedRule,
+      draftRule,
+      originalShell,
+      field,
+    }),
+  );
+
+  if (ruleType === RULE_TYPE_TEXT_SEGMENT) {
+    applyChangedNumberMetadata({
+      targetRule: mergedRule,
+      draftRule,
+      originalShell,
+      field: 'default_price',
+    });
+  }
+
+  return mergedRule;
+};
+
 export const normalizeAdvancedPricingDraftRule = (draftRule = {}) => {
   const ruleType =
     typeof draftRule?.rule_type === 'string' && draftRule.rule_type
       ? draftRule.rule_type
       : RULE_TYPE_TEXT_SEGMENT;
+  const roundTripState = getDraftRoundTripState(draftRule);
+
+  if (roundTripState) {
+    if (roundTripState.originalRule.rule_type !== ruleType) {
+      throw new Error(getUnsupportedRoundTripError(ruleType));
+    }
+
+    assertUnsafeShellFieldsUnchanged({
+      draftRule,
+      originalShell: roundTripState.originalShell,
+      ruleType,
+    });
+
+    return mergeMetadataIntoPreservedCanonicalRule({
+      draftRule,
+      originalRule: roundTripState.originalRule,
+      originalShell: roundTripState.originalShell,
+      ruleType,
+    });
+  }
 
   const displayName = parseAdvancedPricingString(draftRule.display_name);
   const billingUnit = parseAdvancedPricingString(draftRule.billing_unit);
