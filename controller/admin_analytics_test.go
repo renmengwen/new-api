@@ -812,6 +812,35 @@ func TestGetAdminAnalyticsUsersReturnsTotalTokens(t *testing.T) {
 	require.EqualValues(t, 24, itemsByUserID[fixture.Other.Id].TotalTokens)
 }
 
+func TestGetAdminAnalyticsUsersSortsByTotalTokens(t *testing.T) {
+	db := setupAdminAnalyticsTestDB(t)
+	fixture := seedAdminAnalyticsFixture(t, db)
+	grantPermissionActions(t, db, fixture.Admin.Id, model.UserTypeAdmin,
+		permissionGrant{Resource: service.ResourceAnalyticsManagement, Action: service.ActionRead},
+	)
+
+	target := "/api/admin/analytics/users?date_preset=last7days&start_timestamp=" +
+		strconv.FormatInt(fixture.Last7Start, 10) +
+		"&end_timestamp=" + strconv.FormatInt(fixture.Now, 10) +
+		"&sort_by=total_tokens&sort_order=desc&p=1&page_size=10"
+	ctx, recorder := newAdminAnalyticsContext(t, http.MethodGet, target, nil, fixture.Admin.Id, fixture.Admin.Role)
+	GetAdminAnalyticsUsers(ctx)
+
+	var response adminAnalyticsUserPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Len(t, response.Data.Items, 4)
+
+	require.Equal(t, fixture.OwnedA.Id, response.Data.Items[0].UserID)
+	require.EqualValues(t, 30, response.Data.Items[0].TotalTokens)
+	require.Equal(t, fixture.Other.Id, response.Data.Items[1].UserID)
+	require.EqualValues(t, 24, response.Data.Items[1].TotalTokens)
+	require.Equal(t, fixture.Agent.Id, response.Data.Items[2].UserID)
+	require.EqualValues(t, 20, response.Data.Items[2].TotalTokens)
+	require.Equal(t, fixture.OwnedB.Id, response.Data.Items[3].UserID)
+	require.EqualValues(t, 2, response.Data.Items[3].TotalTokens)
+}
+
 func TestGetAdminAnalyticsModelsNegativePageSizeStillPaginates(t *testing.T) {
 	db := setupAdminAnalyticsTestDB(t)
 	fixture := seedAdminAnalyticsFixture(t, db)

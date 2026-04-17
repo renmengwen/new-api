@@ -356,7 +356,7 @@ const UserAnalyticsTab = ({
       </div>
 
       <div
-        className='rounded-2xl border p-4 flex flex-col gap-4 w-full'
+        className='rounded-2xl border p-4 flex flex-col gap-4'
         style={{ borderColor: 'var(--semi-color-border)' }}
       >
         <Table

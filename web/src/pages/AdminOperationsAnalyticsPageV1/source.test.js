@@ -356,7 +356,7 @@ test('ModelAnalyticsTab defines sortable analytics columns and VChart usage', ()
   assert.doesNotMatch(modelTabSource, /const \[sortOrder, setSortOrder\] = useState\(''\);/);
 });
 
-test('UserAnalyticsTab defines sortable analytics columns plus top cost/token charts and full-width table layout', () => {
+test('UserAnalyticsTab defines sortable analytics columns plus top cost/token charts and a separate table section', () => {
   assert.match(userTabSource, /@visactor\/react-vchart/);
   assert.match(
     userTabSource,
@@ -383,7 +383,11 @@ test('UserAnalyticsTab defines sortable analytics columns plus top cost/token ch
   );
   assert.match(
     userTabSource,
-    /className='grid gap-4 lg:grid-cols-2'[\s\S]*?<\/div>\s*<div\s+className='rounded-2xl border p-4 flex flex-col gap-4 w-full'/,
+    /className='grid gap-4 lg:grid-cols-2'[\s\S]*?<\/div>\s*<div\s+className='rounded-2xl border p-4 flex flex-col gap-4'/,
+  );
+  assert.doesNotMatch(
+    userTabSource,
+    /className='rounded-2xl border p-4 flex flex-col gap-4 w-full'/,
   );
   assert.match(
     userTabSource,
