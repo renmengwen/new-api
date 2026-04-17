@@ -177,9 +177,12 @@ func TestParseAdvancedPricingConfigNormalizesLegacyTextShellRule(t *testing.T) {
       "rules": {
         "gpt-5": {
           "rule_type": "text_segment",
-          "display_name": "ignored shell field",
+          "display_name": "Text shell",
+          "segment_basis": "character",
+          "billing_unit": "1M chars",
+          "default_price": "9.9",
           "segments_text": "0-100: 1.2\n101-200: 2.4",
-          "note": "ignored note"
+          "note": "preserved note"
         }
       }
     }`)
@@ -187,6 +190,12 @@ func TestParseAdvancedPricingConfigNormalizesLegacyTextShellRule(t *testing.T) {
 
 	ruleSet := cfg.ModelRules["gpt-5"]
 	require.Equal(t, RuleTypeTextSegment, ruleSet.RuleType)
+	require.Equal(t, "Text shell", ruleSet.DisplayName)
+	require.Equal(t, "character", ruleSet.SegmentBasis)
+	require.Equal(t, "1M chars", ruleSet.BillingUnit)
+	require.NotNil(t, ruleSet.DefaultPrice)
+	require.Equal(t, 9.9, *ruleSet.DefaultPrice)
+	require.Equal(t, "preserved note", ruleSet.Note)
 	require.Len(t, ruleSet.Segments, 2)
 	require.Equal(t, 10, *ruleSet.Segments[0].Priority)
 	require.Equal(t, 0, *ruleSet.Segments[0].InputMin)
@@ -203,11 +212,11 @@ func TestParseAdvancedPricingConfigNormalizesLegacyMediaShellRule(t *testing.T) 
       "rules": {
         "veo-3.1-fast-generate-preview": {
           "rule_type": "media_task",
-          "display_name": "ignored shell field",
+          "display_name": "Media shell",
           "task_type": "video_generation",
-          "billing_unit": "task",
+          "billing_unit": "minute",
           "unit_price": "8.8",
-          "note": "preserved as remark"
+          "note": "preserved note"
         }
       }
     }`)
@@ -215,10 +224,14 @@ func TestParseAdvancedPricingConfigNormalizesLegacyMediaShellRule(t *testing.T) 
 
 	ruleSet := cfg.ModelRules["veo-3.1-fast-generate-preview"]
 	require.Equal(t, RuleTypeMediaTask, ruleSet.RuleType)
+	require.Equal(t, "Media shell", ruleSet.DisplayName)
+	require.Equal(t, "video_generation", ruleSet.TaskType)
+	require.Equal(t, "minute", ruleSet.BillingUnit)
+	require.Equal(t, "preserved note", ruleSet.Note)
 	require.Len(t, ruleSet.Segments, 1)
 	require.Equal(t, 10, *ruleSet.Segments[0].Priority)
 	require.Equal(t, 8.8, *ruleSet.Segments[0].UnitPrice)
-	require.Equal(t, "preserved as remark", ruleSet.Segments[0].Remark)
+	require.Equal(t, "preserved note", ruleSet.Segments[0].Remark)
 }
 
 func TestUpdateAdvancedPricingRulesByJSONStringNormalizesLegacyShellToCanonical(t *testing.T) {
@@ -232,7 +245,11 @@ func TestUpdateAdvancedPricingRulesByJSONStringNormalizesLegacyShellToCanonical(
 	err := UpdateAdvancedPricingRulesByJSONString(`{
       "gpt-5": {
         "rule_type": "text_segment",
-        "display_name": "ignored shell field",
+        "display_name": "Text shell",
+        "segment_basis": "character",
+        "billing_unit": "1M chars",
+        "default_price": "9.9",
+        "note": "preserved note",
         "segments_text": "0-100: 1.2\n101-200: 2.4"
       }
     }`)
@@ -248,6 +265,11 @@ func TestUpdateAdvancedPricingRulesByJSONStringNormalizesLegacyShellToCanonical(
 	require.JSONEq(t, `{
       "gpt-5": {
         "rule_type": "text_segment",
+        "display_name": "Text shell",
+        "segment_basis": "character",
+        "billing_unit": "1M chars",
+        "default_price": 9.9,
+        "note": "preserved note",
         "segments": [
           {
             "priority": 10,
@@ -269,6 +291,11 @@ func TestUpdateAdvancedPricingRulesByJSONStringNormalizesLegacyShellToCanonical(
       "rules": {
         "gpt-5": {
           "rule_type": "text_segment",
+          "display_name": "Text shell",
+          "segment_basis": "character",
+          "billing_unit": "1M chars",
+          "default_price": 9.9,
+          "note": "preserved note",
           "segments": [
             {
               "priority": 10,

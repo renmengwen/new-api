@@ -331,6 +331,13 @@ const parseAdvancedPricingInteger = (value) => {
   return parsed;
 };
 
+const parseAdvancedPricingString = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.trim();
+};
+
 const parseTextSegmentLine = (line, index) => {
   const trimmed = line.trim();
   if (!trimmed) {
@@ -370,8 +377,13 @@ export const normalizeAdvancedPricingDraftRule = (draftRule = {}) => {
       ? draftRule.rule_type
       : RULE_TYPE_TEXT_SEGMENT;
 
+  const displayName = parseAdvancedPricingString(draftRule.display_name);
+  const billingUnit = parseAdvancedPricingString(draftRule.billing_unit);
+  const note = parseAdvancedPricingString(draftRule.note);
+
   if (ruleType === RULE_TYPE_MEDIA_TASK) {
     const unitPrice = parseAdvancedPricingNumber(draftRule.unit_price);
+    const taskType = parseAdvancedPricingString(draftRule.task_type);
     if (unitPrice === null) {
       throw new Error('Advanced media task pricing requires unit_price');
     }
@@ -384,13 +396,27 @@ export const normalizeAdvancedPricingDraftRule = (draftRule = {}) => {
       unit_price: unitPrice,
     };
     if (typeof draftRule.note === 'string' && draftRule.note.trim()) {
-      segment.remark = draftRule.note.trim();
+      segment.remark = note;
     }
 
-    return {
+    const normalizedRule = {
       rule_type: RULE_TYPE_MEDIA_TASK,
       segments: [segment],
     };
+    if (displayName) {
+      normalizedRule.display_name = displayName;
+    }
+    if (taskType) {
+      normalizedRule.task_type = taskType;
+    }
+    if (billingUnit) {
+      normalizedRule.billing_unit = billingUnit;
+    }
+    if (note) {
+      normalizedRule.note = note;
+    }
+
+    return normalizedRule;
   }
 
   const rawLines =
@@ -405,12 +431,31 @@ export const normalizeAdvancedPricingDraftRule = (draftRule = {}) => {
     throw new Error('Advanced text pricing requires at least one segment');
   }
 
-  return {
+  const normalizedRule = {
     rule_type: RULE_TYPE_TEXT_SEGMENT,
     segments: rawLines
       .map((line, index) => parseTextSegmentLine(line, index))
       .filter(Boolean),
   };
+  const segmentBasis = parseAdvancedPricingString(draftRule.segment_basis);
+  const defaultPrice = parseAdvancedPricingNumber(draftRule.default_price);
+  if (displayName) {
+    normalizedRule.display_name = displayName;
+  }
+  if (segmentBasis) {
+    normalizedRule.segment_basis = segmentBasis;
+  }
+  if (billingUnit) {
+    normalizedRule.billing_unit = billingUnit;
+  }
+  if (defaultPrice !== null) {
+    normalizedRule.default_price = defaultPrice;
+  }
+  if (note) {
+    normalizedRule.note = note;
+  }
+
+  return normalizedRule;
 };
 
 export const buildAdvancedPricingSavePayload = ({

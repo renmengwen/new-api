@@ -264,6 +264,11 @@ test('buildRuleDraft hydrates canonical backend rules into shell fields', async 
   assert.deepEqual(
     buildRuleDraft('text_segment', {
       rule_type: 'text_segment',
+      display_name: 'Tiered text',
+      segment_basis: 'character',
+      billing_unit: '1M chars',
+      default_price: 6.6,
+      note: 'saved text note',
       segments: [
         {
           priority: 10,
@@ -280,12 +285,12 @@ test('buildRuleDraft hydrates canonical backend rules into shell fields', async 
       ],
     }),
     {
-      display_name: '',
-      note: '',
+      display_name: 'Tiered text',
+      note: 'saved text note',
       rule_type: 'text_segment',
-      segment_basis: 'token',
-      billing_unit: '1K tokens',
-      default_price: '',
+      segment_basis: 'character',
+      billing_unit: '1M chars',
+      default_price: '6.6',
       segments_text: '0-100: 1.2\n101-200: 2.4',
     },
   );
@@ -293,20 +298,24 @@ test('buildRuleDraft hydrates canonical backend rules into shell fields', async 
   assert.deepEqual(
     buildRuleDraft('media_task', {
       rule_type: 'media_task',
+      display_name: 'Tiered media',
+      task_type: 'video_generation',
+      billing_unit: 'minute',
+      note: 'saved media note',
       segments: [
         {
           priority: 10,
           unit_price: 8.8,
-          remark: 'saved remark',
+          remark: 'legacy remark',
         },
       ],
     }),
     {
-      display_name: '',
-      note: 'saved remark',
+      display_name: 'Tiered media',
+      note: 'saved media note',
       rule_type: 'media_task',
-      task_type: 'image_generation',
-      billing_unit: 'task',
+      task_type: 'video_generation',
+      billing_unit: 'minute',
       unit_price: '8.8',
     },
   );
@@ -355,14 +364,20 @@ test('advanced pricing helpers normalize text shell drafts into backend rule pay
   assert.deepEqual(
     normalizeAdvancedPricingDraftRule({
       rule_type: 'text_segment',
-      display_name: 'ignored shell field',
-      billing_unit: '1K tokens',
+      display_name: 'Tiered text',
+      segment_basis: 'character',
+      billing_unit: '1M chars',
       default_price: '9.9',
       segments_text: '0-100: 1.2\n101-200: 2.4',
-      note: 'ignored note',
+      note: 'preserved note',
     }),
     {
       rule_type: 'text_segment',
+      display_name: 'Tiered text',
+      segment_basis: 'character',
+      billing_unit: '1M chars',
+      default_price: 9.9,
+      note: 'preserved note',
       segments: [
         {
           priority: 10,
@@ -389,19 +404,23 @@ test('advanced pricing helpers normalize media shell drafts into backend rule pa
   assert.deepEqual(
     normalizeAdvancedPricingDraftRule({
       rule_type: 'media_task',
-      display_name: 'ignored shell field',
+      display_name: 'Tiered media',
       task_type: 'video_generation',
-      billing_unit: 'task',
+      billing_unit: 'minute',
       unit_price: '8.8',
-      note: 'preserved as remark',
+      note: 'preserved note',
     }),
     {
       rule_type: 'media_task',
+      display_name: 'Tiered media',
+      task_type: 'video_generation',
+      billing_unit: 'minute',
+      note: 'preserved note',
       segments: [
         {
           priority: 10,
           unit_price: 8.8,
-          remark: 'preserved as remark',
+          remark: 'preserved note',
         },
       ],
     },
@@ -418,6 +437,11 @@ test('advanced pricing helpers merge normalized rules into a single AdvancedPric
     billingMode: 'advanced',
     draftRule: {
       rule_type: 'text_segment',
+      display_name: 'Beta tiered text',
+      segment_basis: 'character',
+      billing_unit: '1M chars',
+      default_price: '6.6',
+      note: 'preserved text note',
       segments_text: '0-100: 1.2',
     },
     latestModeMap: {
@@ -440,12 +464,17 @@ test('advanced pricing helpers merge normalized rules into a single AdvancedPric
     AdvancedPricingMode: {
       beta: 'advanced',
     },
-    AdvancedPricingRules: {
-      beta: {
-        rule_type: 'text_segment',
-        segments: [
-          {
-            priority: 10,
+      AdvancedPricingRules: {
+        beta: {
+          rule_type: 'text_segment',
+          display_name: 'Beta tiered text',
+          segment_basis: 'character',
+          billing_unit: '1M chars',
+          default_price: 6.6,
+          note: 'preserved text note',
+          segments: [
+            {
+              priority: 10,
             input_min: 0,
             input_max: 100,
             input_price: 1.2,
@@ -472,6 +501,11 @@ test('advanced pricing helpers merge normalized rules into a single AdvancedPric
       },
       beta: {
         rule_type: 'text_segment',
+        display_name: 'Beta tiered text',
+        segment_basis: 'character',
+        billing_unit: '1M chars',
+        default_price: 6.6,
+        note: 'preserved text note',
         segments: [
           {
             priority: 10,

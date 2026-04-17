@@ -125,6 +125,10 @@ test('advanced pricing state exposes current rule type and a minimal save api fo
   assert.match(source, /latestModeMap: parseOptionJSON\(latestOptionsByKey\.AdvancedPricingMode\),/);
   assert.match(source, /latestRulesMap: parseOptionJSON\(latestOptionsByKey\.AdvancedPricingRules\),/);
   assert.match(source, /API\.put\('\/api\/option\/', \{\s*key: 'AdvancedPricingConfig'/);
+  assert.match(
+    source,
+    /dirtyRuleModelNamesRef\.current\.delete\(selectedModel\.name\);\s*dirtyBillingModeModelNamesRef\.current\.delete\(selectedModel\.name\);\s*await refresh\(\);/s,
+  );
   assert.doesNotMatch(source, /Promise\.all\(\[/);
   assert.doesNotMatch(source, /key: 'AdvancedPricingMode'/);
   assert.doesNotMatch(source, /key: 'AdvancedPricingRules'/);

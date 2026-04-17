@@ -33,11 +33,22 @@ type AdvancedPricingConfig struct {
 }
 
 type AdvancedPricingRuleSet struct {
-	RuleType AdvancedRuleType    `json:"rule_type"`
-	Segments []AdvancedPriceRule `json:"segments"`
+	RuleType     AdvancedRuleType    `json:"rule_type"`
+	DisplayName  string              `json:"display_name,omitempty"`
+	SegmentBasis string              `json:"segment_basis,omitempty"`
+	BillingUnit  string              `json:"billing_unit,omitempty"`
+	DefaultPrice *float64            `json:"default_price,omitempty"`
+	TaskType     string              `json:"task_type,omitempty"`
+	Note         string              `json:"note,omitempty"`
+	Segments     []AdvancedPriceRule `json:"segments"`
 }
 
 type advancedPricingRuleSetPayload struct {
+	DisplayName  string              `json:"display_name"`
+	SegmentBasis string              `json:"segment_basis"`
+	BillingUnit  string              `json:"billing_unit"`
+	DefaultPrice any                 `json:"default_price"`
+	TaskType     string              `json:"task_type"`
 	RuleType     AdvancedRuleType    `json:"rule_type"`
 	Segments     []AdvancedPriceRule `json:"segments"`
 	SegmentsText string              `json:"segments_text"`
@@ -107,13 +118,24 @@ func (ruleSet *AdvancedPricingRuleSet) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	defaultPrice, err := parseLegacyAdvancedPricingOptionalFloat("default_price", payload.DefaultPrice)
+	if err != nil {
+		return err
+	}
+
 	if len(payload.Segments) > 0 {
 		ruleSet.RuleType = payload.RuleType
+		ruleSet.DisplayName = payload.DisplayName
+		ruleSet.SegmentBasis = payload.SegmentBasis
+		ruleSet.BillingUnit = payload.BillingUnit
+		ruleSet.DefaultPrice = defaultPrice
+		ruleSet.TaskType = payload.TaskType
+		ruleSet.Note = payload.Note
 		ruleSet.Segments = payload.Segments
 		return nil
 	}
 
-	normalizedRuleSet, ok, err := normalizeLegacyAdvancedPricingRuleSet(payload)
+	normalizedRuleSet, ok, err := normalizeLegacyAdvancedPricingRuleSet(payload, defaultPrice)
 	if err != nil {
 		return err
 	}
@@ -123,6 +145,12 @@ func (ruleSet *AdvancedPricingRuleSet) UnmarshalJSON(data []byte) error {
 	}
 
 	ruleSet.RuleType = payload.RuleType
+	ruleSet.DisplayName = payload.DisplayName
+	ruleSet.SegmentBasis = payload.SegmentBasis
+	ruleSet.BillingUnit = payload.BillingUnit
+	ruleSet.DefaultPrice = defaultPrice
+	ruleSet.TaskType = payload.TaskType
+	ruleSet.Note = payload.Note
 	ruleSet.Segments = payload.Segments
 	return nil
 }
@@ -255,7 +283,7 @@ func normalizeAdvancedPricingRawString(data []byte) string {
 	return strings.Trim(strings.TrimSpace(string(data)), `"`)
 }
 
-func normalizeLegacyAdvancedPricingRuleSet(payload advancedPricingRuleSetPayload) (AdvancedPricingRuleSet, bool, error) {
+func normalizeLegacyAdvancedPricingRuleSet(payload advancedPricingRuleSetPayload, defaultPrice *float64) (AdvancedPricingRuleSet, bool, error) {
 	ruleType := payload.RuleType
 	if ruleType == "" {
 		switch {
@@ -270,7 +298,7 @@ func normalizeLegacyAdvancedPricingRuleSet(payload advancedPricingRuleSetPayload
 
 	switch ruleType {
 	case RuleTypeTextSegment:
-		return normalizeLegacyAdvancedTextRuleSet(payload)
+		return normalizeLegacyAdvancedTextRuleSet(payload, defaultPrice)
 	case RuleTypeMediaTask:
 		return normalizeLegacyAdvancedMediaRuleSet(payload)
 	default:
@@ -278,7 +306,7 @@ func normalizeLegacyAdvancedPricingRuleSet(payload advancedPricingRuleSetPayload
 	}
 }
 
-func normalizeLegacyAdvancedTextRuleSet(payload advancedPricingRuleSetPayload) (AdvancedPricingRuleSet, bool, error) {
+func normalizeLegacyAdvancedTextRuleSet(payload advancedPricingRuleSetPayload, defaultPrice *float64) (AdvancedPricingRuleSet, bool, error) {
 	rawLines := strings.Split(payload.SegmentsText, "\n")
 	segments := make([]AdvancedPriceRule, 0, len(rawLines))
 	for index, line := range rawLines {
@@ -298,8 +326,13 @@ func normalizeLegacyAdvancedTextRuleSet(payload advancedPricingRuleSetPayload) (
 	}
 
 	return AdvancedPricingRuleSet{
-		RuleType: RuleTypeTextSegment,
-		Segments: segments,
+		RuleType:     RuleTypeTextSegment,
+		DisplayName:  payload.DisplayName,
+		SegmentBasis: payload.SegmentBasis,
+		BillingUnit:  payload.BillingUnit,
+		DefaultPrice: defaultPrice,
+		Note:         payload.Note,
+		Segments:     segments,
 	}, true, nil
 }
 
@@ -350,8 +383,12 @@ func normalizeLegacyAdvancedMediaRuleSet(payload advancedPricingRuleSetPayload) 
 	}
 
 	return AdvancedPricingRuleSet{
-		RuleType: RuleTypeMediaTask,
-		Segments: []AdvancedPriceRule{segment},
+		RuleType:    RuleTypeMediaTask,
+		DisplayName: payload.DisplayName,
+		BillingUnit: payload.BillingUnit,
+		TaskType:    payload.TaskType,
+		Note:        payload.Note,
+		Segments:    []AdvancedPriceRule{segment},
 	}, true, nil
 }
 
@@ -384,6 +421,27 @@ func parseLegacyAdvancedPricingUnitPrice(value any) (float64, bool, error) {
 		return parsed, true, nil
 	default:
 		return 0, false, fmt.Errorf("invalid advanced media task unit_price type")
+	}
+}
+
+func parseLegacyAdvancedPricingOptionalFloat(fieldName string, value any) (*float64, error) {
+	switch data := value.(type) {
+	case nil:
+		return nil, nil
+	case float64:
+		return &data, nil
+	case string:
+		trimmed := strings.TrimSpace(data)
+		if trimmed == "" {
+			return nil, nil
+		}
+		parsed, err := strconv.ParseFloat(trimmed, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid advanced pricing %s: %s", fieldName, trimmed)
+		}
+		return &parsed, nil
+	default:
+		return nil, fmt.Errorf("invalid advanced pricing %s type", fieldName)
 	}
 }
 

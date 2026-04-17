@@ -256,9 +256,9 @@ export default function useAdvancedPricingRulesState({
       }
 
       showSuccess(t('楂樼骇瀹氫环瑙勫垯宸蹭繚瀛?));
-      await refresh();
       dirtyRuleModelNamesRef.current.delete(selectedModel.name);
       dirtyBillingModeModelNamesRef.current.delete(selectedModel.name);
+      await refresh();
       return true;
     } catch (error) {
       console.error('淇濆瓨楂樼骇瀹氫环瑙勫垯澶辫触:', error);

@@ -166,35 +166,192 @@ func TestUpdateOptionAdvancedPricingConfigSyncsLegacyViews(t *testing.T) {
 func TestUpdateOptionAdvancedPricingModeSyncsConfig(t *testing.T) {
 	setupAdvancedPricingOptionTest(t)
 
-	initialRules := `{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}`
-	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(initialRules))
+	initialConfig := `{
+      "billing_mode": {
+        "gpt-5": "per_token"
+      },
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "display_name": "Persisted text",
+          "segment_basis": "character",
+          "billing_unit": "1M chars",
+          "default_price": 6.6,
+          "note": "persisted note",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 100,
+              "input_price": 1.2
+            }
+          ]
+        }
+      }
+    }`
+	require.NoError(t, UpdateOption("AdvancedPricingConfig", initialConfig))
+
+	staleRuntimeConfig := `{
+      "billing_mode": {
+        "legacy-model": "per_request"
+      },
+      "rules": {
+        "legacy-model": {
+          "rule_type": "media_task",
+          "segments": [
+            {
+              "priority": 10,
+              "unit_price": 9.9
+            }
+          ]
+        }
+      }
+    }`
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingConfigByJSONString(staleRuntimeConfig))
 	syncAdvancedPricingOptionViews()
 
 	err := UpdateOption("AdvancedPricingMode", `{"gpt-5":"advanced"}`)
 	require.NoError(t, err)
 
-	expectedConfig := `{"billing_mode":{"gpt-5":"advanced"},"rules":{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}}`
+	expectedConfig := `{
+      "billing_mode": {
+        "gpt-5": "advanced"
+      },
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "display_name": "Persisted text",
+          "segment_basis": "character",
+          "billing_unit": "1M chars",
+          "default_price": 6.6,
+          "note": "persisted note",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 100,
+              "input_price": 1.2
+            }
+          ]
+        }
+      }
+    }`
 	require.JSONEq(t, expectedConfig, common.OptionMap["AdvancedPricingConfig"])
 	require.JSONEq(t, expectedConfig, mustGetOptionValue(t, "AdvancedPricingConfig"))
 	require.JSONEq(t, `{"gpt-5":"advanced"}`, mustGetOptionValue(t, "AdvancedPricingMode"))
-	require.JSONEq(t, initialRules, mustGetOptionValue(t, "AdvancedPricingRules"))
+	require.JSONEq(t, `{
+      "gpt-5": {
+        "rule_type": "text_segment",
+        "display_name": "Persisted text",
+        "segment_basis": "character",
+        "billing_unit": "1M chars",
+        "default_price": 6.6,
+        "note": "persisted note",
+        "segments": [
+          {
+            "priority": 10,
+            "input_min": 0,
+            "input_max": 100,
+            "input_price": 1.2
+          }
+        ]
+      }
+    }`, mustGetOptionValue(t, "AdvancedPricingRules"))
 }
 
 func TestUpdateOptionAdvancedPricingRulesSyncsConfig(t *testing.T) {
 	setupAdvancedPricingOptionTest(t)
 
-	initialMode := `{"gpt-5":"advanced"}`
-	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(initialMode))
+	initialConfig := `{
+      "billing_mode": {
+        "gpt-5": "advanced"
+      },
+      "rules": {
+        "gpt-5": {
+          "rule_type": "media_task",
+          "display_name": "Persisted media",
+          "task_type": "image_generation",
+          "billing_unit": "task",
+          "note": "persisted media note",
+          "segments": [
+            {
+              "priority": 10,
+              "unit_price": 2.5
+            }
+          ]
+        }
+      }
+    }`
+	require.NoError(t, UpdateOption("AdvancedPricingConfig", initialConfig))
+
+	staleRuntimeConfig := `{
+      "billing_mode": {
+        "legacy-model": "per_request"
+      },
+      "rules": {
+        "legacy-model": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 10,
+              "input_price": 0.5
+            }
+          ]
+        }
+      }
+    }`
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingConfigByJSONString(staleRuntimeConfig))
 	syncAdvancedPricingOptionViews()
 
-	rulesValue := `{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}`
+	rulesValue := `{
+      "gpt-5": {
+        "rule_type": "text_segment",
+        "display_name": "Updated text",
+        "segment_basis": "token",
+        "billing_unit": "1K tokens",
+        "default_price": 3.3,
+        "note": "updated note",
+        "segments": [
+          {
+            "priority": 10,
+            "input_min": 0,
+            "input_max": 100,
+            "input_price": 1.2
+          }
+        ]
+      }
+    }`
 	err := UpdateOption("AdvancedPricingRules", rulesValue)
 	require.NoError(t, err)
 
-	expectedConfig := `{"billing_mode":{"gpt-5":"advanced"},"rules":{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}}`
+	expectedConfig := `{
+      "billing_mode": {
+        "gpt-5": "advanced"
+      },
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "display_name": "Updated text",
+          "segment_basis": "token",
+          "billing_unit": "1K tokens",
+          "default_price": 3.3,
+          "note": "updated note",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 100,
+              "input_price": 1.2
+            }
+          ]
+        }
+      }
+    }`
 	require.JSONEq(t, expectedConfig, common.OptionMap["AdvancedPricingConfig"])
 	require.JSONEq(t, expectedConfig, mustGetOptionValue(t, "AdvancedPricingConfig"))
-	require.JSONEq(t, initialMode, mustGetOptionValue(t, "AdvancedPricingMode"))
+	require.JSONEq(t, `{"gpt-5":"advanced"}`, mustGetOptionValue(t, "AdvancedPricingMode"))
 	require.JSONEq(t, rulesValue, mustGetOptionValue(t, "AdvancedPricingRules"))
 }
 
@@ -266,6 +423,45 @@ func TestLoadOptionsFromDatabasePrefersAdvancedPricingConfigOverLegacyRows(t *te
 	require.JSONEq(t, `{"gpt-5":{"rule_type":"text_segment","segments":[{"priority":10,"input_min":0,"input_max":100,"input_price":1.2}]}}`, ratio_setting.AdvancedPricingRules2JSONString())
 }
 
+func TestLoadOptionsFromDatabaseDoesNotReviveMissingLegacySiblingFromRuntimeState(t *testing.T) {
+	setupAdvancedPricingOptionTest(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingConfigByJSONString(`{
+      "billing_mode": {
+        "legacy-model": "per_request"
+      },
+      "rules": {
+        "legacy-model": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 10,
+              "input_price": 0.5
+            }
+          ]
+        }
+      }
+    }`))
+	syncAdvancedPricingOptionViews()
+
+	require.NoError(t, DB.Create(&Option{
+		Key:   "AdvancedPricingMode",
+		Value: `{"gpt-5":"advanced"}`,
+	}).Error)
+
+	common.OptionMap = make(map[string]string)
+	loadOptionsFromDatabase()
+
+	require.JSONEq(t, `{"gpt-5":"advanced"}`, common.OptionMap["AdvancedPricingMode"])
+	require.JSONEq(t, `{}`, common.OptionMap["AdvancedPricingRules"])
+	require.JSONEq(t, `{"billing_mode":{"gpt-5":"advanced"},"rules":{}}`, common.OptionMap["AdvancedPricingConfig"])
+	require.JSONEq(t, `{"gpt-5":"advanced"}`, ratio_setting.AdvancedPricingMode2JSONString())
+	require.JSONEq(t, `{}`, ratio_setting.AdvancedPricingRules2JSONString())
+	require.JSONEq(t, `{"billing_mode":{"gpt-5":"advanced"},"rules":{}}`, ratio_setting.AdvancedPricingConfig2JSONString())
+}
+
 func TestLoadOptionsFromDatabaseNormalizesLegacyAdvancedPricingRulesShell(t *testing.T) {
 	setupAdvancedPricingOptionTest(t)
 
@@ -278,7 +474,11 @@ func TestLoadOptionsFromDatabaseNormalizesLegacyAdvancedPricingRulesShell(t *tes
 		Value: `{
       "gpt-5": {
         "rule_type": "text_segment",
-        "display_name": "ignored shell field",
+        "display_name": "Text shell",
+        "segment_basis": "character",
+        "billing_unit": "1M chars",
+        "default_price": "9.9",
+        "note": "preserved note",
         "segments_text": "0-100: 1.2\n101-200: 2.4"
       }
     }`,
@@ -292,6 +492,11 @@ func TestLoadOptionsFromDatabaseNormalizesLegacyAdvancedPricingRulesShell(t *tes
 	expectedRules := `{
       "gpt-5": {
         "rule_type": "text_segment",
+        "display_name": "Text shell",
+        "segment_basis": "character",
+        "billing_unit": "1M chars",
+        "default_price": 9.9,
+        "note": "preserved note",
         "segments": [
           {
             "priority": 10,
@@ -315,6 +520,11 @@ func TestLoadOptionsFromDatabaseNormalizesLegacyAdvancedPricingRulesShell(t *tes
       "rules": {
         "gpt-5": {
           "rule_type": "text_segment",
+          "display_name": "Text shell",
+          "segment_basis": "character",
+          "billing_unit": "1M chars",
+          "default_price": 9.9,
+          "note": "preserved note",
           "segments": [
             {
               "priority": 10,

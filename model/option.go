@@ -42,12 +42,12 @@ func AllOption() ([]*Option, error) {
 	return options, err
 }
 
-func buildPersistedOptionEntries(key string, value string) ([]Option, error) {
+func buildPersistedOptionEntries(tx *gorm.DB, key string, value string) ([]Option, error) {
 	if !isAdvancedPricingOptionKey(key) {
 		return []Option{{Key: key, Value: value}}, nil
 	}
 
-	cfg, err := buildAdvancedPricingConfigForPersistence(key, value)
+	cfg, err := buildAdvancedPricingConfigForPersistence(tx, key, value)
 	if err != nil {
 		return nil, err
 	}
@@ -71,12 +71,16 @@ func buildPersistedOptionEntries(key string, value string) ([]Option, error) {
 	}, nil
 }
 
-func buildAdvancedPricingConfigForPersistence(key string, value string) (*ratio_setting.AdvancedPricingConfig, error) {
+func buildAdvancedPricingConfigForPersistence(tx *gorm.DB, key string, value string) (*ratio_setting.AdvancedPricingConfig, error) {
 	if key == "AdvancedPricingConfig" {
 		return ratio_setting.ParseAdvancedPricingConfig(value)
 	}
 
-	cfg, err := ratio_setting.ParseAdvancedPricingConfig(ratio_setting.AdvancedPricingConfig2JSONString())
+	optionValues, err := loadPersistedAdvancedPricingOptionValues(tx)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := buildAdvancedPricingConfigFromOptionValues(optionValues)
 	if err != nil {
 		return nil, err
 	}
@@ -102,6 +106,36 @@ func buildAdvancedPricingConfigForPersistence(key string, value string) (*ratio_
 	}
 
 	return cfg, nil
+}
+
+func loadPersistedAdvancedPricingOptionValues(tx *gorm.DB) (map[string]string, error) {
+	var options []Option
+	if err := tx.Where("key IN ?", []string{"AdvancedPricingConfig", "AdvancedPricingMode", "AdvancedPricingRules"}).Find(&options).Error; err != nil {
+		return nil, err
+	}
+
+	optionValues := make(map[string]string, len(options))
+	for _, option := range options {
+		optionValues[option.Key] = option.Value
+	}
+	return optionValues, nil
+}
+
+func buildAdvancedPricingConfigFromOptionValues(optionValues map[string]string) (*ratio_setting.AdvancedPricingConfig, error) {
+	if value, ok := optionValues["AdvancedPricingConfig"]; ok {
+		return ratio_setting.ParseAdvancedPricingConfig(value)
+	}
+
+	modeValue := "{}"
+	if value, ok := optionValues["AdvancedPricingMode"]; ok && strings.TrimSpace(value) != "" {
+		modeValue = value
+	}
+	rulesValue := "{}"
+	if value, ok := optionValues["AdvancedPricingRules"]; ok && strings.TrimSpace(value) != "" {
+		rulesValue = value
+	}
+
+	return ratio_setting.ParseAdvancedPricingConfig(`{"billing_mode":` + modeValue + `,"rules":` + rulesValue + `}`)
 }
 
 func saveOptionValue(tx *gorm.DB, option Option) error {
@@ -287,14 +321,18 @@ func loadAdvancedPricingOptions(optionValues map[string]string) {
 		return
 	}
 
-	for _, key := range []string{"AdvancedPricingMode", "AdvancedPricingRules"} {
-		value, ok := optionValues[key]
-		if !ok {
-			continue
-		}
-		if err := updateOptionMap(key, value); err != nil {
-			common.SysLog("failed to update option map: " + err.Error())
-		}
+	cfg, err := buildAdvancedPricingConfigFromOptionValues(optionValues)
+	if err != nil {
+		common.SysLog("failed to build advanced pricing config from database: " + err.Error())
+		return
+	}
+	configJSON, err := common.Marshal(cfg)
+	if err != nil {
+		common.SysLog("failed to marshal advanced pricing config: " + err.Error())
+		return
+	}
+	if err := updateOptionMap("AdvancedPricingConfig", string(configJSON)); err != nil {
+		common.SysLog("failed to update option map: " + err.Error())
 	}
 }
 
@@ -307,11 +345,13 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
-	optionsToPersist, err := buildPersistedOptionEntries(key, value)
-	if err != nil {
-		return err
-	}
+	optionsToPersist := make([]Option, 0, 3)
 	if err := DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		optionsToPersist, err = buildPersistedOptionEntries(tx, key, value)
+		if err != nil {
+			return err
+		}
 		for _, option := range optionsToPersist {
 			if err := saveOptionValue(tx, option); err != nil {
 				return err
@@ -322,6 +362,13 @@ func UpdateOption(key string, value string) error {
 		return err
 	}
 	// Update OptionMap
+	if isAdvancedPricingOptionKey(key) {
+		for _, option := range optionsToPersist {
+			if option.Key == "AdvancedPricingConfig" {
+				return updateOptionMap("AdvancedPricingConfig", option.Value)
+			}
+		}
+	}
 	return updateOptionMap(key, value)
 }
 
