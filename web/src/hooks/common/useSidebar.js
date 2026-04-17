@@ -21,6 +21,7 @@ import { useState, useEffect, useMemo, useContext, useRef } from 'react';
 import { StatusContext } from '../../context/Status';
 import { API } from '../../helpers';
 import { buildFallbackUserSidebarConfig } from './sidebarFallback';
+import { shouldUseStrictSidebarSnapshot } from './permissionAccess.js';
 import {
   buildFinalSidebarConfig,
   normalizeUserSidebarConfig,
@@ -160,7 +161,7 @@ export const useSidebar = () => {
         } else {
           config = rawSidebarModules;
         }
-        setStrictPermissionSnapshot(permissionsSidebarModules !== undefined);
+        setStrictPermissionSnapshot(shouldUseStrictSidebarSnapshot(responseData));
         setUserConfig(normalizeUserSidebarConfig(config));
       } else {
         // 褰撶敤鎴锋病鏈夐厤缃椂锛岀敓鎴愪竴涓熀浜庣鐞嗗憳閰嶇疆鐨勯粯璁ょ敤鎴烽厤缃?        // 杩欐牱鍙互纭繚鏉冮檺鎺у埗姝ｇ‘鐢熸晥

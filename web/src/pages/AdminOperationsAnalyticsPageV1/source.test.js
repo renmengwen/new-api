@@ -238,6 +238,7 @@ test('useOperationsAnalyticsData hook drives summary loading and export payload 
     hookSource,
     /params\.end_timestamp = serializeFixedUtc8DayTimestamp\([\s\S]*appliedFilters\.endDate,[\s\S]*'end',?[\s\S]*\);/,
   );
+  assert.match(hookSource, /params\.request_ts = Date\.now\(\);/);
   assert.match(
     hookSource,
     /payload\.start_timestamp = serializeFixedUtc8DayTimestamp\([\s\S]*filters\.startDate,[\s\S]*'start',?[\s\S]*\);/,

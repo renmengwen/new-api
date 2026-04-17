@@ -133,6 +133,8 @@ export const buildOperationsAnalyticsSummaryParams = (appliedFilters) => {
     params.username_keyword = appliedFilters.usernameKeyword;
   }
 
+  params.request_ts = Date.now();
+
   return params;
 };
 
