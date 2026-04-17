@@ -27,13 +27,52 @@ const source = fs.readFileSync(
 );
 
 test('advanced pricing state parses advanced mode and rules and derives searchable models', () => {
+  assert.match(
+    source,
+    /const \[enabledModelNames, setEnabledModelNames\] = useState\(\[\]\);/,
+  );
   assert.match(source, /AdvancedPricingMode:\s*parseOptionJSON\(options\.AdvancedPricingMode\)/);
   assert.match(source, /AdvancedPricingRules:\s*parseOptionJSON\(options\.AdvancedPricingRules\)/);
   assert.match(source, /ModelPrice:\s*parseOptionJSON\(options\.ModelPrice\)/);
   assert.match(source, /ModelRatio:\s*parseOptionJSON\(options\.ModelRatio\)/);
+  assert.match(source, /const res = await API\.get\('\/api\/channel\/models_enabled'\);/);
+  assert.match(source, /\.\.\.enabledModelNames,/);
   assert.match(source, /const \[searchText, setSearchText\] = useState\(''\);/);
   assert.match(source, /model\.name\.toLowerCase\(\)\.includes\(keyword\)/);
   assert.match(source, /const \[selectedModelName, setSelectedModelName\] = useState\(''\);/);
+});
+
+test('advanced pricing state treats launch model selection as a one-shot event instead of a sticky override', () => {
+  assert.match(source, /initialModelSelectionKey = 0,/);
+  assert.match(source, /const \[launchModelName, setLaunchModelName\] = useState\(''\);/);
+  assert.match(
+    source,
+    /useEffect\(\(\) => \{\s*if \(!initialModelSelectionKey\) \{\s*return;\s*\}\s*setLaunchModelName\(initialModelName \|\| ''\);/s,
+  );
+  assert.match(source, /if \(launchModelName\) \{\s*names\.add\(launchModelName\);/);
+  assert.match(source, /if \(launchModelName && nextModels\.some\(\(model\) => model\.name === launchModelName\)\) \{/);
+  assert.match(source, /setLaunchModelName\(''\);/);
+});
+
+test('advanced pricing state isolates rule-type specific fields when rebuilding drafts', () => {
+  assert.match(
+    source,
+    /const shouldPreserveTypeSpecificFields = normalized\.rule_type === ruleType;/,
+  );
+  assert.match(
+    source,
+    /display_name:\s*typeof normalized\.display_name === 'string' \? normalized\.display_name : ''/,
+  );
+  assert.match(
+    source,
+    /billing_unit:\s*shouldPreserveTypeSpecificFields[\s\S]*'task'/,
+  );
+  assert.match(
+    source,
+    /billing_unit:\s*shouldPreserveTypeSpecificFields[\s\S]*'1K tokens'/,
+  );
+  assert.doesNotMatch(source, /return \{\s*\.\.\.normalized,\s*task_type:/);
+  assert.doesNotMatch(source, /return \{\s*\.\.\.normalized,\s*segment_basis:/);
 });
 
 test('advanced pricing state exposes current rule type and a minimal save api for rule mode json', () => {

@@ -36,6 +36,7 @@ export default function AdvancedPricingRulesPage({
   options,
   refresh,
   initialModelName = '',
+  initialModelSelectionKey = 0,
 }) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
@@ -61,6 +62,7 @@ export default function AdvancedPricingRulesPage({
     refresh,
     t,
     initialModelName,
+    initialModelSelectionKey,
   });
 
   return (

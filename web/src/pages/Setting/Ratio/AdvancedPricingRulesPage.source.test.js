@@ -39,6 +39,11 @@ test('advanced pricing page uses the A layout and wires all shell components', (
 test('advanced pricing page supports both text segment and media task rule shells', () => {
   assert.match(source, /const RULE_TYPE_TEXT_SEGMENT = 'text_segment';/);
   assert.match(source, /const RULE_TYPE_MEDIA_TASK = 'media_task';/);
+  assert.match(source, /initialModelSelectionKey = 0,/);
+  assert.match(
+    source,
+    /useAdvancedPricingRulesState\(\{[\s\S]*initialModelName,[\s\S]*initialModelSelectionKey,[\s\S]*\}\)/,
+  );
   assert.match(source, /currentRuleType === RULE_TYPE_MEDIA_TASK \?/);
   assert.match(source, /<MediaTaskRuleEditor/);
   assert.match(source, /<TextSegmentRuleEditor/);

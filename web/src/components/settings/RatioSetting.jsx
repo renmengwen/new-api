@@ -34,6 +34,7 @@ const RatioSetting = () => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('visual');
   const [pendingAdvancedPricingModelName, setPendingAdvancedPricingModelName] = useState('');
+  const [advancedPricingInitialModelSelectionKey, setAdvancedPricingInitialModelSelectionKey] = useState(0);
 
   let [inputs, setInputs] = useState({
     ModelPrice: '',
@@ -102,6 +103,7 @@ const RatioSetting = () => {
 
   const handleOpenAdvancedPricingRules = (model) => {
     setPendingAdvancedPricingModelName(model?.name || '');
+    setAdvancedPricingInitialModelSelectionKey((previous) => previous + 1);
     setActiveTab('advanced_pricing');
   };
 
@@ -128,6 +130,7 @@ const RatioSetting = () => {
               options={inputs}
               refresh={onRefresh}
               initialModelName={pendingAdvancedPricingModelName}
+              initialModelSelectionKey={advancedPricingInitialModelSelectionKey}
             />
           </Tabs.TabPane>
           <Tabs.TabPane tab={t('未设置价格模型')} itemKey='unset_models'>

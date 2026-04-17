@@ -35,7 +35,19 @@ test('ratio setting adds an advanced pricing rules tab with stable item key', ()
 test('ratio setting keeps tab state so price settings can open the advanced pricing page directly', () => {
   assert.match(source, /const \[activeTab, setActiveTab\] = useState\('visual'\);/);
   assert.match(source, /const \[pendingAdvancedPricingModelName, setPendingAdvancedPricingModelName\] = useState\(''\);/);
+  assert.match(
+    source,
+    /const \[advancedPricingInitialModelSelectionKey, setAdvancedPricingInitialModelSelectionKey\] = useState\(0\);/,
+  );
   assert.match(source, /<Tabs type='card' activeKey=\{activeTab\} onChange=\{handleTabChange\}>/);
   assert.match(source, /onOpenAdvancedPricingRules=\{handleOpenAdvancedPricingRules\}/);
+  assert.match(
+    source,
+    /setAdvancedPricingInitialModelSelectionKey\(\(previous\) => previous \+ 1\);/,
+  );
   assert.match(source, /initialModelName=\{pendingAdvancedPricingModelName\}/);
+  assert.match(
+    source,
+    /initialModelSelectionKey=\{advancedPricingInitialModelSelectionKey\}/,
+  );
 });

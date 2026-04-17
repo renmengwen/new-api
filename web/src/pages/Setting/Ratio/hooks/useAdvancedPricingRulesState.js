@@ -75,50 +75,63 @@ const cloneRule = (rule) => {
 };
 
 const buildRuleDraft = (ruleType, rule = {}) => {
-  const base = cloneRule(rule);
-  const normalized = {
-    ...base,
-    rule_type: ruleType,
+  const normalized = cloneRule(rule);
+  const shouldPreserveTypeSpecificFields = normalized.rule_type === ruleType;
+  const sharedFields = {
+    display_name:
+      typeof normalized.display_name === 'string' ? normalized.display_name : '',
+    note: typeof normalized.note === 'string' ? normalized.note : '',
   };
 
   if (ruleType === RULE_TYPE_MEDIA_TASK) {
     return {
-      ...normalized,
+      ...sharedFields,
+      rule_type: ruleType,
       task_type:
-        typeof normalized.task_type === 'string' && normalized.task_type
+        shouldPreserveTypeSpecificFields &&
+        typeof normalized.task_type === 'string' &&
+        normalized.task_type
           ? normalized.task_type
           : 'image_generation',
       billing_unit:
-        typeof normalized.billing_unit === 'string' && normalized.billing_unit
+        shouldPreserveTypeSpecificFields &&
+        typeof normalized.billing_unit === 'string' &&
+        normalized.billing_unit
           ? normalized.billing_unit
           : 'task',
-      unit_price: hasValue(normalized.unit_price)
+      unit_price:
+        shouldPreserveTypeSpecificFields && hasValue(normalized.unit_price)
         ? String(normalized.unit_price)
         : '',
-      note: typeof normalized.note === 'string' ? normalized.note : '',
     };
   }
 
   return {
-    ...normalized,
+    ...sharedFields,
+    rule_type: ruleType,
     segment_basis:
-      typeof normalized.segment_basis === 'string' && normalized.segment_basis
+      shouldPreserveTypeSpecificFields &&
+      typeof normalized.segment_basis === 'string' &&
+      normalized.segment_basis
         ? normalized.segment_basis
         : 'token',
     billing_unit:
-      typeof normalized.billing_unit === 'string' && normalized.billing_unit
+      shouldPreserveTypeSpecificFields &&
+      typeof normalized.billing_unit === 'string' &&
+      normalized.billing_unit
         ? normalized.billing_unit
         : '1K tokens',
-    default_price: hasValue(normalized.default_price)
+    default_price:
+      shouldPreserveTypeSpecificFields && hasValue(normalized.default_price)
       ? String(normalized.default_price)
       : '',
     segments_text:
+      shouldPreserveTypeSpecificFields &&
       typeof normalized.segments_text === 'string'
         ? normalized.segments_text
-        : Array.isArray(normalized.segments)
+        : shouldPreserveTypeSpecificFields && Array.isArray(normalized.segments)
           ? normalized.segments.map(formatSegmentLine).filter(Boolean).join('\n')
           : '',
-    note: typeof normalized.note === 'string' ? normalized.note : '',
   };
 };
 
@@ -149,13 +162,62 @@ export default function useAdvancedPricingRulesState({
   refresh,
   t,
   initialModelName = '',
+  initialModelSelectionKey = 0,
 }) {
+  const [enabledModelNames, setEnabledModelNames] = useState([]);
+  const [launchModelName, setLaunchModelName] = useState('');
   const [models, setModels] = useState([]);
   const [searchText, setSearchText] = useState('');
   const [selectedModelName, setSelectedModelName] = useState('');
   const [draftRules, setDraftRules] = useState({});
   const [draftBillingModes, setDraftBillingModes] = useState({});
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadEnabledModels = async () => {
+      try {
+        const res = await API.get('/api/channel/models_enabled');
+        const { success, message, data } = res?.data || {};
+        if (!active) {
+          return;
+        }
+        if (success) {
+          setEnabledModelNames(Array.isArray(data) ? data.filter(Boolean) : []);
+          return;
+        }
+        showError(message || 'Failed to load enabled models');
+        setEnabledModelNames([]);
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        console.error('Failed to load enabled models:', error);
+        showError('Failed to load enabled models');
+        setEnabledModelNames([]);
+      }
+    };
+
+    loadEnabledModels();
+
+    return () => {
+      active = false;
+    };
+  }, [t]);
+
+  useEffect(() => {
+    if (!initialModelSelectionKey) {
+      return;
+    }
+    setLaunchModelName(initialModelName || '');
+  }, [initialModelName, initialModelSelectionKey]);
+
+  useEffect(() => {
+    if (launchModelName && selectedModelName === launchModelName) {
+      setLaunchModelName('');
+    }
+  }, [launchModelName, selectedModelName]);
 
   useEffect(() => {
     const sourceMaps = {
@@ -166,14 +228,15 @@ export default function useAdvancedPricingRulesState({
     };
 
     const names = new Set([
+      ...enabledModelNames,
       ...Object.keys(sourceMaps.AdvancedPricingMode),
       ...Object.keys(sourceMaps.AdvancedPricingRules),
       ...Object.keys(sourceMaps.ModelPrice),
       ...Object.keys(sourceMaps.ModelRatio),
     ]);
 
-    if (initialModelName) {
-      names.add(initialModelName);
+    if (launchModelName) {
+      names.add(launchModelName);
     }
 
     const nextModels = Array.from(names)
@@ -198,15 +261,15 @@ export default function useAdvancedPricingRulesState({
       }, {}),
     );
     setSelectedModelName((previous) => {
-      if (initialModelName && nextModels.some((model) => model.name === initialModelName)) {
-        return initialModelName;
+      if (launchModelName && nextModels.some((model) => model.name === launchModelName)) {
+        return launchModelName;
       }
       if (previous && nextModels.some((model) => model.name === previous)) {
         return previous;
       }
       return nextModels[0]?.name || '';
     });
-  }, [initialModelName, options]);
+  }, [enabledModelNames, launchModelName, options]);
 
   const filteredModels = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
