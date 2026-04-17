@@ -259,8 +259,8 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 // RecalculateTaskQuota 通用的异步差额结算。
 // actualQuota 是任务完成后的实际应扣额度，与预扣额度 (task.Quota) 做差额结算。
 // reason 用于日志记录（例如 "token重算" 或 "adaptor调整"）。
-func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string) {
-	if actualQuota <= 0 {
+func recalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string, allowZero bool) {
+	if actualQuota < 0 || (!allowZero && actualQuota == 0) {
 		return
 	}
 	preConsumedQuota := task.Quota
@@ -332,6 +332,10 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 // RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。
 // 当任务成功且返回了 totalTokens 时，根据模型倍率和分组倍率重新计算实际扣费额度，
 // 与预扣费的差额进行补扣或退还。支持钱包和订阅计费来源。
+func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string) {
+	recalculateTaskQuota(ctx, task, actualQuota, reason, false)
+}
+
 func appendTaskBillingModeFromReason(other map[string]interface{}, billingContext *model.TaskBillingContext, reason string) {
 	if other == nil || billingContext == nil || billingContext.BillingMode == "" {
 		return
@@ -358,9 +362,7 @@ func resolveTaskTokenBillingRatios(task *model.Task) (taskTokenBillingRatios, bo
 		return taskTokenBillingRatios{}, false
 	}
 	if bc := task.PrivateData.BillingContext; bc != nil &&
-		bc.BillingMode == types.BillingModePerToken &&
-		bc.ModelRatio > 0 &&
-		bc.GroupRatio > 0 {
+		bc.BillingMode == types.BillingModePerToken {
 		return taskTokenBillingRatios{
 			modelRatio:         bc.ModelRatio,
 			groupRatio:         bc.GroupRatio,
@@ -424,5 +426,5 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	if ratios.fromBillingContext {
 		resolvedReason = fmt.Sprintf("%s, billing_mode=%s", resolvedReason, ratios.billingMode)
 	}
-	RecalculateTaskQuota(ctx, task, resolvedActualQuota, resolvedReason)
+	recalculateTaskQuota(ctx, task, resolvedActualQuota, resolvedReason, true)
 }
