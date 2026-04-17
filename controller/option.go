@@ -333,7 +333,12 @@ func UpdateOption(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	createSettingOptionAuditLog(c, option, oldValue, option.Value.(string))
+	afterValue := option.Value.(string)
+	switch option.Key {
+	case "AdvancedPricingConfig", "AdvancedPricingMode", "AdvancedPricingRules":
+		afterValue = getSettingOptionCurrentValue(option.Key)
+	}
+	createSettingOptionAuditLog(c, option, oldValue, afterValue)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

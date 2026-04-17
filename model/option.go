@@ -125,10 +125,21 @@ func buildAdvancedPricingConfigFromOptionValues(optionValues map[string]string) 
 	if value, ok := optionValues["AdvancedPricingConfig"]; ok && strings.TrimSpace(value) != "" {
 		cfg, err := ratio_setting.ParseAdvancedPricingConfig(value)
 		if err == nil {
+			if !isAdvancedPricingConfigEmpty(cfg) {
+				return cfg, nil
+			}
+			legacyCfg, legacyErr := buildAdvancedPricingConfigFromLegacyOptionValues(optionValues)
+			if legacyErr == nil && !isAdvancedPricingConfigEmpty(legacyCfg) {
+				return legacyCfg, nil
+			}
 			return cfg, nil
 		}
 	}
 
+	return buildAdvancedPricingConfigFromLegacyOptionValues(optionValues)
+}
+
+func buildAdvancedPricingConfigFromLegacyOptionValues(optionValues map[string]string) (*ratio_setting.AdvancedPricingConfig, error) {
 	modeValue := "{}"
 	if value, ok := optionValues["AdvancedPricingMode"]; ok && strings.TrimSpace(value) != "" {
 		modeValue = value
@@ -139,6 +150,10 @@ func buildAdvancedPricingConfigFromOptionValues(optionValues map[string]string) 
 	}
 
 	return ratio_setting.ParseAdvancedPricingConfig(`{"billing_mode":` + modeValue + `,"rules":` + rulesValue + `}`)
+}
+
+func isAdvancedPricingConfigEmpty(cfg *ratio_setting.AdvancedPricingConfig) bool {
+	return len(cfg.ModelModes) == 0 && len(cfg.ModelRules) == 0
 }
 
 func saveOptionValue(tx *gorm.DB, option Option) error {

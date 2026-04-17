@@ -609,3 +609,48 @@ func TestLoadOptionsFromDatabaseNormalizesLegacyAdvancedPricingRulesShell(t *tes
 	require.JSONEq(t, expectedRules, ratio_setting.AdvancedPricingRules2JSONString())
 	require.JSONEq(t, expectedConfig, ratio_setting.AdvancedPricingConfig2JSONString())
 }
+
+func TestBuildAdvancedPricingConfigFromOptionValuesFallsBackWhenCanonicalEmptyObject(t *testing.T) {
+	optionValues := map[string]string{
+		"AdvancedPricingConfig": "{}",
+		"AdvancedPricingMode":   `{"gpt-5":"advanced"}`,
+		"AdvancedPricingRules": `{
+      "gpt-5": {
+        "rule_type": "text_segment",
+        "segments": [
+          {
+            "priority": 10,
+            "input_min": 0,
+            "input_max": 100,
+            "input_price": 1.2
+          }
+        ]
+      }
+    }`,
+	}
+
+	cfg, err := buildAdvancedPricingConfigFromOptionValues(optionValues)
+	require.NoError(t, err)
+
+	jsonBytes, err := common.Marshal(cfg)
+	require.NoError(t, err)
+
+	require.JSONEq(t, `{
+      "billing_mode": {
+        "gpt-5": "advanced"
+      },
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 100,
+              "input_price": 1.2
+            }
+          ]
+        }
+      }
+    }`, string(jsonBytes))
+}
