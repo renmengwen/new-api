@@ -91,7 +91,7 @@ type advancedTextRuntimeContext struct {
 
 func GetExplicitBillingMode(modelName string) (BillingMode, bool) {
 	modelName = FormatMatchingModelName(modelName)
-	return advancedPricingModeMap.Get(modelName)
+	return getAdvancedPricingModeMapValue(modelName)
 }
 
 func GetLegacyBillingMode(modelName string) BillingMode {
@@ -115,7 +115,7 @@ func ResolveAdvancedPriceData(modelName string, ctx AdvancedPricingRuntimeContex
 		return types.PriceData{}, false, nil
 	}
 
-	ruleSet, ok := advancedPricingRulesMap.Get(modelName)
+	ruleSet, ok := GetAdvancedPricingRuleSet(modelName)
 	if !ok {
 		return types.PriceData{}, false, nil
 	}
@@ -362,6 +362,31 @@ func valueFromAdvancedIntPtr(v *int) int {
 		return 0
 	}
 	return *v
+}
+
+func GetAdvancedPricingRuleSet(modelName string) (AdvancedPricingRuleSet, bool) {
+	modelName = FormatMatchingModelName(modelName)
+	return getAdvancedPricingRuleSetMapValue(modelName)
+}
+
+func getAdvancedPricingModeMapValue(modelName string) (BillingMode, bool) {
+	if mode, ok := advancedPricingModeMap.Get(modelName); ok {
+		return mode, true
+	}
+	if strings.HasSuffix(modelName, CompactModelSuffix) {
+		return advancedPricingModeMap.Get(CompactWildcardModelKey)
+	}
+	return "", false
+}
+
+func getAdvancedPricingRuleSetMapValue(modelName string) (AdvancedPricingRuleSet, bool) {
+	if ruleSet, ok := advancedPricingRulesMap.Get(modelName); ok {
+		return ruleSet, true
+	}
+	if strings.HasSuffix(modelName, CompactModelSuffix) {
+		return advancedPricingRulesMap.Get(CompactWildcardModelKey)
+	}
+	return AdvancedPricingRuleSet{}, false
 }
 
 func AdvancedPricingMode2JSONString() string {

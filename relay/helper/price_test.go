@@ -224,6 +224,116 @@ func TestModelPriceHelperReturnsErrorWhenExplicitPerRequestModeHasNoModelPrice(t
 	require.ErrorContains(t, err, "model_price")
 }
 
+func TestModelPriceHelperUsesWildcardExplicitPerTokenModeForCompactModel(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"*-openai-compact":6}`))
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"*-openai-compact":0.25}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"foo-openai-compact":2.5}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"*-openai-compact":"per_token"}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "foo-openai-compact",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{MaxTokens: 512})
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModePerToken, priceData.BillingMode)
+	require.False(t, priceData.UsePrice)
+	require.Equal(t, 0.0, priceData.ModelPrice)
+	require.Equal(t, 6.0, priceData.ModelRatio)
+}
+
+func TestModelPriceHelperUsesWildcardAdvancedRuleForCompactModel(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"foo-openai-compact":7}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"foo-openai-compact":4}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"*-openai-compact":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"*-openai-compact": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000,
+					"output_min": 0,
+					"output_max": 4096,
+					"service_tier": "priority",
+					"input_price": 4,
+					"output_price": 12
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "foo-openai-compact",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request: &dto.OpenAIResponsesRequest{
+			ServiceTier: "priority",
+		},
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 256, &types.TokenCountMeta{MaxTokens: 2048})
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, 2.0, priceData.ModelRatio)
+	require.Equal(t, 3.0, priceData.CompletionRatio)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+}
+
+func TestContainPriceOrRatioReturnsTrueForAdvancedOnlyModel(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{}`))
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"advanced-only-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"advanced-only-model": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000,
+					"input_price": 4
+				}
+			]
+		}
+	}`))
+
+	require.True(t, ContainPriceOrRatio("advanced-only-model"))
+}
+
+func TestContainPriceOrRatioRespectsExplicitModesAndWildcardModes(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"explicit-per-token-model":6,"*-openai-compact":5}`))
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"explicit-per-request-model":0.25}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{
+		"explicit-per-token-model":"per_token",
+		"explicit-per-request-model":"per_request",
+		"missing-price-model":"per_request",
+		"missing-ratio-model":"per_token",
+		"*-openai-compact":"per_token"
+	}`))
+
+	require.True(t, ContainPriceOrRatio("explicit-per-token-model"))
+	require.True(t, ContainPriceOrRatio("explicit-per-request-model"))
+	require.True(t, ContainPriceOrRatio("foo-openai-compact"))
+	require.False(t, ContainPriceOrRatio("missing-price-model"))
+	require.False(t, ContainPriceOrRatio("missing-ratio-model"))
+}
+
 func TestValidateAdvancedPricingRulesRejectsUnsupportedCacheConditions(t *testing.T) {
 	err := ratio_setting.ValidateAdvancedPricingRulesJSONString(`{
 		"cache-condition-model": {

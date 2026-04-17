@@ -232,6 +232,22 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 }
 
 func ContainPriceOrRatio(modelName string) bool {
+	if mode, ok := ratio_setting.GetExplicitBillingMode(modelName); ok {
+		switch mode {
+		case ratio_setting.BillingModeAdvanced:
+			_, ok := ratio_setting.GetAdvancedPricingRuleSet(modelName)
+			return ok
+		case ratio_setting.BillingModePerRequest:
+			_, ok := ratio_setting.GetModelPrice(modelName, false)
+			return ok
+		case ratio_setting.BillingModePerToken:
+			_, ok, _ := getConfiguredModelRatio(modelName)
+			return ok
+		default:
+			return false
+		}
+	}
+
 	_, ok := ratio_setting.GetModelPrice(modelName, false)
 	if ok {
 		return true
