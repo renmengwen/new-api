@@ -248,6 +248,13 @@ const withDraftRoundTripState = (draftRule, roundTripState) => {
   };
 };
 
+const shouldRetainDraftRoundTripState = (roundTripState, ruleType) =>
+  Boolean(
+    roundTripState &&
+      roundTripState.originalRule.rule_type === ruleType &&
+      roundTripState.originalShell.rule_type === ruleType,
+  );
+
 const buildSharedDraftFields = (normalized, firstSegment) => ({
   display_name:
     typeof normalized.display_name === 'string' ? normalized.display_name : '',
@@ -324,7 +331,7 @@ export const buildRuleDraft = (ruleType, rule = {}) => {
       ? buildMediaTaskDraftFields(normalized, shouldPreserveTypeSpecificFields)
       : buildTextSegmentDraftFields(normalized, shouldPreserveTypeSpecificFields);
 
-  if (roundTripState) {
+  if (shouldRetainDraftRoundTripState(roundTripState, ruleType)) {
     return withDraftRoundTripState(nextDraft, roundTripState);
   }
 

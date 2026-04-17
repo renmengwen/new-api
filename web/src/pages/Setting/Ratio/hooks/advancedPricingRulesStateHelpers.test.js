@@ -528,6 +528,116 @@ test('advanced pricing helpers preserve incompatible media canonical fields duri
   });
 });
 
+test('advanced pricing helpers drop text preserve-canonical state when switching to media task', async () => {
+  const { buildAdvancedPricingSavePayload, buildRuleDraft } = await loadHelpers();
+
+  assert.equal(typeof buildAdvancedPricingSavePayload, 'function');
+  assert.equal(typeof buildRuleDraft, 'function');
+
+  const canonicalRule = {
+    rule_type: 'text_segment',
+    display_name: 'Tiered text',
+    segment_basis: 'token',
+    billing_unit: '1M tokens',
+    default_price: 6.6,
+    note: 'server note',
+    segments: [
+      {
+        priority: 10,
+        input_min: 0,
+        input_max: 100,
+        input_price: 1.2,
+        output_price: 2.4,
+        service_tier: 'premium',
+      },
+    ],
+  };
+
+  const switchedDraft = {
+    ...buildRuleDraft('media_task', buildRuleDraft('text_segment', canonicalRule)),
+    unit_price: '12.3',
+  };
+
+  assert.equal('__roundtrip_mode' in switchedDraft, false);
+  assert.equal('__original_canonical_rule' in switchedDraft, false);
+  assert.equal('__original_shell_rule' in switchedDraft, false);
+
+  const payload = buildAdvancedPricingSavePayload({
+    modelName: 'alpha',
+    billingMode: 'advanced',
+    draftRule: switchedDraft,
+  });
+
+  assert.deepEqual(payload.normalizedRule, {
+    rule_type: 'media_task',
+    display_name: 'Tiered text',
+    task_type: 'image_generation',
+    billing_unit: 'task',
+    note: 'server note',
+    segments: [
+      {
+        priority: 10,
+        unit_price: 12.3,
+        remark: 'server note',
+      },
+    ],
+  });
+});
+
+test('advanced pricing helpers drop media preserve-canonical state when switching to text segment', async () => {
+  const { buildAdvancedPricingSavePayload, buildRuleDraft } = await loadHelpers();
+
+  assert.equal(typeof buildAdvancedPricingSavePayload, 'function');
+  assert.equal(typeof buildRuleDraft, 'function');
+
+  const canonicalRule = {
+    rule_type: 'media_task',
+    display_name: 'Tiered media',
+    task_type: 'video_generation',
+    billing_unit: 'minute',
+    note: 'server note',
+    segments: [
+      {
+        priority: 10,
+        unit_price: 8.8,
+        resolution: '1080p',
+        draft: false,
+      },
+    ],
+  };
+
+  const switchedDraft = {
+    ...buildRuleDraft('text_segment', buildRuleDraft('media_task', canonicalRule)),
+    segments_text: '0-100: 4.5',
+  };
+
+  assert.equal('__roundtrip_mode' in switchedDraft, false);
+  assert.equal('__original_canonical_rule' in switchedDraft, false);
+  assert.equal('__original_shell_rule' in switchedDraft, false);
+
+  const payload = buildAdvancedPricingSavePayload({
+    modelName: 'beta',
+    billingMode: 'advanced',
+    draftRule: switchedDraft,
+  });
+
+  assert.deepEqual(payload.normalizedRule, {
+    rule_type: 'text_segment',
+    display_name: 'Tiered media',
+    segment_basis: 'token',
+    billing_unit: '1K tokens',
+    note: 'server note',
+    segments: [
+      {
+        priority: 10,
+        input_min: 0,
+        input_max: 100,
+        input_price: 4.5,
+      },
+    ],
+  });
+});
+
 test('advanced pricing helpers reject shell edits for incompatible text canonical rules', async () => {
   const { buildAdvancedPricingSavePayload, buildRuleDraft } = await loadHelpers();
 
