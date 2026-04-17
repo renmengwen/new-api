@@ -366,9 +366,11 @@ test('UserAnalyticsTab defines sortable analytics columns plus top cost/token ch
   assert.match(userTabSource, /dataIndex:\s*'username'/);
   assert.match(userTabSource, /dataIndex:\s*'call_count'/);
   assert.match(userTabSource, /dataIndex:\s*'model_count'/);
+  assert.match(userTabSource, /dataIndex:\s*'total_tokens'/);
   assert.match(userTabSource, /dataIndex:\s*'total_cost'/);
   assert.match(userTabSource, /dataIndex:\s*'last_called_at'/);
   assert.match(userTabSource, /sorter:\s*true/);
+  assert.match(userTabSource, /title:\s*t\('[^']*Token[^']*'\),[\s\S]*?dataIndex:\s*'total_tokens'[\s\S]*?render:\s*\(value\)\s*=>\s*renderNumber\(value \|\| 0\)/);
   assert.match(userTabSource, /renderQuota\(value/);
   assert.match(userTabSource, /timestamp2string\(value\)/);
   assert.match(userTabSource, /const sortBy = sortState\?\.sortBy \|\| '';/);

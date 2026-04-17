@@ -1301,11 +1301,45 @@ func TestExportAdminAnalyticsUsersScopesAgentRows(t *testing.T) {
 	rows, err := workbook.GetRows("users")
 	require.NoError(t, err)
 	require.Len(t, rows, 4)
-	require.Equal(t, []string{"User ID", "Username", "Call Count", "Model Count", "Total Cost", "Last Called At"}, rows[0])
+	require.Equal(t, []string{"User ID", "Username", "Call Count", "Model Count", "Total Tokens", "Total Cost", "Last Called At"}, rows[0])
 	require.Equal(t, fixture.Agent.Username, rows[1][1])
 	require.Equal(t, fixture.OwnedB.Username, rows[2][1])
 	require.Equal(t, fixture.Other.Username, rows[3][1])
-	require.Equal(t, "$0.01", rows[3][4])
+	require.Equal(t, "10", rows[3][4])
+	require.Equal(t, "$0.01", rows[3][5])
+}
+
+func TestExportAdminAnalyticsUsersIncludesTotalTokens(t *testing.T) {
+	db := setupAdminAnalyticsTestDB(t)
+	fixture := seedAdminAnalyticsFixture(t, db)
+	grantPermissionActions(t, db, fixture.Admin.Id, model.UserTypeAdmin,
+		permissionGrant{Resource: service.ResourceAnalyticsManagement, Action: service.ActionRead},
+		permissionGrant{Resource: service.ResourceAnalyticsManagement, Action: service.ActionExport},
+	)
+
+	ctx, recorder := newAdminAnalyticsContext(t, http.MethodPost, "/api/admin/analytics/export", map[string]any{
+		"view":               "users",
+		"date_preset":        "last7days",
+		"start_timestamp":    fixture.Last7Start,
+		"end_timestamp":      fixture.Now,
+		"sort_by":            "total_tokens",
+		"sort_order":         "desc",
+		"quota_display_type": "TOKENS",
+		"limit":              10,
+	}, fixture.Admin.Id, fixture.Admin.Role)
+	ExportAdminAnalytics(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	rows, err := workbook.GetRows("users")
+	require.NoError(t, err)
+	require.Len(t, rows, 5)
+	require.Equal(t, []string{"User ID", "Username", "Call Count", "Model Count", "Total Tokens", "Total Cost", "Last Called At"}, rows[0])
+	require.Equal(t, fixture.OwnedA.Username, rows[1][1])
+	require.Equal(t, "30", rows[1][4])
+	require.Equal(t, "100", rows[1][5])
+	require.NotEmpty(t, rows[1][6])
 }
 
 func TestNormalizeAdminAnalyticsQueryLocksPresetWindow(t *testing.T) {

@@ -156,7 +156,7 @@ func buildAdminAnalyticsExportFile(view string, query dto.AdminAnalyticsQuery, q
 		return service.BuildExcelFile(service.ExcelFileSpec{
 			FileNamePrefix: "operations_analytics_users",
 			SheetName:      "users",
-			Headers:        []string{"User ID", "Username", "Call Count", "Model Count", "Total Cost", "Last Called At"},
+			Headers:        []string{"User ID", "Username", "Call Count", "Model Count", "Total Tokens", "Total Cost", "Last Called At"},
 			Rows:           buildAdminAnalyticsUserExportRows(items, quotaDisplayType),
 		})
 	case dto.AdminAnalyticsViewDaily:
@@ -199,6 +199,7 @@ func buildAdminAnalyticsUserExportRows(items []dto.AdminAnalyticsUserItem, quota
 			item.Username,
 			strconv.FormatInt(item.CallCount, 10),
 			strconv.FormatInt(item.ModelCount, 10),
+			strconv.FormatInt(item.TotalTokens, 10),
 			formatAdminAnalyticsCost(item.TotalCost, quotaDisplayType),
 			formatExportTimestamp(item.LastCalledAt),
 		})

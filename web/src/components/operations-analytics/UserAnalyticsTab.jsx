@@ -32,6 +32,7 @@ const SORT_FIELD_MAP = {
   username: 'username',
   call_count: 'call_count',
   model_count: 'model_count',
+  total_tokens: 'total_tokens',
   total_cost: 'total_cost',
   last_called_at: 'last_called_at',
 };
@@ -266,6 +267,14 @@ const UserAnalyticsTab = ({
         render: (value) => renderNumber(value || 0),
       },
       {
+        title: t('Token 总量'),
+        dataIndex: 'total_tokens',
+        sorter: true,
+        sortOrder: sortBy === 'total_tokens' ? tableSortOrder : false,
+        width: 140,
+        render: (value) => renderNumber(value || 0),
+      },
+      {
         title: t('总费用'),
         dataIndex: 'total_cost',
         sorter: true,
@@ -367,7 +376,7 @@ const UserAnalyticsTab = ({
           dataSource={items}
           loading={loading}
           pagination={false}
-          scroll={{ x: 980 }}
+          scroll={{ x: 1120 }}
           onChange={({ sorter }) => {
             const nextSortBy = sorter?.sortOrder
               ? SORT_FIELD_MAP[sorter?.dataIndex] || sorter?.dataIndex || ''
