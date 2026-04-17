@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -312,6 +313,23 @@ func TestRefundTaskQuota_NoToken(t *testing.T) {
 	assert.Equal(t, model.LogTypeRefund, log.Type)
 }
 
+func TestTaskBillingOther_IncludesAdvancedSnapshot(t *testing.T) {
+	task := makeTask(1, 1, 1000, 0, BillingSourceWallet, 0)
+	snapshot := &types.AdvancedRuleSnapshot{
+		RuleType:     types.AdvancedRuleTypeTextSegment,
+		MatchSummary: "input_tokens<=1000",
+	}
+	task.PrivateData.BillingContext.BillingMode = types.BillingModeAdvanced
+	task.PrivateData.BillingContext.AdvancedRuleType = types.AdvancedRuleTypeTextSegment
+	task.PrivateData.BillingContext.AdvancedRuleSnapshot = snapshot
+
+	other := taskBillingOther(task)
+
+	assert.Equal(t, string(types.BillingModeAdvanced), other["billing_mode"])
+	assert.Equal(t, string(types.AdvancedRuleTypeTextSegment), other["advanced_rule_type"])
+	assert.Same(t, snapshot, other["advanced_rule"])
+}
+
 // ===========================================================================
 // RecalculateTaskQuota tests
 // ===========================================================================
@@ -450,6 +468,42 @@ func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+}
+
+func TestRecalculate_AdvancedBillingIncludesSnapshotAndSummary(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 15, 15, 15
+	const initQuota, preConsumed = 10000, 2000
+	const actualQuota = 3000
+	const tokenRemain = 5000
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-advanced-recalc", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.BillingMode = types.BillingModeAdvanced
+	task.PrivateData.BillingContext.AdvancedRuleType = types.AdvancedRuleTypeTextSegment
+	task.PrivateData.BillingContext.AdvancedRuleSnapshot = &types.AdvancedRuleSnapshot{
+		RuleType:     types.AdvancedRuleTypeTextSegment,
+		MatchSummary: "input_tokens<=1000",
+	}
+
+	RecalculateTaskQuota(ctx, task, actualQuota, "adaptor adjustment")
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Contains(t, log.Content, "advanced")
+	assert.Contains(t, log.Content, string(types.AdvancedRuleTypeTextSegment))
+	assert.Contains(t, log.Content, "input_tokens<=1000")
+
+	var other map[string]interface{}
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.Equal(t, string(types.BillingModeAdvanced), other["billing_mode"])
+	assert.Equal(t, string(types.AdvancedRuleTypeTextSegment), other["advanced_rule_type"])
+	assert.Contains(t, other, "advanced_rule")
 }
 
 // ===========================================================================

@@ -45,6 +45,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	if relayInfo.ReasoningEffort != "" {
 		other["reasoning_effort"] = relayInfo.ReasoningEffort
 	}
+	appendAdvancedPriceDataInfo(other, relayInfo.PriceData)
 	if relayInfo.IsModelMapped {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = relayInfo.UpstreamModelName
@@ -78,6 +79,19 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
 	return other
+}
+
+func appendAdvancedPriceDataInfo(other map[string]interface{}, priceData types.PriceData) {
+	if other == nil || priceData.BillingMode != types.BillingModeAdvanced {
+		return
+	}
+	other["billing_mode"] = string(priceData.BillingMode)
+	if priceData.AdvancedRuleType != "" {
+		other["advanced_rule_type"] = string(priceData.AdvancedRuleType)
+	}
+	if priceData.AdvancedRuleSnapshot != nil {
+		other["advanced_rule"] = priceData.AdvancedRuleSnapshot
+	}
 }
 
 func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {

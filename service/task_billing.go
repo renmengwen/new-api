@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -39,6 +40,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	other["request_path"] = c.Request.URL.Path
 	other["model_price"] = info.PriceData.ModelPrice
 	other["group_ratio"] = info.PriceData.GroupRatioInfo.GroupRatio
+	appendTaskPriceDataAdvancedInfo(other, info.PriceData)
 	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
 		other["user_group_ratio"] = info.PriceData.GroupRatioInfo.GroupSpecialRatio
 	}
@@ -132,6 +134,7 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 	if bc := task.PrivateData.BillingContext; bc != nil {
 		other["model_price"] = bc.ModelPrice
 		other["group_ratio"] = bc.GroupRatio
+		appendTaskBillingContextAdvancedInfo(other, bc)
 		if len(bc.OtherRatios) > 0 {
 			for k, v := range bc.OtherRatios {
 				other[k] = v
@@ -144,6 +147,53 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 		other["upstream_model_name"] = props.UpstreamModelName
 	}
 	return other
+}
+
+func appendTaskPriceDataAdvancedInfo(other map[string]interface{}, priceData types.PriceData) {
+	if other == nil || priceData.BillingMode != types.BillingModeAdvanced {
+		return
+	}
+	other["billing_mode"] = string(priceData.BillingMode)
+	if priceData.AdvancedRuleType != "" {
+		other["advanced_rule_type"] = string(priceData.AdvancedRuleType)
+	}
+	if priceData.AdvancedRuleSnapshot != nil {
+		other["advanced_rule"] = priceData.AdvancedRuleSnapshot
+	}
+}
+
+func appendTaskBillingContextAdvancedInfo(other map[string]interface{}, billingContext *model.TaskBillingContext) {
+	if other == nil || billingContext == nil || billingContext.BillingMode == "" {
+		return
+	}
+	other["billing_mode"] = string(billingContext.BillingMode)
+	if billingContext.AdvancedRuleType != "" {
+		other["advanced_rule_type"] = string(billingContext.AdvancedRuleType)
+	}
+	if billingContext.AdvancedRuleSnapshot != nil {
+		other["advanced_rule"] = billingContext.AdvancedRuleSnapshot
+	}
+}
+
+func taskBillingAdvancedSummary(billingContext *model.TaskBillingContext) string {
+	if billingContext == nil || billingContext.BillingMode != types.BillingModeAdvanced || billingContext.AdvancedRuleSnapshot == nil {
+		return ""
+	}
+	ruleType := billingContext.AdvancedRuleType
+	if ruleType == "" {
+		ruleType = billingContext.AdvancedRuleSnapshot.RuleType
+	}
+	matchSummary := billingContext.AdvancedRuleSnapshot.MatchSummary
+	switch {
+	case ruleType != "" && matchSummary != "":
+		return fmt.Sprintf("advanced rule %s: %s", ruleType, matchSummary)
+	case ruleType != "":
+		return fmt.Sprintf("advanced rule %s", ruleType)
+	case matchSummary != "":
+		return fmt.Sprintf("advanced rule: %s", matchSummary)
+	default:
+		return "advanced rule"
+	}
 }
 
 // taskModelName 从 BillingContext 或 Properties 中获取模型名称。
@@ -257,10 +307,18 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	//other["reason"] = reason
 	other["pre_consumed_quota"] = preConsumedQuota
 	other["actual_quota"] = actualQuota
+	logContent := reason
+	if summary := taskBillingAdvancedSummary(task.PrivateData.BillingContext); summary != "" {
+		if logContent == "" {
+			logContent = summary
+		} else {
+			logContent = fmt.Sprintf("%s | %s", reason, summary)
+		}
+	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:    task.UserId,
 		LogType:   logType,
-		Content:   reason,
+		Content:   logContent,
 		ChannelId: task.ChannelId,
 		ModelName: taskModelName(task),
 		Quota:     logQuota,
