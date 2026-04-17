@@ -43,11 +43,15 @@ func AllOption() ([]*Option, error) {
 }
 
 func buildPersistedOptionEntries(key string, value string) ([]Option, error) {
-	if key != "AdvancedPricingConfig" {
+	if !isAdvancedPricingOptionKey(key) {
 		return []Option{{Key: key, Value: value}}, nil
 	}
 
-	cfg, err := ratio_setting.ParseAdvancedPricingConfig(value)
+	cfg, err := buildAdvancedPricingConfigForPersistence(key, value)
+	if err != nil {
+		return nil, err
+	}
+	configJSON, err := common.Marshal(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -61,10 +65,43 @@ func buildPersistedOptionEntries(key string, value string) ([]Option, error) {
 	}
 
 	return []Option{
-		{Key: "AdvancedPricingConfig", Value: value},
+		{Key: "AdvancedPricingConfig", Value: string(configJSON)},
 		{Key: "AdvancedPricingMode", Value: string(modeJSON)},
 		{Key: "AdvancedPricingRules", Value: string(rulesJSON)},
 	}, nil
+}
+
+func buildAdvancedPricingConfigForPersistence(key string, value string) (*ratio_setting.AdvancedPricingConfig, error) {
+	if key == "AdvancedPricingConfig" {
+		return ratio_setting.ParseAdvancedPricingConfig(value)
+	}
+
+	cfg, err := ratio_setting.ParseAdvancedPricingConfig(ratio_setting.AdvancedPricingConfig2JSONString())
+	if err != nil {
+		return nil, err
+	}
+
+	partialValue := value
+	if strings.TrimSpace(partialValue) == "" {
+		partialValue = "{}"
+	}
+
+	switch key {
+	case "AdvancedPricingMode":
+		partialCfg, err := ratio_setting.ParseAdvancedPricingConfig(`{"billing_mode":` + partialValue + `}`)
+		if err != nil {
+			return nil, err
+		}
+		cfg.ModelModes = partialCfg.ModelModes
+	case "AdvancedPricingRules":
+		partialCfg, err := ratio_setting.ParseAdvancedPricingConfig(`{"rules":` + partialValue + `}`)
+		if err != nil {
+			return nil, err
+		}
+		cfg.ModelRules = partialCfg.ModelRules
+	}
+
+	return cfg, nil
 }
 
 func saveOptionValue(tx *gorm.DB, option Option) error {
