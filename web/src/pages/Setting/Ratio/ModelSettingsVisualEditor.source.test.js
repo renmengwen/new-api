@@ -33,3 +33,8 @@ test('price settings wrapper loads channel-enabled models and disables manual mo
   assert.match(source, /allowAddModel=\{false\}/);
   assert.match(source, /setEnabledModels\(\[\]\)/);
 });
+
+test('price settings wrapper routes edit advanced rules into the advanced pricing tab flow', () => {
+  assert.match(source, /onEditAdvancedRules=\{\(model\) => props\.onOpenAdvancedPricingRules\?\.\(model\)\}/);
+  assert.doesNotMatch(source, /onEditAdvancedRules=\{\(model\)\s*=>\s*showError\(/);
+});

@@ -81,13 +81,7 @@ export default function ModelSettingsVisualEditor(props) {
       candidateModelNames={enabledModels}
       filterMode='enabled'
       allowAddModel={false}
-      onEditAdvancedRules={(model) =>
-        showError(
-          t('高级规则页面将在后续任务中接入，当前模型：{{model}}。', {
-            model: model?.name || '-',
-          }),
-        )
-      }
+      onEditAdvancedRules={(model) => props.onOpenAdvancedPricingRules?.(model)}
       listDescription={t(
         '此页面仅显示渠道管理中已配置且已启用的模型，未启用模型的价格配置会继续保留。',
       )}
