@@ -415,6 +415,10 @@ test('DailyAnalyticsTab formats the daily cost chart as quota values', () => {
   );
   assert.match(
     dailyTabSource,
+    /const costSpec = useMemo\([\s\S]*?tooltip:\s*\{[\s\S]*?dimension:\s*\{[\s\S]*?visible:\s*false/,
+  );
+  assert.match(
+    dailyTabSource,
     /const costSpec = useMemo\([\s\S]*?axes:\s*\[[\s\S]*?orient:\s*'left'[\s\S]*?label:\s*\{[\s\S]*?formatMethod:\s*\(value\)\s*=>\s*renderQuota\(Number\(value \|\| 0\)\)/,
   );
 });
