@@ -240,10 +240,6 @@ func applyOperationsAnalyticsUserSort(query *gorm.DB, sortBy string, sortOrder s
 		return query.Order("model_count " + normalizeOperationsAnalyticsSortOrder(sortOrder)).
 			Order("last_called_at DESC").
 			Order("user_id ASC")
-	case "total_tokens":
-		return query.Order("total_tokens " + normalizeOperationsAnalyticsSortOrder(sortOrder)).
-			Order("last_called_at DESC").
-			Order("user_id ASC")
 	case "total_cost":
 		return query.Order("total_cost " + normalizeOperationsAnalyticsSortOrder(sortOrder)).
 			Order("last_called_at DESC").
