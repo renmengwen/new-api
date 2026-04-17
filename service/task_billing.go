@@ -304,6 +304,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	}
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
+	appendTaskBillingModeFromReason(other, task.PrivateData.BillingContext, reason)
 	//other["reason"] = reason
 	other["pre_consumed_quota"] = preConsumedQuota
 	other["actual_quota"] = actualQuota
@@ -331,21 +332,50 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 // RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。
 // 当任务成功且返回了 totalTokens 时，根据模型倍率和分组倍率重新计算实际扣费额度，
 // 与预扣费的差额进行补扣或退还。支持钱包和订阅计费来源。
-func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens int) {
-	if totalTokens <= 0 {
+func appendTaskBillingModeFromReason(other map[string]interface{}, billingContext *model.TaskBillingContext, reason string) {
+	if other == nil || billingContext == nil || billingContext.BillingMode == "" {
 		return
+	}
+	if _, exists := other["billing_mode"]; exists {
+		return
+	}
+	if !strings.Contains(reason, "billing_mode="+string(billingContext.BillingMode)) {
+		return
+	}
+	other["billing_mode"] = string(billingContext.BillingMode)
+}
+
+type taskTokenBillingRatios struct {
+	modelRatio         float64
+	groupRatio         float64
+	otherRatios        map[string]float64
+	billingMode        types.BillingMode
+	fromBillingContext bool
+}
+
+func resolveTaskTokenBillingRatios(task *model.Task) (taskTokenBillingRatios, bool) {
+	if task == nil {
+		return taskTokenBillingRatios{}, false
+	}
+	if bc := task.PrivateData.BillingContext; bc != nil &&
+		bc.BillingMode == types.BillingModePerToken &&
+		bc.ModelRatio > 0 &&
+		bc.GroupRatio > 0 {
+		return taskTokenBillingRatios{
+			modelRatio:         bc.ModelRatio,
+			groupRatio:         bc.GroupRatio,
+			otherRatios:        bc.OtherRatios,
+			billingMode:        bc.BillingMode,
+			fromBillingContext: true,
+		}, true
 	}
 
 	modelName := taskModelName(task)
-
-	// 获取模型价格和倍率
 	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
-	// 只有配置了倍率(非固定价格)时才按 token 重新计费
 	if !hasRatioSetting || modelRatio <= 0 {
-		return
+		return taskTokenBillingRatios{}, false
 	}
 
-	// 获取用户和组的倍率信息
 	group := task.Group
 	if group == "" {
 		user, err := model.GetUserById(task.UserId, false)
@@ -354,22 +384,45 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		}
 	}
 	if group == "" {
-		return
+		return taskTokenBillingRatios{}, false
 	}
 
 	groupRatio := ratio_setting.GetGroupRatio(group)
-	userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
-
-	var finalGroupRatio float64
-	if hasUserGroupRatio {
-		finalGroupRatio = userGroupRatio
-	} else {
-		finalGroupRatio = groupRatio
+	if userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group); hasUserGroupRatio {
+		groupRatio = userGroupRatio
 	}
 
-	// 计算实际应扣费额度: totalTokens * modelRatio * groupRatio
-	actualQuota := int(float64(totalTokens) * modelRatio * finalGroupRatio)
+	return taskTokenBillingRatios{
+		modelRatio:  modelRatio,
+		groupRatio:  groupRatio,
+		billingMode: types.BillingModePerToken,
+	}, true
+}
 
-	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f", totalTokens, modelRatio, finalGroupRatio)
-	RecalculateTaskQuota(ctx, task, actualQuota, reason)
+func calculateTaskQuotaByTokenRatios(totalTokens int, ratios taskTokenBillingRatios) int {
+	quota := float64(totalTokens) * ratios.modelRatio * ratios.groupRatio
+	for _, ratio := range ratios.otherRatios {
+		if ratio > 0 && ratio != 1.0 {
+			quota *= ratio
+		}
+	}
+	return int(quota)
+}
+
+func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens int) {
+	if totalTokens <= 0 {
+		return
+	}
+
+	ratios, ok := resolveTaskTokenBillingRatios(task)
+	if !ok {
+		return
+	}
+
+	resolvedActualQuota := calculateTaskQuotaByTokenRatios(totalTokens, ratios)
+	resolvedReason := fmt.Sprintf("token recalculation: tokens=%d, modelRatio=%.2f, groupRatio=%.2f", totalTokens, ratios.modelRatio, ratios.groupRatio)
+	if ratios.fromBillingContext {
+		resolvedReason = fmt.Sprintf("%s, billing_mode=%s", resolvedReason, ratios.billingMode)
+	}
+	RecalculateTaskQuota(ctx, task, resolvedActualQuota, resolvedReason)
 }
