@@ -33,71 +33,69 @@ test('advanced pricing state parses advanced mode and rules and derives searchab
   );
   assert.match(
     source,
-    /buildAdvancedPricingModels as buildDerivedAdvancedPricingModels/,
+    /buildAdvancedPricingState,/,
   );
   assert.match(
     source,
-    /buildAdvancedPricingDraftRules as mergeAdvancedPricingDraftRules/,
+    /buildRuleDraft,/,
   );
   assert.match(
     source,
-    /buildAdvancedPricingDraftBillingModes as mergeAdvancedPricingDraftBillingModes/,
+    /parseOptionJSON,/,
   );
+  assert.match(source, /reduceOptionsByKey,/);
+  assert.match(source, /RULE_TYPE_TEXT_SEGMENT,/);
   assert.match(source, /const res = await API\.get\('\/api\/channel\/models_enabled'\);/);
   assert.match(
     source,
-    /const nextModels = buildDerivedAdvancedPricingModels\(\{[\s\S]*options,[\s\S]*enabledModelNames,[\s\S]*launchModelName,[\s\S]*\}\);/s,
+    /const nextState = buildAdvancedPricingState\(\{[\s\S]*options,[\s\S]*enabledModelNames,[\s\S]*launchModelName,[\s\S]*previousDraftRules:[\s\S]*previousDraftBillingModes:[\s\S]*previousSelectedModelName:[\s\S]*\}\);/s,
   );
-  assert.match(
-    source,
-    /setDraftRules\(\(previous\) =>\s*mergeAdvancedPricingDraftRules\(\{[\s\S]*models: nextModels,[\s\S]*previousDraftRules: previous,[\s\S]*\}\),/s,
-  );
-  assert.match(
-    source,
-    /setDraftBillingModes\(\(previous\) =>\s*mergeAdvancedPricingDraftBillingModes\(\{[\s\S]*models: nextModels,[\s\S]*previousDraftBillingModes: previous,[\s\S]*\}\),/s,
-  );
+  assert.match(source, /setModels\(nextState\.models\);/);
+  assert.match(source, /setDraftRules\(nextState\.draftRules\);/);
+  assert.match(source, /setDraftBillingModes\(nextState\.draftBillingModes\);/);
+  assert.match(source, /setSelectedModelName\(nextState\.selectedModelName\);/);
   assert.match(source, /const \[searchText, setSearchText\] = useState\(''\);/);
   assert.match(source, /model\.name\.toLowerCase\(\)\.includes\(keyword\)/);
   assert.match(source, /const \[selectedModelName, setSelectedModelName\] = useState\(''\);/);
+  assert.doesNotMatch(source, /const parseOptionJSON =/);
+  assert.doesNotMatch(source, /const reduceOptionsByKey =/);
+  assert.doesNotMatch(source, /const buildRuleDraft =/);
+  assert.doesNotMatch(source, /const buildModelState =/);
+  assert.doesNotMatch(source, /const formatSegmentLine =/);
+  assert.doesNotMatch(source, /const cloneRule =/);
 });
 
 test('advanced pricing state treats launch model selection as a one-shot event instead of a sticky override', () => {
   assert.match(source, /initialModelSelectionKey = 0,/);
   assert.match(source, /const \[launchModelName, setLaunchModelName\] = useState\(''\);/);
+  assert.match(source, /const draftRulesRef = useRef\(\{\}\);/);
+  assert.match(source, /const draftBillingModesRef = useRef\(\{\}\);/);
+  assert.match(source, /const selectedModelNameRef = useRef\(''\);/);
   assert.match(
     source,
     /useEffect\(\(\) => \{\s*if \(!initialModelSelectionKey\) \{\s*return;\s*\}\s*setLaunchModelName\(initialModelName \|\| ''\);/s,
   );
-  assert.match(
-    source,
-    /resolveAdvancedPricingSelectedModelName as resolveDerivedSelectedModelName/,
-  );
-  assert.match(
-    source,
-    /return resolveDerivedSelectedModelName\(\{[\s\S]*models: nextModels,[\s\S]*launchModelName,[\s\S]*previousSelectedModelName: previous,[\s\S]*\}\);/s,
-  );
+  assert.match(source, /selectedModelNameRef\.current = selectedModelName;/);
   assert.match(source, /setLaunchModelName\(''\);/);
 });
 
-test('advanced pricing state isolates rule-type specific fields when rebuilding drafts', () => {
+test('advanced pricing state rebuilds editable rules through the shared draft helper', () => {
   assert.match(
     source,
-    /const shouldPreserveTypeSpecificFields = normalized\.rule_type === ruleType;/,
+    /const selectedRule = draftRules\[selectedModelName\] \|\| buildRuleDraft\(RULE_TYPE_TEXT_SEGMENT\);/,
   );
   assert.match(
     source,
-    /display_name:\s*typeof normalized\.display_name === 'string' \? normalized\.display_name : ''/,
+    /const nextDraftRules = \{\s*\.\.\.draftRulesRef\.current,\s*\[selectedModelName\]: buildRuleDraft\(ruleType, draftRulesRef\.current\[selectedModelName\]\),/s,
   );
   assert.match(
     source,
-    /billing_unit:\s*shouldPreserveTypeSpecificFields[\s\S]*'task'/,
+    /draftRulesRef\.current = nextDraftRules;\s*setDraftRules\(nextDraftRules\);/s,
   );
   assert.match(
     source,
-    /billing_unit:\s*shouldPreserveTypeSpecificFields[\s\S]*'1K tokens'/,
+    /const nextDraftRules = \{\s*\.\.\.draftRulesRef\.current,\s*\[selectedModelName\]: \{\s*\.\.\.buildRuleDraft\(currentRuleType, draftRulesRef\.current\[selectedModelName\]\),/s,
   );
-  assert.doesNotMatch(source, /return \{\s*\.\.\.normalized,\s*task_type:/);
-  assert.doesNotMatch(source, /return \{\s*\.\.\.normalized,\s*segment_basis:/);
 });
 
 test('advanced pricing state exposes current rule type and a minimal save api for rule mode json', () => {
@@ -105,6 +103,9 @@ test('advanced pricing state exposes current rule type and a minimal save api fo
   assert.match(source, /const currentBillingMode = selectedModel\?\.billingMode \|\| BILLING_MODE_PER_TOKEN;/);
   assert.match(source, /const saveSelectedRule = async \(\) => \{/);
   assert.match(source, /const latestOptionsRes = await API\.get\('\/api\/option\/'\);/);
+  assert.match(source, /const latestOptionsByKey = reduceOptionsByKey\(latestOptionsData\);/);
+  assert.match(source, /const nextModeMap = parseOptionJSON\(latestOptionsByKey\.AdvancedPricingMode\);/);
+  assert.match(source, /const nextRulesMap = parseOptionJSON\(latestOptionsByKey\.AdvancedPricingRules\);/);
   assert.match(source, /API\.put\('\/api\/option\/', \{\s*key: 'AdvancedPricingMode'/);
   assert.match(source, /API\.put\('\/api\/option\/', \{\s*key: 'AdvancedPricingRules'/);
 });

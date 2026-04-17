@@ -17,151 +17,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { API, showError, showSuccess } from '../../../../helpers';
+import { BILLING_MODE_PER_TOKEN } from './modelPricingEditorHelpers';
 import {
-  BILLING_MODE_PER_TOKEN,
-  hasValue,
-  resolveBillingMode,
-} from './modelPricingEditorHelpers';
-import {
-  buildAdvancedPricingDraftBillingModes as mergeAdvancedPricingDraftBillingModes,
-  buildAdvancedPricingDraftRules as mergeAdvancedPricingDraftRules,
-  buildAdvancedPricingModels as buildDerivedAdvancedPricingModels,
-  resolveAdvancedPricingSelectedModelName as resolveDerivedSelectedModelName,
+  RULE_TYPE_TEXT_SEGMENT,
+  buildAdvancedPricingState,
+  buildRuleDraft,
+  parseOptionJSON,
+  reduceOptionsByKey,
 } from './advancedPricingRulesStateHelpers';
-
-const RULE_TYPE_TEXT_SEGMENT = 'text_segment';
-const RULE_TYPE_MEDIA_TASK = 'media_task';
-
-const parseOptionJSON = (rawValue) => {
-  if (!rawValue || rawValue.trim() === '') {
-    return {};
-  }
-
-  try {
-    const parsed = JSON.parse(rawValue);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed
-      : {};
-  } catch (error) {
-    console.error('高级定价规则 JSON 解析失败:', error);
-    return {};
-  }
-};
-
-const reduceOptionsByKey = (items) =>
-  Array.isArray(items)
-    ? items.reduce((acc, item) => {
-        if (item?.key) {
-          acc[item.key] = item.value;
-        }
-        return acc;
-      }, {})
-    : {};
-
-const formatSegmentLine = (segment) => {
-  if (!segment || typeof segment !== 'object') {
-    return '';
-  }
-
-  const start = segment.start ?? segment.from ?? segment.min ?? '';
-  const end = segment.end ?? segment.to ?? segment.max ?? '';
-  const price = segment.price ?? segment.value ?? '';
-
-  return `${start}-${end}: ${price}`.trim();
-};
-
-const cloneRule = (rule) => {
-  if (!rule || typeof rule !== 'object' || Array.isArray(rule)) {
-    return {};
-  }
-  return JSON.parse(JSON.stringify(rule));
-};
-
-const buildRuleDraft = (ruleType, rule = {}) => {
-  const normalized = cloneRule(rule);
-  const shouldPreserveTypeSpecificFields = normalized.rule_type === ruleType;
-  const sharedFields = {
-    display_name:
-      typeof normalized.display_name === 'string' ? normalized.display_name : '',
-    note: typeof normalized.note === 'string' ? normalized.note : '',
-  };
-
-  if (ruleType === RULE_TYPE_MEDIA_TASK) {
-    return {
-      ...sharedFields,
-      rule_type: ruleType,
-      task_type:
-        shouldPreserveTypeSpecificFields &&
-        typeof normalized.task_type === 'string' &&
-        normalized.task_type
-          ? normalized.task_type
-          : 'image_generation',
-      billing_unit:
-        shouldPreserveTypeSpecificFields &&
-        typeof normalized.billing_unit === 'string' &&
-        normalized.billing_unit
-          ? normalized.billing_unit
-          : 'task',
-      unit_price:
-        shouldPreserveTypeSpecificFields && hasValue(normalized.unit_price)
-        ? String(normalized.unit_price)
-        : '',
-    };
-  }
-
-  return {
-    ...sharedFields,
-    rule_type: ruleType,
-    segment_basis:
-      shouldPreserveTypeSpecificFields &&
-      typeof normalized.segment_basis === 'string' &&
-      normalized.segment_basis
-        ? normalized.segment_basis
-        : 'token',
-    billing_unit:
-      shouldPreserveTypeSpecificFields &&
-      typeof normalized.billing_unit === 'string' &&
-      normalized.billing_unit
-        ? normalized.billing_unit
-        : '1K tokens',
-    default_price:
-      shouldPreserveTypeSpecificFields && hasValue(normalized.default_price)
-      ? String(normalized.default_price)
-      : '',
-    segments_text:
-      shouldPreserveTypeSpecificFields &&
-      typeof normalized.segments_text === 'string'
-        ? normalized.segments_text
-        : shouldPreserveTypeSpecificFields && Array.isArray(normalized.segments)
-          ? normalized.segments.map(formatSegmentLine).filter(Boolean).join('\n')
-          : '',
-  };
-};
-
-const buildModelState = (name, sourceMaps) => {
-  const rawRule = sourceMaps.AdvancedPricingRules[name];
-  const advancedRuleType =
-    typeof rawRule?.rule_type === 'string' ? rawRule.rule_type : '';
-  const billingModeState = resolveBillingMode({
-    explicitMode: sourceMaps.AdvancedPricingMode[name],
-    fixedPrice: sourceMaps.ModelPrice[name],
-    advancedRuleType,
-  });
-
-  return {
-    name,
-    billingMode: billingModeState.billingMode,
-    explicitBillingMode: billingModeState.explicitBillingMode,
-    hasExplicitBillingMode: billingModeState.hasExplicitBillingMode,
-    advancedRuleType,
-    rule: cloneRule(rawRule),
-    hasBasePricing:
-      hasValue(sourceMaps.ModelPrice[name]) || hasValue(sourceMaps.ModelRatio[name]),
-  };
-};
 
 export default function useAdvancedPricingRulesState({
   options,
@@ -178,6 +44,21 @@ export default function useAdvancedPricingRulesState({
   const [draftRules, setDraftRules] = useState({});
   const [draftBillingModes, setDraftBillingModes] = useState({});
   const [saving, setSaving] = useState(false);
+  const draftRulesRef = useRef({});
+  const draftBillingModesRef = useRef({});
+  const selectedModelNameRef = useRef('');
+
+  useEffect(() => {
+    draftRulesRef.current = draftRules;
+  }, [draftRules]);
+
+  useEffect(() => {
+    draftBillingModesRef.current = draftBillingModes;
+  }, [draftBillingModes]);
+
+  useEffect(() => {
+    selectedModelNameRef.current = selectedModelName;
+  }, [selectedModelName]);
 
   useEffect(() => {
     let active = true;
@@ -226,32 +107,23 @@ export default function useAdvancedPricingRulesState({
   }, [launchModelName, selectedModelName]);
 
   useEffect(() => {
-    const nextModels = buildDerivedAdvancedPricingModels({
+    const nextState = buildAdvancedPricingState({
       options,
       enabledModelNames,
       launchModelName,
+      previousDraftRules: draftRulesRef.current,
+      previousDraftBillingModes: draftBillingModesRef.current,
+      previousSelectedModelName: selectedModelNameRef.current,
     });
 
-    setModels(nextModels);
-    setDraftRules((previous) =>
-      mergeAdvancedPricingDraftRules({
-        models: nextModels,
-        previousDraftRules: previous,
-      }),
-    );
-    setDraftBillingModes((previous) =>
-      mergeAdvancedPricingDraftBillingModes({
-        models: nextModels,
-        previousDraftBillingModes: previous,
-      }),
-    );
-    setSelectedModelName((previous) => {
-      return resolveDerivedSelectedModelName({
-        models: nextModels,
-        launchModelName,
-        previousSelectedModelName: previous,
-      });
-    });
+    draftRulesRef.current = nextState.draftRules;
+    draftBillingModesRef.current = nextState.draftBillingModes;
+    selectedModelNameRef.current = nextState.selectedModelName;
+
+    setModels(nextState.models);
+    setDraftRules(nextState.draftRules);
+    setDraftBillingModes(nextState.draftBillingModes);
+    setSelectedModelName(nextState.selectedModelName);
   }, [enabledModelNames, launchModelName, options]);
 
   const filteredModels = useMemo(() => {
@@ -270,12 +142,10 @@ export default function useAdvancedPricingRulesState({
     [models, selectedModelName],
   );
 
-  const selectedRule =
-    draftRules[selectedModelName] || buildRuleDraft(RULE_TYPE_TEXT_SEGMENT);
+  const selectedRule = draftRules[selectedModelName] || buildRuleDraft(RULE_TYPE_TEXT_SEGMENT);
   const currentRuleType = selectedRule.rule_type || RULE_TYPE_TEXT_SEGMENT;
   const currentBillingMode = selectedModel?.billingMode || BILLING_MODE_PER_TOKEN;
-  const draftBillingMode =
-    draftBillingModes[selectedModelName] || currentBillingMode;
+  const draftBillingMode = draftBillingModes[selectedModelName] || currentBillingMode;
 
   const previewPayload = selectedModel
     ? {
@@ -293,10 +163,13 @@ export default function useAdvancedPricingRulesState({
       return;
     }
 
-    setDraftRules((previous) => ({
-      ...previous,
-      [selectedModelName]: buildRuleDraft(ruleType, previous[selectedModelName]),
-    }));
+    const nextDraftRules = {
+      ...draftRulesRef.current,
+      [selectedModelName]: buildRuleDraft(ruleType, draftRulesRef.current[selectedModelName]),
+    };
+
+    draftRulesRef.current = nextDraftRules;
+    setDraftRules(nextDraftRules);
   };
 
   const updateSelectedRuleField = (field, value) => {
@@ -304,13 +177,16 @@ export default function useAdvancedPricingRulesState({
       return;
     }
 
-    setDraftRules((previous) => ({
-      ...previous,
+    const nextDraftRules = {
+      ...draftRulesRef.current,
       [selectedModelName]: {
-        ...buildRuleDraft(currentRuleType, previous[selectedModelName]),
+        ...buildRuleDraft(currentRuleType, draftRulesRef.current[selectedModelName]),
         [field]: value,
       },
-    }));
+    };
+
+    draftRulesRef.current = nextDraftRules;
+    setDraftRules(nextDraftRules);
   };
 
   const updateSelectedBillingMode = (billingMode) => {
@@ -318,10 +194,13 @@ export default function useAdvancedPricingRulesState({
       return;
     }
 
-    setDraftBillingModes((previous) => ({
-      ...previous,
+    const nextDraftBillingModes = {
+      ...draftBillingModesRef.current,
       [selectedModelName]: billingMode,
-    }));
+    };
+
+    draftBillingModesRef.current = nextDraftBillingModes;
+    setDraftBillingModes(nextDraftBillingModes);
   };
 
   const saveSelectedRule = async () => {
