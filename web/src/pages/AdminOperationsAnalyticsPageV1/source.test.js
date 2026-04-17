@@ -149,6 +149,16 @@ test('SummaryCards component exposes four summary cards and only shows natural-w
   assert.match(summaryCardsSource, /自然周同比 -/);
 });
 
+test('SummaryCards component adds the fifth total-token card with wow support and Semi icons', () => {
+  assert.ok(summaryCardsSource, 'SummaryCards.jsx should exist');
+  assert.equal((summaryCardsSource.match(/title:\s*t\('/g) || []).length, 5);
+  assert.match(summaryCardsSource, /总 Token/);
+  assert.match(summaryCardsSource, /formatSummaryValue\(summary\.total_tokens\)/);
+  assert.match(summaryCardsSource, /summary\.wow\?\.total_tokens/);
+  assert.match(summaryCardsSource, /@douyinfe\/semi-icons/);
+  assert.equal((summaryCardsSource.match(/\bicon:\s*</g) || []).length, 5);
+});
+
 test('AnalyticsToolbar component exposes three date presets plus reset apply export and custom date controls', () => {
   assert.ok(analyticsToolbarSource, 'AnalyticsToolbar.jsx should exist');
   assert.match(analyticsToolbarSource, /今日/);
