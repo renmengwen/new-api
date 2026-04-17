@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"gorm.io/gorm"
 )
 
 type Option struct {
@@ -39,6 +40,40 @@ func AllOption() ([]*Option, error) {
 	var err error
 	err = DB.Find(&options).Error
 	return options, err
+}
+
+func buildPersistedOptionEntries(key string, value string) ([]Option, error) {
+	if key != "AdvancedPricingConfig" {
+		return []Option{{Key: key, Value: value}}, nil
+	}
+
+	cfg, err := ratio_setting.ParseAdvancedPricingConfig(value)
+	if err != nil {
+		return nil, err
+	}
+	modeJSON, err := common.Marshal(cfg.ModelModes)
+	if err != nil {
+		return nil, err
+	}
+	rulesJSON, err := common.Marshal(cfg.ModelRules)
+	if err != nil {
+		return nil, err
+	}
+
+	return []Option{
+		{Key: "AdvancedPricingConfig", Value: value},
+		{Key: "AdvancedPricingMode", Value: string(modeJSON)},
+		{Key: "AdvancedPricingRules", Value: string(rulesJSON)},
+	}, nil
+}
+
+func saveOptionValue(tx *gorm.DB, option Option) error {
+	current := Option{Key: option.Key}
+	if err := tx.FirstOrCreate(&current, Option{Key: option.Key}).Error; err != nil {
+		return err
+	}
+	current.Value = option.Value
+	return tx.Save(&current).Error
 }
 
 func InitOptionMap() {
@@ -193,9 +228,34 @@ func InitOptionMap() {
 
 func loadOptionsFromDatabase() {
 	options, _ := AllOption()
+	advancedPricingOptions := make(map[string]string, 3)
 	for _, option := range options {
+		if isAdvancedPricingOptionKey(option.Key) {
+			advancedPricingOptions[option.Key] = option.Value
+			continue
+		}
 		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
+			common.SysLog("failed to update option map: " + err.Error())
+		}
+	}
+	loadAdvancedPricingOptions(advancedPricingOptions)
+}
+
+func loadAdvancedPricingOptions(optionValues map[string]string) {
+	if value, ok := optionValues["AdvancedPricingConfig"]; ok {
+		if err := updateOptionMap("AdvancedPricingConfig", value); err != nil {
+			common.SysLog("failed to update option map: " + err.Error())
+		}
+		return
+	}
+
+	for _, key := range []string{"AdvancedPricingMode", "AdvancedPricingRules"} {
+		value, ok := optionValues[key]
+		if !ok {
+			continue
+		}
+		if err := updateOptionMap(key, value); err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
 		}
 	}
@@ -210,19 +270,18 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
-	// Save to database first
-	option := Option{
-		Key: key,
-	}
-	// https://gorm.io/docs/update.html#Save-All-Fields
-	if err := DB.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
+	optionsToPersist, err := buildPersistedOptionEntries(key, value)
+	if err != nil {
 		return err
 	}
-	option.Value = value
-	// Save is a combination function.
-	// If save value does not contain primary key, it will execute Create,
-	// otherwise it will execute Update (with all fields).
-	if err := DB.Save(&option).Error; err != nil {
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		for _, option := range optionsToPersist {
+			if err := saveOptionValue(tx, option); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 	// Update OptionMap
