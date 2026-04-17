@@ -111,7 +111,7 @@ func GetOperationsAnalyticsUsers(query dto.AdminAnalyticsQuery, pageInfo *common
 			"COALESCE(NULLIF(MAX(analytics_users.username), ''), COALESCE(MAX(logs.username), '')) AS username, " +
 			"COUNT(*) AS call_count, " +
 			"COUNT(DISTINCT NULLIF(logs.model_name, '')) AS model_count, " +
-			"COALESCE(SUM(logs.prompt_tokens + logs.completion_tokens), 0) AS total_tokens, " +
+			operationsAnalyticsTotalTokensExpr() + " AS total_tokens, " +
 			"COALESCE(SUM(logs.quota), 0) AS total_cost, " +
 			"COALESCE(MAX(logs.created_at), 0) AS last_called_at",
 	).Group("logs.user_id")
@@ -321,12 +321,16 @@ func scanOperationsAnalyticsSummary(query *gorm.DB) (operationsAnalyticsSummaryR
 	row := operationsAnalyticsSummaryRow{}
 	err := query.Select(
 		"COUNT(*) AS total_calls, " +
-			"COALESCE(SUM(logs.prompt_tokens + logs.completion_tokens), 0) AS total_tokens, " +
+			operationsAnalyticsTotalTokensExpr() + " AS total_tokens, " +
 			"COALESCE(SUM(logs.quota), 0) AS total_cost, " +
 			"COUNT(DISTINCT logs.user_id) AS active_users, " +
 			"COUNT(DISTINCT NULLIF(logs.model_name, '')) AS active_models",
 	).Scan(&row).Error
 	return row, err
+}
+
+func operationsAnalyticsTotalTokensExpr() string {
+	return "COALESCE(SUM(logs.prompt_tokens), 0) + COALESCE(SUM(logs.completion_tokens), 0)"
 }
 
 func normalizeOperationsAnalyticsPageInfo(pageInfo *common.PageInfo) *common.PageInfo {
