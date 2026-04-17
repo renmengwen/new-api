@@ -109,6 +109,8 @@ test('advanced pricing state keeps existing drafts while appending defaults for 
       ...initialState.draftBillingModes,
       alpha: 'per_request',
     },
+    preserveDraftRuleModelNames: new Set(['alpha']),
+    preserveDraftBillingModeModelNames: new Set(['alpha']),
   });
 
   assert.equal(nextState.draftRules.alpha.display_name, 'Alpha local draft');
@@ -116,6 +118,52 @@ test('advanced pricing state keeps existing drafts while appending defaults for 
   assert.equal(nextState.draftBillingModes.alpha, 'per_request');
   assert.deepEqual(nextState.draftRules.beta, buildRuleDraft('text_segment', {}));
   assert.equal(nextState.draftBillingModes.beta, 'per_token');
+});
+
+test('advanced pricing state rebuilds bootstrap defaults from server options when the model was not edited', async () => {
+  const { buildAdvancedPricingState } = await loadHelpers();
+
+  assert.equal(typeof buildAdvancedPricingState, 'function');
+
+  const bootstrapState = buildAdvancedPricingState({
+    options: createOptions(),
+    enabledModelNames: ['alpha'],
+  });
+
+  assert.deepEqual(bootstrapState.draftRules.alpha, {
+    display_name: '',
+    note: '',
+    rule_type: 'text_segment',
+    segment_basis: 'token',
+    billing_unit: '1K tokens',
+    default_price: '',
+    segments_text: '',
+  });
+  assert.equal(bootstrapState.draftBillingModes.alpha, 'per_token');
+
+  const hydratedState = buildAdvancedPricingState({
+    options: createOptions({
+      AdvancedPricingMode: JSON.stringify({
+        alpha: 'advanced',
+      }),
+      AdvancedPricingRules: JSON.stringify({
+        alpha: {
+          rule_type: 'text_segment',
+          display_name: 'Alpha server',
+          note: 'hydrated from server',
+          default_price: 6,
+        },
+      }),
+    }),
+    enabledModelNames: ['alpha'],
+    previousDraftRules: bootstrapState.draftRules,
+    previousDraftBillingModes: bootstrapState.draftBillingModes,
+  });
+
+  assert.equal(hydratedState.draftRules.alpha.display_name, 'Alpha server');
+  assert.equal(hydratedState.draftRules.alpha.note, 'hydrated from server');
+  assert.equal(hydratedState.draftRules.alpha.default_price, '6');
+  assert.equal(hydratedState.draftBillingModes.alpha, 'advanced');
 });
 
 test('buildRuleDraft clears fields from the other rule type when switching modes', async () => {

@@ -184,13 +184,35 @@ export const buildAdvancedPricingModels = ({
     .sort((a, b) => a.name.localeCompare(b.name));
 };
 
+const shouldPreservePreviousValue = (preserveModelNames, modelName) => {
+  if (!modelName || !preserveModelNames) {
+    return false;
+  }
+
+  if (preserveModelNames instanceof Set) {
+    return preserveModelNames.has(modelName);
+  }
+
+  if (Array.isArray(preserveModelNames)) {
+    return preserveModelNames.includes(modelName);
+  }
+
+  if (typeof preserveModelNames === 'object') {
+    return Boolean(preserveModelNames[modelName]);
+  }
+
+  return false;
+};
+
 export const buildAdvancedPricingDraftRules = ({
   models = [],
   previousDraftRules = {},
+  preserveDraftRuleModelNames = null,
 }) =>
   models.reduce((acc, model) => {
     const previousDraft = previousDraftRules[model.name];
     acc[model.name] =
+      shouldPreservePreviousValue(preserveDraftRuleModelNames, model.name) &&
       previousDraft && typeof previousDraft === 'object' && !Array.isArray(previousDraft)
         ? cloneRule(previousDraft)
         : buildRuleDraft(model.advancedRuleType || RULE_TYPE_TEXT_SEGMENT, model.rule);
@@ -200,9 +222,14 @@ export const buildAdvancedPricingDraftRules = ({
 export const buildAdvancedPricingDraftBillingModes = ({
   models = [],
   previousDraftBillingModes = {},
+  preserveDraftBillingModeModelNames = null,
 }) =>
   models.reduce((acc, model) => {
     acc[model.name] =
+      shouldPreservePreviousValue(
+        preserveDraftBillingModeModelNames,
+        model.name,
+      ) &&
       typeof previousDraftBillingModes[model.name] === 'string'
         ? previousDraftBillingModes[model.name]
         : model.billingMode;
@@ -233,6 +260,8 @@ export const buildAdvancedPricingState = ({
   previousDraftRules = {},
   previousDraftBillingModes = {},
   previousSelectedModelName = '',
+  preserveDraftRuleModelNames = null,
+  preserveDraftBillingModeModelNames = null,
 }) => {
   const models = buildAdvancedPricingModels({
     options,
@@ -245,10 +274,12 @@ export const buildAdvancedPricingState = ({
     draftRules: buildAdvancedPricingDraftRules({
       models,
       previousDraftRules,
+      preserveDraftRuleModelNames,
     }),
     draftBillingModes: buildAdvancedPricingDraftBillingModes({
       models,
       previousDraftBillingModes,
+      preserveDraftBillingModeModelNames,
     }),
     selectedModelName: resolveAdvancedPricingSelectedModelName({
       models,

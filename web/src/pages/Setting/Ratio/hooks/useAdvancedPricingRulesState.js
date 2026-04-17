@@ -46,6 +46,8 @@ export default function useAdvancedPricingRulesState({
   const [saving, setSaving] = useState(false);
   const draftRulesRef = useRef({});
   const draftBillingModesRef = useRef({});
+  const dirtyRuleModelNamesRef = useRef(new Set());
+  const dirtyBillingModeModelNamesRef = useRef(new Set());
   const selectedModelNameRef = useRef('');
 
   useEffect(() => {
@@ -114,6 +116,8 @@ export default function useAdvancedPricingRulesState({
       previousDraftRules: draftRulesRef.current,
       previousDraftBillingModes: draftBillingModesRef.current,
       previousSelectedModelName: selectedModelNameRef.current,
+      preserveDraftRuleModelNames: dirtyRuleModelNamesRef.current,
+      preserveDraftBillingModeModelNames: dirtyBillingModeModelNamesRef.current,
     });
 
     draftRulesRef.current = nextState.draftRules;
@@ -163,6 +167,8 @@ export default function useAdvancedPricingRulesState({
       return;
     }
 
+    dirtyRuleModelNamesRef.current.add(selectedModelName);
+
     const nextDraftRules = {
       ...draftRulesRef.current,
       [selectedModelName]: buildRuleDraft(ruleType, draftRulesRef.current[selectedModelName]),
@@ -176,6 +182,8 @@ export default function useAdvancedPricingRulesState({
     if (!selectedModelName) {
       return;
     }
+
+    dirtyRuleModelNamesRef.current.add(selectedModelName);
 
     const nextDraftRules = {
       ...draftRulesRef.current,
@@ -193,6 +201,8 @@ export default function useAdvancedPricingRulesState({
     if (!selectedModelName) {
       return;
     }
+
+    dirtyBillingModeModelNamesRef.current.add(selectedModelName);
 
     const nextDraftBillingModes = {
       ...draftBillingModesRef.current,
@@ -248,6 +258,8 @@ export default function useAdvancedPricingRulesState({
 
       showSuccess(t('高级定价规则已保存'));
       await refresh();
+      dirtyRuleModelNamesRef.current.delete(selectedModel.name);
+      dirtyBillingModeModelNamesRef.current.delete(selectedModel.name);
       return true;
     } catch (error) {
       console.error('保存高级定价规则失败:', error);

@@ -70,12 +70,19 @@ test('advanced pricing state treats launch model selection as a one-shot event i
   assert.match(source, /const \[launchModelName, setLaunchModelName\] = useState\(''\);/);
   assert.match(source, /const draftRulesRef = useRef\(\{\}\);/);
   assert.match(source, /const draftBillingModesRef = useRef\(\{\}\);/);
+  assert.match(source, /const dirtyRuleModelNamesRef = useRef\(new Set\(\)\);/);
+  assert.match(source, /const dirtyBillingModeModelNamesRef = useRef\(new Set\(\)\);/);
   assert.match(source, /const selectedModelNameRef = useRef\(''\);/);
   assert.match(
     source,
     /useEffect\(\(\) => \{\s*if \(!initialModelSelectionKey\) \{\s*return;\s*\}\s*setLaunchModelName\(initialModelName \|\| ''\);/s,
   );
   assert.match(source, /selectedModelNameRef\.current = selectedModelName;/);
+  assert.match(source, /preserveDraftRuleModelNames: dirtyRuleModelNamesRef\.current,/);
+  assert.match(
+    source,
+    /preserveDraftBillingModeModelNames: dirtyBillingModeModelNamesRef\.current,/,
+  );
   assert.match(source, /setLaunchModelName\(''\);/);
 });
 
@@ -88,6 +95,7 @@ test('advanced pricing state rebuilds editable rules through the shared draft he
     source,
     /const nextDraftRules = \{\s*\.\.\.draftRulesRef\.current,\s*\[selectedModelName\]: buildRuleDraft\(ruleType, draftRulesRef\.current\[selectedModelName\]\),/s,
   );
+  assert.match(source, /dirtyRuleModelNamesRef\.current\.add\(selectedModelName\);/);
   assert.match(
     source,
     /draftRulesRef\.current = nextDraftRules;\s*setDraftRules\(nextDraftRules\);/s,
@@ -95,6 +103,15 @@ test('advanced pricing state rebuilds editable rules through the shared draft he
   assert.match(
     source,
     /const nextDraftRules = \{\s*\.\.\.draftRulesRef\.current,\s*\[selectedModelName\]: \{\s*\.\.\.buildRuleDraft\(currentRuleType, draftRulesRef\.current\[selectedModelName\]\),/s,
+  );
+  assert.match(source, /dirtyRuleModelNamesRef\.current\.delete\(selectedModel\.name\);/);
+  assert.match(
+    source,
+    /dirtyBillingModeModelNamesRef\.current\.add\(selectedModelName\);/,
+  );
+  assert.match(
+    source,
+    /dirtyBillingModeModelNamesRef\.current\.delete\(selectedModel\.name\);/,
   );
 });
 
