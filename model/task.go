@@ -99,6 +99,7 @@ func (m Properties) Value() (driver.Value, error) {
 
 type TaskPrivateData struct {
 	Key            string `json:"key,omitempty"`
+	RequestId      string `json:"request_id,omitempty"`
 	UpstreamTaskID string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
 	ResultURL      string `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
 	// 计费上下文：用于异步退款/差额结算（轮询阶段读取）

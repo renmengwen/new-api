@@ -41,6 +41,10 @@ const createEmptyTabSortState = () => ({
   },
 });
 
+const pageCardStyle = {
+  marginTop: 48,
+};
+
 const AdminOperationsAnalyticsPageV1 = () => {
   const { t } = useTranslation();
   const { loading: permissionLoading, hasActionPermission } = useUserPermissions();
@@ -104,7 +108,13 @@ const AdminOperationsAnalyticsPageV1 = () => {
 
   if (permissionLoading) {
     return (
-      <CardPro type='type1' descriptionArea={descriptionArea} actionsArea={actionsArea} t={t}>
+      <CardPro
+        type='type1'
+        descriptionArea={descriptionArea}
+        actionsArea={actionsArea}
+        t={t}
+        style={pageCardStyle}
+      >
         <Empty
           title={t('加载中')}
           description={t('正在校验运营分析台权限与页面配置。')}
@@ -115,7 +125,7 @@ const AdminOperationsAnalyticsPageV1 = () => {
 
   if (!canRead) {
     return (
-      <CardPro type='type1' descriptionArea={descriptionArea} t={t}>
+      <CardPro type='type1' descriptionArea={descriptionArea} t={t} style={pageCardStyle}>
         <Banner
           type='warning'
           description={t(
@@ -133,7 +143,13 @@ const AdminOperationsAnalyticsPageV1 = () => {
   }
 
   return (
-    <CardPro type='type1' descriptionArea={descriptionArea} actionsArea={actionsArea} t={t}>
+    <CardPro
+      type='type1'
+      descriptionArea={descriptionArea}
+      actionsArea={actionsArea}
+      t={t}
+      style={pageCardStyle}
+    >
       <Space vertical align='start' spacing='medium' style={{ width: '100%' }}>
         <Banner
           type='info'

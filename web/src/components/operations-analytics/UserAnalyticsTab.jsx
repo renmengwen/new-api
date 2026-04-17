@@ -305,8 +305,8 @@ const UserAnalyticsTab = ({
   );
 
   const costSpec = useMemo(
-    () =>
-      specBar({
+    () => {
+      const baseSpec = specBar({
         data: costTopUsers.map((item) => ({
           username: buildUserChartLabel(item),
           total_cost: item.total_cost || 0,
@@ -318,7 +318,23 @@ const UserAnalyticsTab = ({
         seriesField: 'username',
         valueField: 'total_cost',
         valueFormatter: (value) => renderQuota(value || 0),
-      }),
+      });
+
+      return {
+        ...baseSpec,
+        axes: [
+          {
+            orient: 'bottom',
+          },
+          {
+            orient: 'left',
+            label: {
+              formatMethod: (value) => renderQuota(Number(value || 0)),
+            },
+          },
+        ],
+      };
+    },
     [costTopUsers, specBar, t],
   );
 

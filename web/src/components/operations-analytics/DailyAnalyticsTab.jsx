@@ -134,6 +134,11 @@ const DailyAnalyticsTab = ({ activeTab, appliedFilters }) => {
         ...baseSpec,
         tooltip: {
           ...baseSpec.tooltip,
+          activeType: 'mark',
+          mark: {
+            ...(baseSpec.tooltip?.mark || {}),
+            visible: true,
+          },
           dimension: {
             visible: false,
           },

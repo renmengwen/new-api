@@ -200,6 +200,26 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	}
 }
 
+func UpdateConsumeLogTokensByRequestID(userId int, requestId string, promptTokens int, completionTokens int) error {
+	if requestId == "" {
+		return nil
+	}
+
+	var consumeLog Log
+	err := LOG_DB.Where("user_id = ? and request_id = ? and type = ?", userId, requestId, LogTypeConsume).
+		Order("created_at desc").
+		Order("id desc").
+		Take(&consumeLog).Error
+	if err != nil {
+		return err
+	}
+
+	return LOG_DB.Model(&Log{}).Where("id = ?", consumeLog.Id).Updates(map[string]interface{}{
+		"prompt_tokens":     promptTokens,
+		"completion_tokens": completionTokens,
+	}).Error
+}
+
 type RecordTaskBillingLogParams struct {
 	UserId    int
 	LogType   int

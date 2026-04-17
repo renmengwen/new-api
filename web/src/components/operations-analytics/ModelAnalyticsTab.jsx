@@ -353,7 +353,7 @@ const ModelAnalyticsTab = ({
         yField: 'call_count',
         seriesField: 'model_name',
         valueField: 'call_count',
-        valueFormatter: (value) => renderNumber(value || 0),
+        valueFormatter: (value) => `${renderNumber(value || 0)}${t('次')}`,
       }),
     [callRankItems, specBar, t],
   );

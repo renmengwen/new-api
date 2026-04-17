@@ -738,6 +738,50 @@ func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {
 	assert.Equal(t, model.LogTypeRefund, log.Type)
 }
 
+func TestSettle_TaskUsageUpdatesOriginalConsumeLogTokens(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, channelID = 35, 35
+	const preConsumed = 1200
+	const requestID = "req-task-usage-1"
+	const totalTokens = 411300
+
+	seedUser(t, userID, 5000)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, 0, BillingSourceWallet, 0)
+	task.PrivateData.RequestId = requestID
+
+	require.NoError(t, model.LOG_DB.Create(&model.Log{
+		UserId:           userID,
+		Username:         "test_user",
+		CreatedAt:        common.GetTimestamp(),
+		Type:             model.LogTypeConsume,
+		Content:          "操作 generate",
+		ModelName:        "test-model",
+		Quota:            preConsumed,
+		PromptTokens:     0,
+		CompletionTokens: 0,
+		RequestId:        requestID,
+		Group:            "default",
+	}).Error)
+
+	adaptor := &mockAdaptor{adjustReturn: 0}
+	taskResult := &relaycommon.TaskInfo{
+		Status:           model.TaskStatusSuccess,
+		CompletionTokens: totalTokens,
+		TotalTokens:      totalTokens,
+	}
+
+	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+
+	var updated model.Log
+	require.NoError(t, model.LOG_DB.Where("request_id = ?", requestID).First(&updated).Error)
+	assert.Equal(t, 0, updated.PromptTokens)
+	assert.Equal(t, totalTokens, updated.CompletionTokens)
+}
+
 func TestRecalculateTaskQuotaUpdatesQuotaDataWithoutChangingRequestCount(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()

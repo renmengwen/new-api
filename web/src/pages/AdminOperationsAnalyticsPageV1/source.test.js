@@ -301,6 +301,39 @@ test('AdminOperationsAnalyticsPageV1 mounts dedicated model user and daily tab c
   assert.match(pageSource, /<DailyAnalyticsTab[\s\S]*appliedFilters=\{appliedFilters\}/);
 });
 
+test('AdminOperationsAnalyticsPageV1 offsets the card from the fixed header so the page title stays visible', () => {
+  assert.match(pageSource, /const pageCardStyle = \{\s*marginTop:\s*48,\s*\};/);
+  assert.match(
+    pageSource,
+    /<CardPro[\s\S]*type='type1'[\s\S]*descriptionArea=\{descriptionArea\}[\s\S]*actionsArea=\{actionsArea\}[\s\S]*t=\{t\}[\s\S]*style=\{pageCardStyle\}/,
+  );
+});
+
+test('ModelAnalyticsTab formats call-rank tooltip values with the 次 unit', () => {
+  assert.match(
+    modelTabSource,
+    /valueFormatter:\s*\(value\)\s*=>\s*`\$\{renderNumber\(value \|\| 0\)\}\$\{t\('次'\)\}`/,
+  );
+});
+
+test('UserAnalyticsTab formats the spend chart y-axis as quota values', () => {
+  assert.match(
+    userTabSource,
+    /const costSpec = useMemo\(\s*\(\) => \{[\s\S]*label:\s*\{\s*formatMethod:\s*\(value\)\s*=>\s*renderQuota\(Number\(value \|\| 0\)\)\s*,?\s*\}/,
+  );
+});
+
+test('DailyAnalyticsTab forces the spend chart tooltip onto mark mode and keeps quota-formatted values', () => {
+  assert.match(
+    dailyTabSource,
+    /tooltip:\s*\{[\s\S]*activeType:\s*'mark'[\s\S]*mark:\s*\{[\s\S]*visible:\s*true[\s\S]*dimension:\s*\{[\s\S]*visible:\s*false/,
+  );
+  assert.match(
+    dailyTabSource,
+    /label:\s*\{\s*formatMethod:\s*\(value\)\s*=>\s*renderQuota\(Number\(value \|\| 0\)\)\s*,?\s*\}/,
+  );
+});
+
 test('operations analytics page removes the original placeholder copy', () => {
   assert.doesNotMatch(pageSource, /鎸夋ā鍨嬭〃鏍奸鏋?/);
   assert.doesNotMatch(pageSource, /鎸夌敤鎴疯〃鏍奸鏋?/);

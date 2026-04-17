@@ -154,6 +154,24 @@ func taskModelName(task *model.Task) string {
 	return task.Properties.OriginModelName
 }
 
+func syncTaskUsageToConsumeLog(ctx context.Context, task *model.Task, taskResult *relaycommon.TaskInfo) {
+	if taskResult == nil || taskResult.TotalTokens <= 0 {
+		return
+	}
+
+	completionTokens := taskResult.CompletionTokens
+	promptTokens := 0
+	if completionTokens <= 0 || completionTokens > taskResult.TotalTokens {
+		completionTokens = taskResult.TotalTokens
+	} else {
+		promptTokens = taskResult.TotalTokens - completionTokens
+	}
+
+	if err := model.UpdateConsumeLogTokensByRequestID(task.UserId, task.PrivateData.RequestId, promptTokens, completionTokens); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("回写任务 token 用量到原始消费日志失败 (task=%s, request_id=%s): %s", task.TaskID, task.PrivateData.RequestId, err.Error()))
+	}
+}
+
 // RefundTaskQuota 统一的任务失败退款逻辑。
 // 当异步任务失败时，将预扣的 quota 退还给用户（支持钱包和订阅），并退还令牌额度。
 func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
