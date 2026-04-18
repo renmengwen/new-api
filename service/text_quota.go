@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayhelper "github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -82,33 +83,24 @@ func rebuildAdvancedTextPriceDataForSettlement(ctx *gin.Context, relayInfo *rela
 	if relayInfo == nil || usage == nil {
 		return
 	}
-	if relayInfo.PriceData.BillingMode != types.BillingModeAdvanced ||
-		relayInfo.PriceData.AdvancedRuleType != types.AdvancedRuleTypeTextSegment {
+	if ratio_setting.GetEffectiveBillingMode(relayInfo.OriginModelName) != ratio_setting.BillingModeAdvanced {
+		return
+	}
+	ruleSet, ok := ratio_setting.GetAdvancedPricingRuleSet(relayInfo.OriginModelName)
+	if !ok || ruleSet.RuleType != ratio_setting.RuleTypeTextSegment {
 		return
 	}
 
-	priceData, ok, err := ratio_setting.ResolveAdvancedPriceData(relayInfo.OriginModelName, ratio_setting.AdvancedPricingRuntimeContext{
-		PromptTokens: usage.PromptTokens,
-		Meta:         &types.TokenCountMeta{MaxTokens: usage.CompletionTokens},
-		Request:      relayInfo.Request,
+	runtimeRelayInfo := *relayInfo
+	resolvedPriceData, err := relayhelper.ModelPriceHelper(ctx, &runtimeRelayInfo, usage.PromptTokens, &types.TokenCountMeta{
+		MaxTokens: usage.CompletionTokens,
 	})
 	if err != nil {
 		logger.LogError(ctx, "failed to rebuild advanced text pricing for settlement: "+err.Error())
 		return
 	}
-	if !ok || priceData.AdvancedRuleType != types.AdvancedRuleTypeTextSegment {
-		return
-	}
-
-	relayInfo.PriceData.ModelRatio = priceData.ModelRatio
-	relayInfo.PriceData.CompletionRatio = priceData.CompletionRatio
-	relayInfo.PriceData.CacheRatio = priceData.CacheRatio
-	relayInfo.PriceData.CacheCreationRatio = priceData.CacheCreationRatio
-	relayInfo.PriceData.CacheCreation5mRatio = priceData.CacheCreationRatio
-	relayInfo.PriceData.CacheCreation1hRatio = priceData.CacheCreationRatio * (6 / 3.75)
-	relayInfo.PriceData.BillingMode = priceData.BillingMode
-	relayInfo.PriceData.AdvancedRuleType = priceData.AdvancedRuleType
-	relayInfo.PriceData.AdvancedRuleSnapshot = priceData.AdvancedRuleSnapshot
+	resolvedPriceData.OtherRatios = relayInfo.PriceData.OtherRatios
+	relayInfo.PriceData = resolvedPriceData
 }
 
 func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage) textQuotaSummary {
