@@ -207,6 +207,15 @@ const buildAdvancedExtraChargeItems = (t, other, snapshot) => {
     toAdvancedNumber(priceSnapshot.input_price) ??
     getAdvancedLegacyInputPrice(other) ??
     0;
+  const audioRatio = toAdvancedNumber(other?.audio_ratio);
+  const audioCompletionRatio = toAdvancedNumber(other?.audio_completion_ratio);
+  const derivedAudioInputPrice =
+    toAdvancedNumber(other?.audio_input_price) ??
+    (audioRatio !== null ? baseInputPrice * audioRatio : null);
+  const derivedAudioOutputPrice =
+    audioRatio !== null && audioCompletionRatio !== null
+      ? baseInputPrice * audioRatio * audioCompletionRatio
+      : null;
 
   const items = [];
   const pushTokenItem = (label, tokenCount, unitPrice) => {
@@ -260,7 +269,12 @@ const buildAdvancedExtraChargeItems = (t, other, snapshot) => {
   pushCountItem(t('联网搜索'), other?.web_search_call_count, other?.web_search_price);
   pushCountItem(t('文件搜索'), other?.file_search_call_count, other?.file_search_price);
   pushCountItem(t('图片生成'), other?.image_generation_call, other?.image_generation_call_price);
-  pushTokenItem(t('音频输入'), other?.audio_input_token_count, other?.audio_input_price);
+  pushTokenItem(
+    t('音频输入'),
+    other?.audio_input_token_count ?? other?.audio_input,
+    derivedAudioInputPrice,
+  );
+  pushTokenItem(t('音频输出'), other?.audio_output, derivedAudioOutputPrice);
 
   return items;
 };

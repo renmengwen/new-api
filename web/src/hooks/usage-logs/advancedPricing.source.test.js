@@ -107,6 +107,16 @@ test('advanced billing helpers keep coexistence extras instead of swallowing leg
   assert.match(hookSource, /file_search_price/);
   assert.match(hookSource, /image_generation_call_price/);
   assert.match(hookSource, /cache_creation_tokens/);
+  assert.match(hookSource, /audio_output/);
+  assert.match(hookSource, /audio_completion_ratio/);
+  assert.match(
+    hookSource,
+    /const derivedAudioOutputPrice =[\s\S]*audioCompletionRatio[\s\S]*\?/,
+  );
+  assert.match(
+    hookSource,
+    /pushTokenItem\(t\('音频输出'\), other\?\.audio_output, derivedAudioOutputPrice\);/,
+  );
   assert.match(
     hookSource,
     /buildAdvancedExtraChargeLines\(t, log, other, snapshot\)/,
