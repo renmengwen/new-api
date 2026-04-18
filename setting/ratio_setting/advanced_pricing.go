@@ -115,6 +115,7 @@ type advancedTextRuntimeContext struct {
 
 type AdvancedPricingTaskContext struct {
 	TaskType           string
+	RawAction          string
 	InferenceMode      string
 	Audio              *bool
 	InputVideo         *bool
@@ -127,6 +128,7 @@ type AdvancedPricingTaskContext struct {
 
 type advancedMediaRuntimeContext struct {
 	taskType           string
+	rawAction          string
 	inferenceMode      string
 	audio              *bool
 	inputVideo         *bool
@@ -278,7 +280,7 @@ func resolveAdvancedTextPriceData(modelName string, ctx AdvancedPricingRuntimeCo
 
 func resolveAdvancedMediaTaskPriceData(ctx AdvancedPricingRuntimeContext, ruleSet AdvancedPricingRuleSet) (types.PriceData, bool, error) {
 	runtimeCtx := buildAdvancedMediaRuntimeContext(ctx)
-	if taskType := normalizeAdvancedPricingComparableString(ruleSet.TaskType); taskType != "" && taskType != runtimeCtx.taskType {
+	if !matchAdvancedMediaTaskType(ruleSet.TaskType, runtimeCtx) {
 		return types.PriceData{}, false, nil
 	}
 	segment, ok := findMatchedMediaTaskSegment(ruleSet.Segments, runtimeCtx, ctx.PromptTokens)
@@ -305,6 +307,7 @@ func buildAdvancedMediaRuntimeContext(ctx AdvancedPricingRuntimeContext) advance
 	}
 
 	runtimeCtx.taskType = normalizeAdvancedPricingComparableString(ctx.Task.TaskType)
+	runtimeCtx.rawAction = strings.TrimSpace(ctx.Task.RawAction)
 	runtimeCtx.inferenceMode = normalizeAdvancedPricingComparableString(ctx.Task.InferenceMode)
 	runtimeCtx.audio = cloneAdvancedBoolPtr(ctx.Task.Audio)
 	runtimeCtx.inputVideo = cloneAdvancedBoolPtr(ctx.Task.InputVideo)
@@ -565,6 +568,17 @@ func matchAdvancedTextSegment(segment AdvancedPriceRule, runtimeCtx advancedText
 	return true
 }
 
+func matchAdvancedMediaTaskType(ruleTaskType string, runtimeCtx advancedMediaRuntimeContext) bool {
+	taskType := normalizeAdvancedPricingComparableString(ruleTaskType)
+	if taskType == "" {
+		return true
+	}
+	if taskType == runtimeCtx.taskType {
+		return true
+	}
+	return taskType == normalizeAdvancedPricingComparableString(runtimeCtx.rawAction)
+}
+
 func matchAdvancedMediaTaskSegment(segment AdvancedPriceRule, runtimeCtx advancedMediaRuntimeContext, promptTokens int) bool {
 	if inferenceMode := normalizeAdvancedPricingComparableString(segment.InferenceMode); inferenceMode != "" && inferenceMode != runtimeCtx.inferenceMode {
 		return false
@@ -673,6 +687,9 @@ func buildAdvancedMediaMatchSummary(segment AdvancedPriceRule, runtimeCtx advanc
 	}
 	if runtimeCtx.taskType != "" {
 		parts = append(parts, fmt.Sprintf("task_type=%s", runtimeCtx.taskType))
+	}
+	if runtimeCtx.rawAction != "" {
+		parts = append(parts, fmt.Sprintf("raw_action=%s", runtimeCtx.rawAction))
 	}
 	if runtimeCtx.inferenceMode != "" {
 		parts = append(parts, fmt.Sprintf("inference_mode=%s", runtimeCtx.inferenceMode))

@@ -348,7 +348,7 @@ func TestModelPriceHelperPerCallReturnsAdvancedMediaTaskPriceDataWhenRuleMatches
 	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
 		"task-advanced-media-model": {
 			"rule_type": "media_task",
-			"task_type": "generate",
+			"task_type": "video_generation",
 			"segments": [
 				{
 					"priority": 10,
@@ -383,10 +383,11 @@ func TestModelPriceHelperPerCallReturnsAdvancedMediaTaskPriceDataWhenRuleMatches
 	require.Equal(t, types.AdvancedRuleTypeMediaTask, priceData.AdvancedRuleType)
 	require.Equal(t, 8.8, priceData.ModelPrice)
 	require.NotNil(t, priceData.AdvancedRuleSnapshot)
-	require.Equal(t, "generate", priceData.AdvancedRuleSnapshot.TaskType)
+	require.Equal(t, "video_generation", priceData.AdvancedRuleSnapshot.TaskType)
 	require.NotNil(t, priceData.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens)
 	require.Equal(t, 194400, *priceData.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens)
-	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "task_type=generate")
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "task_type=video_generation")
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "raw_action=generate")
 	require.Greater(t, priceData.Quota, 0)
 }
 
@@ -398,7 +399,7 @@ func TestModelPriceHelperPerCallFallsBackToLegacyPriceWhenAdvancedMediaTaskDoesN
 	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
 		"task-advanced-media-fallback-model": {
 			"rule_type": "media_task",
-			"task_type": "generate",
+			"task_type": "image_generation",
 			"segments": [
 				{
 					"priority": 10,
@@ -437,7 +438,7 @@ func TestModelPriceHelperPerCallDoesNotDropAdvancedMediaTaskWhenMinTokensConfigu
 	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
 		"task-advanced-media-min-tokens-model": {
 			"rule_type": "media_task",
-			"task_type": "generate",
+			"task_type": "video_generation",
 			"segments": [
 				{
 					"priority": 10,
@@ -468,7 +469,7 @@ func TestModelPriceHelperPerCallDoesNotDropAdvancedMediaTaskWhenMinTokensConfigu
 	require.Equal(t, 194400, *priceData.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens)
 }
 
-func TestModelPriceHelperPerCallDoesNotMatchAdvancedMediaTaskWhenTaskTypeDiffers(t *testing.T) {
+func TestModelPriceHelperPerCallDoesNotMatchAdvancedMediaTaskWhenCanonicalTaskTypeDiffers(t *testing.T) {
 	restoreRatioSettings(t)
 
 	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"task-advanced-media-task-type-model":0.3}`))
@@ -476,7 +477,7 @@ func TestModelPriceHelperPerCallDoesNotMatchAdvancedMediaTaskWhenTaskTypeDiffers
 	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
 		"task-advanced-media-task-type-model": {
 			"rule_type": "media_task",
-			"task_type": "remixGenerate",
+			"task_type": "image_generation",
 			"segments": [
 				{
 					"priority": 10,
@@ -502,6 +503,46 @@ func TestModelPriceHelperPerCallDoesNotMatchAdvancedMediaTaskWhenTaskTypeDiffers
 	require.True(t, priceData.UsePrice)
 	require.Equal(t, 0.3, priceData.ModelPrice)
 	require.Nil(t, priceData.AdvancedRuleSnapshot)
+}
+
+func TestModelPriceHelperPerCallMatchesAdvancedMediaTaskWhenLegacyRawActionTaskTypeConfigured(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"task-advanced-media-legacy-task-type-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"task-advanced-media-legacy-task-type-model": {
+			"rule_type": "media_task",
+			"task_type": "generate",
+			"segments": [
+				{
+					"priority": 10,
+					"unit_price": 6.6
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	c.Set("task_request", relaycommon.TaskSubmitReq{
+		Size:     "1280x720",
+		Duration: 5,
+	})
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "task-advanced-media-legacy-task-type-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+	info.TaskRelayInfo = &relaycommon.TaskRelayInfo{Action: constant.TaskActionGenerate}
+
+	priceData, err := ModelPriceHelperPerCall(c, info)
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, types.AdvancedRuleTypeMediaTask, priceData.AdvancedRuleType)
+	require.True(t, priceData.UsePrice)
+	require.Equal(t, 6.6, priceData.ModelPrice)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "generate", priceData.AdvancedRuleSnapshot.TaskType)
 }
 
 func TestContainPriceOrRatioReturnsTrueForAdvancedOnlyModel(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -340,8 +341,10 @@ func buildAdvancedPricingTaskContext(c *gin.Context, info *relaycommon.RelayInfo
 		return nil
 	}
 
+	rawAction := resolveRawTaskAction(info, c)
 	runtimeCtx := &ratio_setting.AdvancedPricingTaskContext{
-		TaskType:           normalizeAdvancedTaskString(resolveTaskType(info, c)),
+		TaskType:           normalizeAdvancedTaskString(resolveCanonicalTaskType(rawAction)),
+		RawAction:          strings.TrimSpace(rawAction),
 		InferenceMode:      normalizeAdvancedTaskString(firstTaskString(taskReq.Mode, taskMetadataString(taskReq.Metadata, "inference_mode", "inferenceMode"))),
 		Resolution:         normalizeAdvancedTaskString(firstTaskString(taskMetadataString(taskReq.Metadata, "resolution", "Resolution"), deriveTaskResolution(taskReq.Size))),
 		AspectRatio:        normalizeAdvancedTaskString(firstTaskString(taskMetadataString(taskReq.Metadata, "aspect_ratio", "aspectRatio"), deriveTaskAspectRatio(taskReq.Size))),
@@ -362,7 +365,7 @@ func buildAdvancedPricingTaskContext(c *gin.Context, info *relaycommon.RelayInfo
 	return runtimeCtx
 }
 
-func resolveTaskType(info *relaycommon.RelayInfo, c *gin.Context) string {
+func resolveRawTaskAction(info *relaycommon.RelayInfo, c *gin.Context) string {
 	if info != nil && info.TaskRelayInfo != nil {
 		return info.TaskRelayInfo.Action
 	}
@@ -370,6 +373,22 @@ func resolveTaskType(info *relaycommon.RelayInfo, c *gin.Context) string {
 		return ""
 	}
 	return c.GetString("action")
+}
+
+func resolveCanonicalTaskType(rawAction string) string {
+	switch normalizeAdvancedTaskString(rawAction) {
+	case normalizeAdvancedTaskString(constant.TaskTypeImageGeneration):
+		return constant.TaskTypeImageGeneration
+	case normalizeAdvancedTaskString(constant.TaskTypeVideoGeneration),
+		normalizeAdvancedTaskString(constant.TaskActionGenerate),
+		normalizeAdvancedTaskString(constant.TaskActionTextGenerate),
+		normalizeAdvancedTaskString(constant.TaskActionFirstTailGenerate),
+		normalizeAdvancedTaskString(constant.TaskActionReferenceGenerate),
+		normalizeAdvancedTaskString(constant.TaskActionRemix):
+		return constant.TaskTypeVideoGeneration
+	default:
+		return strings.TrimSpace(rawAction)
+	}
 }
 
 func firstTaskString(values ...string) string {
