@@ -591,6 +591,57 @@ func TestCalculateTextQuotaSummarySettlementFallsBackWhenAdvancedConfigDriftsToL
 	require.Nil(t, relayInfo.PriceData.AdvancedRuleSnapshot)
 }
 
+func TestCalculateTextQuotaSummarySettlementDoesNotRefreshForCurrentAdvancedMediaTaskConfig(t *testing.T) {
+	restoreTextQuotaRatioSettings(t)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"advanced-media-task-model":6}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"advanced-media-task-model":2.5}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"advanced-media-task-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"advanced-media-task-model": {
+			"rule_type": "media_task",
+			"segments": [
+				{
+					"priority": 10,
+					"unit_price": 8.8,
+					"remark": "media task"
+				}
+			]
+		}
+	}`))
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "advanced-media-task-model",
+		Request: &dto.OpenAIResponsesRequest{
+			ServiceTier: "default",
+		},
+		PriceData: types.PriceData{
+			BillingMode:     types.BillingModePerToken,
+			ModelRatio:      3,
+			CompletionRatio: 1.5,
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     20,
+		CompletionTokens: 50,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 285, summary.Quota)
+	require.Equal(t, types.BillingModePerToken, relayInfo.PriceData.BillingMode)
+	require.Equal(t, 3.0, summary.ModelRatio)
+	require.Equal(t, 1.5, summary.CompletionRatio)
+}
+
 func restoreTextQuotaRatioSettings(t *testing.T) {
 	t.Helper()
 

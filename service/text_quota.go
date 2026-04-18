@@ -85,8 +85,13 @@ func rebuildAdvancedTextPriceDataForSettlement(ctx *gin.Context, relayInfo *rela
 	}
 	staleAdvancedTextPricing := relayInfo.PriceData.BillingMode == types.BillingModeAdvanced &&
 		relayInfo.PriceData.AdvancedRuleType == types.AdvancedRuleTypeTextSegment
-	currentMayNeedRefresh := ratio_setting.GetEffectiveBillingMode(relayInfo.OriginModelName) == ratio_setting.BillingModeAdvanced
-	if !staleAdvancedTextPricing && !currentMayNeedRefresh {
+	currentConfiguredAdvancedTextPricing := false
+	if ratio_setting.GetEffectiveBillingMode(relayInfo.OriginModelName) == ratio_setting.BillingModeAdvanced {
+		if ruleSet, ok := ratio_setting.GetAdvancedPricingRuleSet(relayInfo.OriginModelName); ok && ruleSet.RuleType == ratio_setting.RuleTypeTextSegment {
+			currentConfiguredAdvancedTextPricing = true
+		}
+	}
+	if !staleAdvancedTextPricing && !currentConfiguredAdvancedTextPricing {
 		return
 	}
 
