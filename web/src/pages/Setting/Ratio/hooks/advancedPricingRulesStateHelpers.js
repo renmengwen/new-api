@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import {
+  BILLING_MODE_ADVANCED,
   BILLING_MODE_PER_TOKEN,
   hasValue,
   resolveBillingMode,
@@ -149,6 +150,27 @@ const isMediaTaskSegmentShellCompatible = (segment) => {
   return hasOnlyAllowedKeys(segment, allowedKeys) && hasScalarDraftValue(segment.unit_price);
 };
 
+const hasMediaTaskRemarkRoundTripRisk = (rule) => {
+  if (!Array.isArray(rule?.segments) || rule.segments.length !== 1) {
+    return false;
+  }
+
+  const firstSegment = rule.segments[0];
+
+  if (!firstSegment || typeof firstSegment !== 'object' || Array.isArray(firstSegment)) {
+    return false;
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(firstSegment, 'remark')) {
+    return false;
+  }
+
+  return (
+    valueToComparableString(rule.note) !==
+    valueToComparableString(firstSegment.remark)
+  );
+};
+
 const isTextRuleShellCompatible = (rule) => {
   if (!rule || typeof rule !== 'object' || Array.isArray(rule)) {
     return false;
@@ -207,7 +229,10 @@ const shouldPreserveCanonicalShellState = (ruleType, rule) => {
   }
 
   if (ruleType === RULE_TYPE_MEDIA_TASK) {
-    return Array.isArray(rule.segments) && !isMediaRuleShellCompatible(rule);
+    return (
+      Array.isArray(rule.segments) &&
+      (!isMediaRuleShellCompatible(rule) || hasMediaTaskRemarkRoundTripRisk(rule))
+    );
   }
 
   return Array.isArray(rule.segments) && !isTextRuleShellCompatible(rule);
@@ -789,6 +814,20 @@ export const normalizeAdvancedPricingDraftRule = (draftRule = {}) => {
   return normalizedRule;
 };
 
+const isEmptyAdvancedPricingDraftRule = (draftRule = {}) => {
+  const ruleType =
+    typeof draftRule?.rule_type === 'string' && draftRule.rule_type
+      ? draftRule.rule_type
+      : RULE_TYPE_TEXT_SEGMENT;
+  const emptyDraft = buildRuleDraft(ruleType, {});
+
+  return Object.keys(emptyDraft).every(
+    (field) =>
+      valueToComparableString(draftRule[field]) ===
+      valueToComparableString(emptyDraft[field]),
+  );
+};
+
 export const buildAdvancedPricingSavePayload = ({
   modelName = '',
   billingMode = BILLING_MODE_PER_TOKEN,
@@ -800,26 +839,44 @@ export const buildAdvancedPricingSavePayload = ({
     throw new Error('Advanced pricing save requires a model name');
   }
 
-  const normalizedRule = normalizeAdvancedPricingDraftRule(draftRule);
+  const normalizedLatestRulesMap =
+    latestRulesMap &&
+    typeof latestRulesMap === 'object' &&
+    !Array.isArray(latestRulesMap)
+      ? { ...latestRulesMap }
+      : {};
+  const shouldSaveRule =
+    Boolean(normalizedLatestRulesMap[modelName]?.rule_type) ||
+    !isEmptyAdvancedPricingDraftRule(draftRule) ||
+    billingMode === BILLING_MODE_ADVANCED;
+  const normalizedRule = shouldSaveRule
+    ? normalizeAdvancedPricingDraftRule(draftRule)
+    : null;
   const nextModeMap = {
     ...latestModeMap,
     [modelName]: billingMode,
   };
-  const nextRulesMap = {
-    ...latestRulesMap,
-    [modelName]: normalizedRule,
+  const nextRulesMap = normalizedRule
+    ? {
+        ...normalizedLatestRulesMap,
+        [modelName]: normalizedRule,
+      }
+    : normalizedLatestRulesMap;
+  const previewPayload = {
+    AdvancedPricingMode: {
+      [modelName]: billingMode,
+    },
   };
+
+  if (normalizedRule) {
+    previewPayload.AdvancedPricingRules = {
+      [modelName]: normalizedRule,
+    };
+  }
 
   return {
     normalizedRule,
-    previewPayload: {
-      AdvancedPricingMode: {
-        [modelName]: billingMode,
-      },
-      AdvancedPricingRules: {
-        [modelName]: normalizedRule,
-      },
-    },
+    previewPayload,
     optionValue: JSON.stringify(
       {
         billing_mode: nextModeMap,

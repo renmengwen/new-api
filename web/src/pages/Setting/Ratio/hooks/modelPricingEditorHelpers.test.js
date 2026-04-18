@@ -109,6 +109,11 @@ test('buildAdvancedPricingModePayload merges latest server state without persist
       dirty_model: BILLING_MODE_PER_TOKEN,
       explicit_existing: BILLING_MODE_PER_REQUEST,
     },
+    latestRulesMap: {
+      dirty_model: {
+        rule_type: 'tiered',
+      },
+    },
     models: [
       {
         name: 'dirty_model',
@@ -192,6 +197,47 @@ test('buildAdvancedPricingModePayload preserves refreshed advanced entries when 
 
   assert.deepEqual(merged, {
     refreshed_advanced: BILLING_MODE_ADVANCED,
+  });
+});
+
+test('buildAdvancedPricingModePayload drops stale explicit advanced modes when latest rules no longer exist', () => {
+  const merged = buildAdvancedPricingModePayload({
+    latestModeMap: {
+      stale_explicit_advanced: BILLING_MODE_ADVANCED,
+    },
+    latestRulesMap: {},
+    models: [
+      {
+        name: 'stale_explicit_advanced',
+        billingMode: BILLING_MODE_ADVANCED,
+        hasExplicitBillingMode: true,
+        hasInvalidExplicitAdvancedMode: false,
+      },
+    ],
+  });
+
+  assert.deepEqual(merged, {});
+});
+
+test('buildAdvancedPricingModePayload does not write advanced mode back for dirty models without latest rules', () => {
+  const merged = buildAdvancedPricingModePayload({
+    latestModeMap: {
+      dirty_without_rule: BILLING_MODE_PER_REQUEST,
+    },
+    latestRulesMap: {},
+    models: [
+      {
+        name: 'dirty_without_rule',
+        billingMode: BILLING_MODE_ADVANCED,
+        hasExplicitBillingMode: false,
+        hasInvalidExplicitAdvancedMode: false,
+      },
+    ],
+    dirtyModeNames: new Set(['dirty_without_rule']),
+  });
+
+  assert.deepEqual(merged, {
+    dirty_without_rule: BILLING_MODE_PER_REQUEST,
   });
 });
 

@@ -296,28 +296,37 @@ test('buildRuleDraft hydrates canonical backend rules into shell fields', async 
   );
 
   assert.deepEqual(
-    buildRuleDraft('media_task', {
-      rule_type: 'media_task',
-      display_name: 'Tiered media',
-      task_type: 'video_generation',
-      billing_unit: 'minute',
-      note: 'saved media note',
-      segments: [
-        {
-          priority: 10,
-          unit_price: 8.8,
-          remark: 'legacy remark',
-        },
-      ],
-    }),
+    ((draft) => ({
+      display_name: draft.display_name,
+      note: draft.note,
+      rule_type: draft.rule_type,
+      task_type: draft.task_type,
+      billing_unit: draft.billing_unit,
+      unit_price: draft.unit_price,
+    }))(
+      buildRuleDraft('media_task', {
+        rule_type: 'media_task',
+        display_name: 'Tiered media',
+        task_type: 'video_generation',
+        billing_unit: 'minute',
+        note: 'saved media note',
+        segments: [
+          {
+            priority: 10,
+            unit_price: 8.8,
+            remark: 'legacy remark',
+          },
+        ],
+      }),
+    ),
     {
-      display_name: 'Tiered media',
-      note: 'saved media note',
       rule_type: 'media_task',
+      display_name: 'Tiered media',
       task_type: 'video_generation',
       billing_unit: 'minute',
+      note: 'saved media note',
       unit_price: '8.8',
-    },
+    }
   );
 });
 
@@ -425,6 +434,36 @@ test('advanced pricing helpers normalize media shell drafts into backend rule pa
       ],
     },
   );
+});
+
+test('advanced pricing helpers preserve media segment remarks when note and remark differ', async () => {
+  const { buildAdvancedPricingSavePayload, buildRuleDraft } = await loadHelpers();
+
+  assert.equal(typeof buildAdvancedPricingSavePayload, 'function');
+  assert.equal(typeof buildRuleDraft, 'function');
+
+  const canonicalRule = {
+    rule_type: 'media_task',
+    display_name: 'Tiered media',
+    task_type: 'image_generation',
+    billing_unit: 'task',
+    note: 'top-level note',
+    segments: [
+      {
+        priority: 10,
+        unit_price: 8.8,
+        remark: 'segment remark',
+      },
+    ],
+  };
+
+  const payload = buildAdvancedPricingSavePayload({
+    modelName: 'alpha',
+    billingMode: 'advanced',
+    draftRule: buildRuleDraft('media_task', canonicalRule),
+  });
+
+  assert.deepEqual(payload.normalizedRule, canonicalRule);
 });
 
 test('advanced pricing helpers preserve incompatible text canonical fields during metadata-only saves', async () => {
@@ -796,6 +835,64 @@ test('advanced pricing helpers merge normalized rules into a single AdvancedPric
             input_min: 0,
             input_max: 100,
             input_price: 1.2,
+          },
+        ],
+      },
+    },
+  });
+});
+
+test('advanced pricing helpers allow saving mode-only changes without an empty advanced rule body', async () => {
+  const { buildAdvancedPricingSavePayload } = await loadHelpers();
+
+  assert.equal(typeof buildAdvancedPricingSavePayload, 'function');
+
+  const payload = buildAdvancedPricingSavePayload({
+    modelName: 'alpha',
+    billingMode: 'per_request',
+    draftRule: {
+      rule_type: 'text_segment',
+      display_name: '',
+      note: '',
+      segment_basis: 'token',
+      billing_unit: '1K tokens',
+      default_price: '',
+      segments_text: '',
+    },
+    latestModeMap: {
+      beta: 'advanced',
+    },
+    latestRulesMap: {
+      beta: {
+        rule_type: 'media_task',
+        segments: [
+          {
+            priority: 10,
+            unit_price: 9.9,
+          },
+        ],
+      },
+    },
+  });
+
+  assert.deepEqual(payload.previewPayload, {
+    AdvancedPricingMode: {
+      alpha: 'per_request',
+    },
+  });
+
+  assert.deepEqual(JSON.parse(payload.optionValue), {
+    billing_mode: {
+      beta: 'advanced',
+      alpha: 'per_request',
+    },
+    rules: {
+      beta: {
+        rule_type: 'media_task',
+        segments: [
+          {
+            priority: 10,
+            unit_price: 9.9,
           },
         ],
       },

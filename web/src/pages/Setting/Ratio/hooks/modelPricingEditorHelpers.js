@@ -100,18 +100,23 @@ export const buildAdvancedPricingModePayload = ({
     const latestAdvancedModeIsValid = canUseAdvancedBilling({
       advancedRuleType: normalizedLatestRulesMap[model.name]?.rule_type,
     });
+    const latestExplicitMode = normalizedLatestModeMap[model.name];
 
     if (
-      !dirtySet.has(model.name) &&
-      model.hasInvalidExplicitAdvancedMode &&
-      normalizedLatestModeMap[model.name] === BILLING_MODE_ADVANCED &&
+      latestExplicitMode === BILLING_MODE_ADVANCED &&
       !latestAdvancedModeIsValid
     ) {
       delete normalizedLatestModeMap[model.name];
-      return;
     }
 
     if (!shouldPersistAdvancedPricingMode({ model, dirtyModeNames: dirtySet })) {
+      return;
+    }
+
+    if (model.billingMode === BILLING_MODE_ADVANCED) {
+      if (latestAdvancedModeIsValid) {
+        normalizedLatestModeMap[model.name] = BILLING_MODE_ADVANCED;
+      }
       return;
     }
 
