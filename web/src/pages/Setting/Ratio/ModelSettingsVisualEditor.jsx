@@ -79,6 +79,9 @@ export default function ModelSettingsVisualEditor(props) {
       options={props.options}
       refresh={props.refresh}
       candidateModelNames={enabledModels}
+      selectedModelName={props.selectedModelName || ''}
+      onSelectedModelChange={props.onSelectedModelChange}
+      onEditAdvancedRules={props.onEditAdvancedRules}
       filterMode='enabled'
       allowAddModel={false}
       listDescription={t(

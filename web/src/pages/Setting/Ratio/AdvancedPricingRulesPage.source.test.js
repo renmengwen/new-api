@@ -22,17 +22,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const source = fs.readFileSync(
-  new URL('./ModelSettingsVisualEditor.jsx', import.meta.url),
+  new URL('./AdvancedPricingRulesPage.jsx', import.meta.url),
   'utf8',
 );
 
-test('price settings wrapper loads channel-enabled models and disables manual model creation', () => {
+test('advanced pricing page wires model list, summary, editor, preview, and save flow', () => {
+  assert.match(source, /useAdvancedPricingRulesState/);
+  assert.match(source, /<AdvancedPricingModelList/);
+  assert.match(source, /<AdvancedPricingSummary/);
+  assert.match(source, /<TextSegmentRuleEditor/);
+  assert.match(source, /<AdvancedPricingPreview/);
+  assert.match(source, /ruleType === 'text-segment'/);
   assert.match(source, /API\.get\('\/api\/channel\/models_enabled'\)/);
-  assert.match(source, /candidateModelNames=\{enabledModels\}/);
-  assert.match(source, /filterMode='enabled'/);
-  assert.match(source, /allowAddModel=\{false\}/);
-  assert.match(source, /selectedModelName=\{props\.selectedModelName \|\| ''\}/);
-  assert.match(source, /onSelectedModelChange=\{props\.onSelectedModelChange\}/);
-  assert.match(source, /onEditAdvancedRules=\{props\.onEditAdvancedRules\}/);
-  assert.match(source, /setEnabledModels\(\[\]\)/);
 });

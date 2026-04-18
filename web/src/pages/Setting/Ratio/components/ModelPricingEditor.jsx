@@ -48,10 +48,41 @@ import {
   hasValue,
   useModelPricingEditorState,
 } from '../hooks/useModelPricingEditorState';
+import {
+  ADVANCED_PRICING_MODE_ADVANCED,
+  ADVANCED_PRICING_MODE_FIXED,
+  FIXED_BILLING_MODE_PER_REQUEST,
+  MEDIA_TASK_RULE_TYPE,
+  TEXT_SEGMENT_RULE_TYPE,
+} from '../hooks/advancedPricingRuleHelpers';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
 const { Text } = Typography;
 const EMPTY_CANDIDATE_MODEL_NAMES = [];
+
+const getEffectiveModeLabel = (model, t) => {
+  if (!model) {
+    return t('未设置');
+  }
+
+  if (model.effectivePricingMode === ADVANCED_PRICING_MODE_ADVANCED) {
+    return t('高级规则');
+  }
+
+  return model.fixedBillingMode === FIXED_BILLING_MODE_PER_REQUEST
+    ? t('固定按次')
+    : t('固定按量');
+};
+
+const getRuleTypeLabel = (ruleType, t) => {
+  if (ruleType === MEDIA_TASK_RULE_TYPE) {
+    return t('媒体任务');
+  }
+  if (ruleType === TEXT_SEGMENT_RULE_TYPE) {
+    return t('文本分段');
+  }
+  return t('未设置');
+};
 
 const PriceInput = ({
   label,
@@ -88,6 +119,9 @@ export default function ModelPricingEditor({
   options,
   refresh,
   candidateModelNames = EMPTY_CANDIDATE_MODEL_NAMES,
+  selectedModelName: controlledSelectedModelName = '',
+  onSelectedModelChange,
+  onEditAdvancedRules,
   filterMode = 'all',
   allowAddModel = true,
   allowDeleteModel = true,
@@ -123,6 +157,7 @@ export default function ModelPricingEditor({
     handleOptionalFieldToggle,
     handleNumericFieldChange,
     handleBillingModeChange,
+    handleEffectivePricingModeChange,
     handleSubmit,
     addModel,
     deleteModel,
@@ -133,7 +168,34 @@ export default function ModelPricingEditor({
     t,
     candidateModelNames,
     filterMode,
+    selectedModelName: controlledSelectedModelName,
+    onSelectedModelChange,
   });
+
+  const handleOpenAdvancedRules = (modelName = selectedModel?.name) => {
+    if (typeof onEditAdvancedRules === 'function') {
+      onEditAdvancedRules(modelName);
+    }
+  };
+
+  const handleEffectiveModeSwitch = (nextMode) => {
+    if (!selectedModel || nextMode === selectedModel.effectivePricingMode) {
+      return;
+    }
+
+    Modal.confirm({
+      title: t('确认切换当前生效模式？'),
+      content:
+        nextMode === ADVANCED_PRICING_MODE_ADVANCED
+          ? t(
+              '切换后新请求将按高级规则结算，固定价格配置会继续保留。点击“应用更改”后生效。',
+            )
+          : t(
+              '切换后新请求将按固定价格结算，高级规则配置会继续保留。点击“应用更改”后生效。',
+            ),
+      onOk: () => handleEffectivePricingModeChange(nextMode),
+    });
+  };
 
   const columns = useMemo(
     () => [
@@ -171,16 +233,33 @@ export default function ModelPricingEditor({
         ),
       },
       {
-        title: t('计费方式'),
-        dataIndex: 'billingMode',
-        key: 'billingMode',
+        title: t('计费模式'),
+        dataIndex: 'effectivePricingMode',
+        key: 'effectivePricingMode',
         render: (_, record) => (
-          <Tag color={record.billingMode === 'per-request' ? 'teal' : 'violet'}>
-            {record.billingMode === 'per-request'
-              ? t('按次计费')
-              : t('按量计费')}
+          <Tag
+            color={
+              record.effectivePricingMode === ADVANCED_PRICING_MODE_ADVANCED
+                ? 'orange'
+                : record.fixedBillingMode === FIXED_BILLING_MODE_PER_REQUEST
+                  ? 'teal'
+                  : 'violet'
+            }
+          >
+            {getEffectiveModeLabel(record, t)}
           </Tag>
         ),
+      },
+      {
+        title: t('规则类型'),
+        dataIndex: 'ruleType',
+        key: 'ruleType',
+        render: (_, record) =>
+          record.hasAdvancedPricing || record.ruleType ? (
+            <Tag color='blue'>{getRuleTypeLabel(record.ruleType, t)}</Tag>
+          ) : (
+            <Text type='tertiary'>{t('未设置')}</Text>
+          ),
       },
       {
         title: t('价格摘要'),
@@ -193,6 +272,13 @@ export default function ModelPricingEditor({
         key: 'action',
         render: (_, record) => (
           <Space>
+            <Button
+              size='small'
+              type='tertiary'
+              onClick={() => handleOpenAdvancedRules(record.name)}
+            >
+              {t('编辑高级规则')}
+            </Button>
             {allowDeleteModel ? (
               <Button
                 size='small'
@@ -208,6 +294,7 @@ export default function ModelPricingEditor({
     [
       allowDeleteModel,
       deleteModel,
+      handleOpenAdvancedRules,
       selectedModelName,
       selectedModelNames,
       setSelectedModelName,
@@ -354,11 +441,26 @@ export default function ModelPricingEditor({
             title={selectedModel ? selectedModel.name : t('模型计费编辑器')}
             headerExtraContent={
               selectedModel ? (
-                <Tag color='blue'>
-                  {selectedModel.billingMode === 'per-request'
-                    ? t('按次计费')
-                    : t('按量计费')}
-                </Tag>
+                <Space wrap>
+                  <Tag
+                    color={
+                      selectedModel.effectivePricingMode ===
+                      ADVANCED_PRICING_MODE_ADVANCED
+                        ? 'orange'
+                        : selectedModel.fixedBillingMode ===
+                            FIXED_BILLING_MODE_PER_REQUEST
+                          ? 'teal'
+                          : 'violet'
+                    }
+                  >
+                    {getEffectiveModeLabel(selectedModel, t)}
+                  </Tag>
+                  {selectedModel.ruleType ? (
+                    <Tag color='blue'>
+                      {getRuleTypeLabel(selectedModel.ruleType, t)}
+                    </Tag>
+                  ) : null}
+                </Space>
               ) : null
             }
           >
@@ -372,8 +474,75 @@ export default function ModelPricingEditor({
             ) : (
               <div>
                 <div className='mb-4'>
+                  <Card
+                    bodyStyle={{ padding: 16 }}
+                    style={{
+                      marginBottom: 16,
+                      background: 'var(--semi-color-fill-0)',
+                    }}
+                  >
+                    <div className='font-medium mb-2'>{t('当前生效模式')}</div>
+                    <Space wrap style={{ marginBottom: 12 }}>
+                      <Tag
+                        color={
+                          selectedModel.effectivePricingMode ===
+                          ADVANCED_PRICING_MODE_ADVANCED
+                            ? 'orange'
+                            : selectedModel.fixedBillingMode ===
+                                FIXED_BILLING_MODE_PER_REQUEST
+                              ? 'teal'
+                              : 'violet'
+                        }
+                      >
+                        {getEffectiveModeLabel(selectedModel, t)}
+                      </Tag>
+                      <Tag color={selectedModel.hasFixedPricing ? 'green' : 'grey'}>
+                        {selectedModel.hasFixedPricing
+                          ? t('已配置固定价格')
+                          : t('未配置固定价格')}
+                      </Tag>
+                      <Tag
+                        color={selectedModel.hasAdvancedPricing ? 'blue' : 'grey'}
+                      >
+                        {selectedModel.hasAdvancedPricing
+                          ? t('已配置高级规则')
+                          : t('未配置高级规则')}
+                      </Tag>
+                      <Tag color='cyan'>
+                        {t('规则类型')}:
+                        {` ${getRuleTypeLabel(selectedModel.ruleType, t)}`}
+                      </Tag>
+                    </Space>
+                    <RadioGroup
+                      type='button'
+                      value={selectedModel.effectivePricingMode}
+                      onChange={(event) =>
+                        handleEffectiveModeSwitch(event.target.value)
+                      }
+                    >
+                      <Radio value={ADVANCED_PRICING_MODE_FIXED}>
+                        {t('固定价格生效')}
+                      </Radio>
+                      <Radio value={ADVANCED_PRICING_MODE_ADVANCED}>
+                        {t('高级规则生效')}
+                      </Radio>
+                    </RadioGroup>
+                    <div className='mt-2 text-xs text-gray-500'>
+                      {t(
+                        '切换当前生效模式不会删除另一套配置；确认切换后，点击“应用更改”才会真正保存。',
+                      )}
+                    </div>
+                    <Space wrap className='mt-3'>
+                      <Button
+                        type='tertiary'
+                        onClick={() => handleOpenAdvancedRules(selectedModel.name)}
+                      >
+                        {t('编辑高级规则')}
+                      </Button>
+                    </Space>
+                  </Card>
                   <div className='mb-2 font-medium text-gray-700'>
-                    {t('计费方式')}
+                    {t('固定价格计费方式')}
                   </div>
                   <RadioGroup
                     type='button'
@@ -385,10 +554,25 @@ export default function ModelPricingEditor({
                   </RadioGroup>
                   <div className='mt-2 text-xs text-gray-500'>
                     {t(
-                      '这个界面默认按价格填写，保存时会自动换算回后端需要的倍率 JSON。',
+                      '这个表单用于编辑固定价格配置，保存时会自动换算回后端需要的倍率 JSON。',
                     )}
                   </div>
                 </div>
+
+                {selectedModel.effectivePricingMode ===
+                ADVANCED_PRICING_MODE_ADVANCED ? (
+                  <Banner
+                    type='info'
+                    bordered
+                    fullMode={false}
+                    closeIcon={null}
+                    style={{ marginBottom: 16 }}
+                    title={t('当前由高级规则生效')}
+                    description={t(
+                      '下面仍可维护固定价格，便于后续回切；当前请求会继续按高级规则结算。',
+                    )}
+                  />
+                ) : null}
 
                 {selectedWarnings.length > 0 ? (
                   <Card
