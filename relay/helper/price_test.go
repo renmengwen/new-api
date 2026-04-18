@@ -3,6 +3,7 @@ package helper
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -347,10 +348,15 @@ func TestModelPriceHelperPerCallReturnsAdvancedMediaTaskPriceDataWhenRuleMatches
 	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
 		"task-advanced-media-model": {
 			"rule_type": "media_task",
+			"task_type": "generate",
 			"segments": [
 				{
 					"priority": 10,
+					"resolution": "720p",
+					"output_duration_min": 5,
+					"output_duration_max": 5,
 					"unit_price": 8.8,
+					"min_tokens": 194400,
 					"remark": "task advanced rule"
 				}
 			]
@@ -358,11 +364,16 @@ func TestModelPriceHelperPerCallReturnsAdvancedMediaTaskPriceDataWhenRuleMatches
 	}`))
 
 	c, _ := gin.CreateTestContext(nil)
+	c.Set("task_request", relaycommon.TaskSubmitReq{
+		Size:     "1280x720",
+		Duration: 5,
+	})
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "task-advanced-media-model",
 		UsingGroup:      "default",
 		UserGroup:       "default",
 	}
+	info.TaskRelayInfo = &relaycommon.TaskRelayInfo{Action: constant.TaskActionGenerate}
 
 	priceData, err := ModelPriceHelperPerCall(c, info)
 	require.NoError(t, err)
@@ -372,7 +383,125 @@ func TestModelPriceHelperPerCallReturnsAdvancedMediaTaskPriceDataWhenRuleMatches
 	require.Equal(t, types.AdvancedRuleTypeMediaTask, priceData.AdvancedRuleType)
 	require.Equal(t, 8.8, priceData.ModelPrice)
 	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "generate", priceData.AdvancedRuleSnapshot.TaskType)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens)
+	require.Equal(t, 194400, *priceData.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "task_type=generate")
 	require.Greater(t, priceData.Quota, 0)
+}
+
+func TestModelPriceHelperPerCallFallsBackToLegacyPriceWhenAdvancedMediaTaskDoesNotMatch(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"task-advanced-media-fallback-model":0.25}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"task-advanced-media-fallback-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"task-advanced-media-fallback-model": {
+			"rule_type": "media_task",
+			"task_type": "generate",
+			"segments": [
+				{
+					"priority": 10,
+					"resolution": "1080p",
+					"unit_price": 8.8
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	c.Set("task_request", relaycommon.TaskSubmitReq{
+		Size: "1280x720",
+	})
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "task-advanced-media-fallback-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+	info.TaskRelayInfo = &relaycommon.TaskRelayInfo{Action: constant.TaskActionGenerate}
+
+	priceData, err := ModelPriceHelperPerCall(c, info)
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModePerRequest, priceData.BillingMode)
+	require.True(t, priceData.UsePrice)
+	require.Equal(t, 0.25, priceData.ModelPrice)
+	require.Equal(t, types.AdvancedRuleType(""), priceData.AdvancedRuleType)
+	require.Nil(t, priceData.AdvancedRuleSnapshot)
+}
+
+func TestModelPriceHelperPerCallDoesNotDropAdvancedMediaTaskWhenMinTokensConfigured(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"task-advanced-media-min-tokens-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"task-advanced-media-min-tokens-model": {
+			"rule_type": "media_task",
+			"task_type": "generate",
+			"segments": [
+				{
+					"priority": 10,
+					"unit_price": 8.8,
+					"min_tokens": 194400
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	c.Set("task_request", relaycommon.TaskSubmitReq{})
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "task-advanced-media-min-tokens-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+	info.TaskRelayInfo = &relaycommon.TaskRelayInfo{Action: constant.TaskActionGenerate}
+
+	priceData, err := ModelPriceHelperPerCall(c, info)
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, types.AdvancedRuleTypeMediaTask, priceData.AdvancedRuleType)
+	require.True(t, priceData.UsePrice)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens)
+	require.Equal(t, 194400, *priceData.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens)
+}
+
+func TestModelPriceHelperPerCallDoesNotMatchAdvancedMediaTaskWhenTaskTypeDiffers(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"task-advanced-media-task-type-model":0.3}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"task-advanced-media-task-type-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"task-advanced-media-task-type-model": {
+			"rule_type": "media_task",
+			"task_type": "remixGenerate",
+			"segments": [
+				{
+					"priority": 10,
+					"unit_price": 8.8
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	c.Set("task_request", relaycommon.TaskSubmitReq{})
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "task-advanced-media-task-type-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+	info.TaskRelayInfo = &relaycommon.TaskRelayInfo{Action: constant.TaskActionGenerate}
+
+	priceData, err := ModelPriceHelperPerCall(c, info)
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModePerRequest, priceData.BillingMode)
+	require.True(t, priceData.UsePrice)
+	require.Equal(t, 0.3, priceData.ModelPrice)
+	require.Nil(t, priceData.AdvancedRuleSnapshot)
 }
 
 func TestContainPriceOrRatioReturnsTrueForAdvancedOnlyModel(t *testing.T) {

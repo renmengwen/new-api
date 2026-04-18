@@ -114,6 +114,7 @@ type advancedTextRuntimeContext struct {
 }
 
 type AdvancedPricingTaskContext struct {
+	TaskType           string
 	InferenceMode      string
 	Audio              *bool
 	InputVideo         *bool
@@ -125,6 +126,7 @@ type AdvancedPricingTaskContext struct {
 }
 
 type advancedMediaRuntimeContext struct {
+	taskType           string
 	inferenceMode      string
 	audio              *bool
 	inputVideo         *bool
@@ -276,6 +278,9 @@ func resolveAdvancedTextPriceData(modelName string, ctx AdvancedPricingRuntimeCo
 
 func resolveAdvancedMediaTaskPriceData(ctx AdvancedPricingRuntimeContext, ruleSet AdvancedPricingRuleSet) (types.PriceData, bool, error) {
 	runtimeCtx := buildAdvancedMediaRuntimeContext(ctx)
+	if taskType := normalizeAdvancedPricingComparableString(ruleSet.TaskType); taskType != "" && taskType != runtimeCtx.taskType {
+		return types.PriceData{}, false, nil
+	}
 	segment, ok := findMatchedMediaTaskSegment(ruleSet.Segments, runtimeCtx, ctx.PromptTokens)
 	if !ok {
 		return types.PriceData{}, false, nil
@@ -288,7 +293,7 @@ func resolveAdvancedMediaTaskPriceData(ctx AdvancedPricingRuntimeContext, ruleSe
 		ModelPrice:           *segment.UnitPrice,
 		BillingMode:          types.BillingModeAdvanced,
 		AdvancedRuleType:     ruleSet.RuleType,
-		AdvancedRuleSnapshot: buildAdvancedMediaRuleSnapshot(ruleSet.RuleType, segment, runtimeCtx, ctx.PromptTokens),
+		AdvancedRuleSnapshot: buildAdvancedMediaRuleSnapshot(ruleSet.RuleType, ruleSet.TaskType, segment, runtimeCtx, ctx.PromptTokens),
 		UsePrice:             true,
 	}, true, nil
 }
@@ -299,6 +304,7 @@ func buildAdvancedMediaRuntimeContext(ctx AdvancedPricingRuntimeContext) advance
 		return runtimeCtx
 	}
 
+	runtimeCtx.taskType = normalizeAdvancedPricingComparableString(ctx.Task.TaskType)
 	runtimeCtx.inferenceMode = normalizeAdvancedPricingComparableString(ctx.Task.InferenceMode)
 	runtimeCtx.audio = cloneAdvancedBoolPtr(ctx.Task.Audio)
 	runtimeCtx.inputVideo = cloneAdvancedBoolPtr(ctx.Task.InputVideo)
@@ -584,9 +590,6 @@ func matchAdvancedMediaTaskSegment(segment AdvancedPriceRule, runtimeCtx advance
 	if segment.Draft != nil && !boolPointerEqual(segment.Draft, runtimeCtx.draft) {
 		return false
 	}
-	if segment.MinTokens != nil && promptTokens < *segment.MinTokens {
-		return false
-	}
 	return true
 }
 
@@ -637,12 +640,16 @@ func buildAdvancedRuleSnapshot(ruleType AdvancedRuleType, segment AdvancedPriceR
 	}
 }
 
-func buildAdvancedMediaRuleSnapshot(ruleType AdvancedRuleType, segment AdvancedPriceRule, runtimeCtx advancedMediaRuntimeContext, promptTokens int) *types.AdvancedRuleSnapshot {
+func buildAdvancedMediaRuleSnapshot(ruleType AdvancedRuleType, taskType string, segment AdvancedPriceRule, runtimeCtx advancedMediaRuntimeContext, promptTokens int) *types.AdvancedRuleSnapshot {
 	return &types.AdvancedRuleSnapshot{
 		RuleType:      ruleType,
 		MatchSummary:  buildAdvancedMediaMatchSummary(segment, runtimeCtx, promptTokens),
 		ConditionTags: buildAdvancedMediaConditionTags(segment),
 		Priority:      cloneAdvancedIntPtr(segment.Priority),
+		TaskType:      strings.TrimSpace(taskType),
+		ThresholdSnapshot: types.AdvancedRuleThresholdSnapshot{
+			MinTokens: cloneAdvancedIntPtr(segment.MinTokens),
+		},
 	}
 }
 
@@ -663,6 +670,9 @@ func buildAdvancedMediaMatchSummary(segment AdvancedPriceRule, runtimeCtx advanc
 		fmt.Sprintf("priority=%d", valueFromAdvancedIntPtr(segment.Priority)),
 		fmt.Sprintf("prompt_tokens=%d", promptTokens),
 		fmt.Sprintf("unit_price=%g", valueFromAdvancedFloatPtr(segment.UnitPrice)),
+	}
+	if runtimeCtx.taskType != "" {
+		parts = append(parts, fmt.Sprintf("task_type=%s", runtimeCtx.taskType))
 	}
 	if runtimeCtx.inferenceMode != "" {
 		parts = append(parts, fmt.Sprintf("inference_mode=%s", runtimeCtx.inferenceMode))
@@ -712,7 +722,7 @@ func buildAdvancedConditionTags(segment AdvancedPriceRule) []string {
 }
 
 func buildAdvancedMediaConditionTags(segment AdvancedPriceRule) []string {
-	tags := make([]string, 0, 9)
+	tags := make([]string, 0, 10)
 	if inferenceMode := normalizeAdvancedPricingComparableString(segment.InferenceMode); inferenceMode != "" {
 		tags = append(tags, fmt.Sprintf("inference_mode:%s", inferenceMode))
 	}

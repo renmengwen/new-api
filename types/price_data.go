@@ -29,6 +29,7 @@ type AdvancedRuleThresholdSnapshot struct {
 	InputMax  *int `json:"input_max,omitempty"`
 	OutputMin *int `json:"output_min,omitempty"`
 	OutputMax *int `json:"output_max,omitempty"`
+	MinTokens *int `json:"min_tokens,omitempty"`
 }
 
 type AdvancedRuleSnapshot struct {
@@ -36,6 +37,7 @@ type AdvancedRuleSnapshot struct {
 	MatchSummary      string                        `json:"match_summary,omitempty"`
 	ConditionTags     []string                      `json:"condition_tags,omitempty"`
 	Priority          *int                          `json:"priority,omitempty"`
+	TaskType          string                        `json:"task_type,omitempty"`
 	ServiceTier       string                        `json:"service_tier,omitempty"`
 	CacheRead         *bool                         `json:"cache_read,omitempty"`
 	CacheCreate       *bool                         `json:"cache_create,omitempty"`

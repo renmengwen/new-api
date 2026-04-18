@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
@@ -349,6 +350,24 @@ func appendTaskBillingModeFromReason(other map[string]interface{}, billingContex
 	other["billing_mode"] = string(billingContext.BillingMode)
 }
 
+func taskUsesAdvancedMediaTaskBilling(billingContext *model.TaskBillingContext) bool {
+	if billingContext == nil || billingContext.BillingMode != types.BillingModeAdvanced {
+		return false
+	}
+	ruleType := billingContext.AdvancedRuleType
+	if ruleType == "" && billingContext.AdvancedRuleSnapshot != nil {
+		ruleType = billingContext.AdvancedRuleSnapshot.RuleType
+	}
+	return ruleType == types.AdvancedRuleTypeMediaTask
+}
+
+func resolveAdvancedMediaTaskMinTokens(billingContext *model.TaskBillingContext) int {
+	if billingContext == nil || billingContext.AdvancedRuleSnapshot == nil || billingContext.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens == nil {
+		return 0
+	}
+	return *billingContext.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens
+}
+
 type taskTokenBillingRatios struct {
 	modelRatio         float64
 	groupRatio         float64
@@ -411,6 +430,53 @@ func calculateTaskQuotaByTokenRatios(totalTokens int, ratios taskTokenBillingRat
 		}
 	}
 	return int(quota)
+}
+
+func calculateTaskQuotaByAdvancedMediaTask(totalTokens int, billingContext *model.TaskBillingContext) (int, int, bool) {
+	if totalTokens <= 0 || billingContext == nil || billingContext.ModelPrice < 0 {
+		return 0, 0, false
+	}
+
+	effectiveTokens := totalTokens
+	if minTokens := resolveAdvancedMediaTaskMinTokens(billingContext); minTokens > effectiveTokens {
+		effectiveTokens = minTokens
+	}
+
+	actualQuota := decimal.NewFromFloat(billingContext.ModelPrice).
+		Div(decimal.NewFromInt(1000000)).
+		Mul(decimal.NewFromInt(int64(effectiveTokens))).
+		Mul(decimal.NewFromFloat(billingContext.GroupRatio)).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
+		IntPart()
+	return int(actualQuota), effectiveTokens, true
+}
+
+func RecalculateTaskQuotaByAdvancedMediaTask(ctx context.Context, task *model.Task, totalTokens int) {
+	if totalTokens <= 0 || task == nil {
+		return
+	}
+
+	billingContext := task.PrivateData.BillingContext
+	if !taskUsesAdvancedMediaTaskBilling(billingContext) {
+		return
+	}
+
+	actualQuota, effectiveTokens, ok := calculateTaskQuotaByAdvancedMediaTask(totalTokens, billingContext)
+	if !ok {
+		return
+	}
+
+	minTokens := resolveAdvancedMediaTaskMinTokens(billingContext)
+	reason := fmt.Sprintf(
+		"advanced media task recalculation: total_tokens=%d, effective_tokens=%d, min_tokens=%d, unit_price=%.6f, group_ratio=%.2f, billing_mode=%s",
+		totalTokens,
+		effectiveTokens,
+		minTokens,
+		billingContext.ModelPrice,
+		billingContext.GroupRatio,
+		billingContext.BillingMode,
+	)
+	recalculateTaskQuota(ctx, task, actualQuota, reason, true)
 }
 
 func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens int) {

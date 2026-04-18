@@ -805,6 +805,62 @@ func TestSettle_PerCallBilling_SkipsTotalTokens(t *testing.T) {
 	assert.Equal(t, int64(0), countLogs(t))
 }
 
+func TestSettle_AdvancedMediaTaskUsesUsageTokensAndMinTokensBeforeLegacyBranches(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 36, 36, 36
+	const initQuota, tokenRemain = 10000, 8000
+	const unitPrice = 28.0
+	const minTokens = 194400
+	const actualTotalTokens = 100000
+	preConsumed := int(unitPrice * common.QuotaPerUnit)
+	expectedQuota := int(unitPrice * (float64(minTokens) / 1000000.0) * common.QuotaPerUnit)
+	minTokensValue := minTokens
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-advanced-media-settle", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.PerCallBilling = true
+	task.PrivateData.BillingContext.BillingMode = types.BillingModeAdvanced
+	task.PrivateData.BillingContext.AdvancedRuleType = types.AdvancedRuleTypeMediaTask
+	task.PrivateData.BillingContext.ModelPrice = unitPrice
+	task.PrivateData.BillingContext.GroupRatio = 1
+	task.PrivateData.BillingContext.AdvancedRuleSnapshot = &types.AdvancedRuleSnapshot{
+		RuleType:     types.AdvancedRuleTypeMediaTask,
+		MatchSummary: "prompt_tokens=0, task_type=generate",
+		ThresholdSnapshot: types.AdvancedRuleThresholdSnapshot{
+			MinTokens: &minTokensValue,
+		},
+	}
+	roundTripTaskPrivateData(t, task)
+
+	adaptor := &mockAdaptor{adjustReturn: 3000}
+	taskResult := &relaycommon.TaskInfo{
+		Status:      model.TaskStatusSuccess,
+		TotalTokens: actualTotalTokens,
+	}
+
+	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+
+	assert.Equal(t, expectedQuota, task.Quota)
+	assert.Equal(t, initQuota+(preConsumed-expectedQuota), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+(preConsumed-expectedQuota), getTokenRemainQuota(t, tokenID))
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Contains(t, log.Content, "advanced media task recalculation")
+	assert.Contains(t, log.Content, "effective_tokens=194400")
+
+	var other map[string]interface{}
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.Equal(t, string(types.BillingModeAdvanced), other["billing_mode"])
+	assert.Equal(t, string(types.AdvancedRuleTypeMediaTask), other["advanced_rule_type"])
+}
+
 func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()

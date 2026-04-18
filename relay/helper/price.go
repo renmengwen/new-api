@@ -290,7 +290,7 @@ func resolveExplicitPerCallPriceData(c *gin.Context, info *relaycommon.RelayInfo
 	case ratio_setting.BillingModeAdvanced:
 		priceData, ok, err := ratio_setting.ResolveAdvancedPriceData(info.OriginModelName, ratio_setting.AdvancedPricingRuntimeContext{
 			Request: info.Request,
-			Task:    buildAdvancedPricingTaskContext(c),
+			Task:    buildAdvancedPricingTaskContext(c, info),
 		})
 		if err != nil {
 			return types.PriceData{}, true, err
@@ -330,7 +330,7 @@ func finalizePerCallPriceData(priceData types.PriceData) types.PriceData {
 	return priceData
 }
 
-func buildAdvancedPricingTaskContext(c *gin.Context) *ratio_setting.AdvancedPricingTaskContext {
+func buildAdvancedPricingTaskContext(c *gin.Context, info *relaycommon.RelayInfo) *ratio_setting.AdvancedPricingTaskContext {
 	if c == nil {
 		return nil
 	}
@@ -341,6 +341,7 @@ func buildAdvancedPricingTaskContext(c *gin.Context) *ratio_setting.AdvancedPric
 	}
 
 	runtimeCtx := &ratio_setting.AdvancedPricingTaskContext{
+		TaskType:           normalizeAdvancedTaskString(resolveTaskType(info, c)),
 		InferenceMode:      normalizeAdvancedTaskString(firstTaskString(taskReq.Mode, taskMetadataString(taskReq.Metadata, "inference_mode", "inferenceMode"))),
 		Resolution:         normalizeAdvancedTaskString(firstTaskString(taskMetadataString(taskReq.Metadata, "resolution", "Resolution"), deriveTaskResolution(taskReq.Size))),
 		AspectRatio:        normalizeAdvancedTaskString(firstTaskString(taskMetadataString(taskReq.Metadata, "aspect_ratio", "aspectRatio"), deriveTaskAspectRatio(taskReq.Size))),
@@ -359,6 +360,16 @@ func buildAdvancedPricingTaskContext(c *gin.Context) *ratio_setting.AdvancedPric
 	}
 
 	return runtimeCtx
+}
+
+func resolveTaskType(info *relaycommon.RelayInfo, c *gin.Context) string {
+	if info != nil && info.TaskRelayInfo != nil {
+		return info.TaskRelayInfo.Action
+	}
+	if c == nil {
+		return ""
+	}
+	return c.GetString("action")
 }
 
 func firstTaskString(values ...string) string {
