@@ -50,6 +50,111 @@ import {
   getVisibleUsageLogColumnKeys,
 } from './exportState';
 
+const getAdvancedRuleSnapshot = (other) => {
+  const snapshot = other?.advanced_rule;
+  return snapshot && typeof snapshot === 'object' ? snapshot : null;
+};
+
+const getAdvancedRuleTypeLabel = (t, ruleType) => {
+  switch (ruleType) {
+    case 'text_segment':
+      return t('文本分段规则');
+    case 'media_task':
+      return t('媒体任务规则');
+    default:
+      return ruleType || t('高级规则');
+  }
+};
+
+const buildAdvancedConditionLines = (t, snapshot) => {
+  const lines = [];
+  if (snapshot?.match_summary) {
+    lines.push(`${t('命中条件')}：${snapshot.match_summary}`);
+  }
+  if (Array.isArray(snapshot?.condition_tags) && snapshot.condition_tags.length > 0) {
+    lines.push(`${t('条件标签')}：${snapshot.condition_tags.join(', ')}`);
+  }
+  return lines;
+};
+
+const buildAdvancedPriceSummary = (t, other, snapshot) => {
+  const priceSnapshot = snapshot?.price_snapshot || {};
+  const summary = [];
+  if (priceSnapshot.input_price !== undefined) {
+    summary.push(`${t('输入')} ${renderQuota(priceSnapshot.input_price)} / 1M tokens`);
+  }
+  if (priceSnapshot.output_price !== undefined) {
+    summary.push(`${t('输出')} ${renderQuota(priceSnapshot.output_price)} / 1M tokens`);
+  }
+  if (priceSnapshot.cache_read_price !== undefined) {
+    summary.push(`${t('缓存读取')} ${renderQuota(priceSnapshot.cache_read_price)} / 1M tokens`);
+  }
+  if (priceSnapshot.cache_create_price !== undefined) {
+    summary.push(`${t('缓存创建')} ${renderQuota(priceSnapshot.cache_create_price)} / 1M tokens`);
+  }
+  if (summary.length === 0 && other?.model_price !== undefined) {
+    summary.push(`${t('单价')} ${renderQuota(other.model_price)} / 1M tokens`);
+  }
+  if (summary.length === 0) {
+    return `${t('单价摘要')}：${t('未记录')}`;
+  }
+  return `${t('单价摘要')}：${summary.join('；')}`;
+};
+
+const buildAdvancedBillingBasis = (t, log, other, snapshot) => {
+  const thresholdSnapshot = snapshot?.threshold_snapshot || {};
+  const lines = [];
+  if ((other?.advanced_rule_type || snapshot?.rule_type) === 'media_task') {
+    lines.push(`${t('实际计费依据')}：${t('按任务 usage.total_tokens 与命中的高级规则快照结算')}`);
+    if (snapshot?.task_type) {
+      lines.push(`${t('任务类型')}：${snapshot.task_type}`);
+    }
+    if (thresholdSnapshot.min_tokens !== undefined) {
+      lines.push(`${t('最低 token 阈值')}：${renderNumber(thresholdSnapshot.min_tokens)}`);
+    }
+    return lines;
+  }
+
+  lines.push(`${t('实际计费依据')}：${t('按请求 token 与命中的高级规则快照结算')}`);
+  if (log) {
+    lines.push(
+      `${t('本次用量')}：${t('输入')} ${renderNumber(log.prompt_tokens || 0)} tokens，${t('输出')} ${renderNumber(log.completion_tokens || 0)} tokens`,
+    );
+  }
+  return lines;
+};
+
+const renderAdvancedBillingDetails = (t, other) => {
+  const snapshot = getAdvancedRuleSnapshot(other);
+  const lines = [
+    t('高级规则计费'),
+    `${t('规则类型')}：${getAdvancedRuleTypeLabel(
+      t,
+      other?.advanced_rule_type || snapshot?.rule_type,
+    )}`,
+    ...buildAdvancedConditionLines(t, snapshot),
+    buildAdvancedPriceSummary(t, other, snapshot),
+    ...buildAdvancedBillingBasis(t, null, other, snapshot),
+  ];
+  return lines.filter(Boolean).join('\n');
+};
+
+const renderAdvancedBillingProcess = (t, log, other) => {
+  const snapshot = getAdvancedRuleSnapshot(other);
+  const lines = [
+    t('高级规则计费'),
+    `${t('规则类型')}：${getAdvancedRuleTypeLabel(
+      t,
+      other?.advanced_rule_type || snapshot?.rule_type,
+    )}`,
+    ...buildAdvancedConditionLines(t, snapshot),
+    buildAdvancedPriceSummary(t, other, snapshot),
+    ...buildAdvancedBillingBasis(t, log, other, snapshot),
+    `${t('分组倍率')}：${renderNumber(other?.group_ratio || 1)}x`,
+  ];
+  return lines.filter(Boolean).join('\n');
+};
+
 export const useLogsData = () => {
   const { t } = useTranslation();
 
@@ -421,8 +526,10 @@ export const useLogsData = () => {
       if (logs[i].type === 2) {
         expandDataLocal.push({
           key: t('日志详情'),
-          value: other?.claude
-            ? renderClaudeLogContent(
+          value: other?.billing_mode === 'advanced'
+            ? renderAdvancedBillingDetails(t, other)
+            : other?.claude
+              ? renderClaudeLogContent(
                 other?.model_ratio,
                 other.completion_ratio,
                 other.model_price,
@@ -492,7 +599,9 @@ export const useLogsData = () => {
 
         let content = '';
         if (!isViolationFeeLog) {
-          if (other?.ws || other?.audio) {
+          if (other?.billing_mode === 'advanced') {
+            content = renderAdvancedBillingProcess(t, logs[i], other);
+          } else if (other?.ws || other?.audio) {
             content = renderAudioModelPrice(
               other?.text_input,
               other?.text_output,
