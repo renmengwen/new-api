@@ -124,7 +124,7 @@ const buildAdvancedBillingBasis = (t, log, other, snapshot) => {
   return lines;
 };
 
-const renderAdvancedBillingDetails = (t, other) => {
+const renderAdvancedBillingDetailsBase = (t, other) => {
   const snapshot = getAdvancedRuleSnapshot(other);
   const lines = [
     t('高级规则计费'),
@@ -139,7 +139,7 @@ const renderAdvancedBillingDetails = (t, other) => {
   return lines.filter(Boolean).join('\n');
 };
 
-const renderAdvancedBillingProcess = (t, log, other) => {
+const renderAdvancedBillingProcessBase = (t, log, other) => {
   const snapshot = getAdvancedRuleSnapshot(other);
   const lines = [
     t('高级规则计费'),
@@ -151,6 +151,253 @@ const renderAdvancedBillingProcess = (t, log, other) => {
     buildAdvancedPriceSummary(t, other, snapshot),
     ...buildAdvancedBillingBasis(t, log, other, snapshot),
     `${t('分组倍率')}：${renderNumber(other?.group_ratio || 1)}x`,
+  ];
+  return lines.filter(Boolean).join('\n');
+};
+
+const toAdvancedNumber = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const getAdvancedGroupRatio = (other) => {
+  return toAdvancedNumber(other?.group_ratio) ?? 1;
+};
+
+const getAdvancedLegacyInputPrice = (other) => {
+  const modelRatio = toAdvancedNumber(other?.model_ratio);
+  return modelRatio === null ? null : modelRatio * 2;
+};
+
+const getAdvancedPriceSnapshot = (snapshot) => snapshot?.price_snapshot || {};
+
+const getAdvancedThresholdSnapshot = (snapshot) => snapshot?.threshold_snapshot || {};
+
+const getAdvancedActualUsageTokens = (log, other) => {
+  const explicitUsage =
+    toAdvancedNumber(other?.usage_total_tokens) ??
+    toAdvancedNumber(other?.total_tokens) ??
+    toAdvancedNumber(other?.actual_total_tokens);
+  if (explicitUsage !== null) {
+    return {
+      actualTokens: explicitUsage,
+      usageSource: 'usage.total_tokens',
+    };
+  }
+
+  const promptTokens = toAdvancedNumber(log?.prompt_tokens) ?? 0;
+  const completionTokens = toAdvancedNumber(log?.completion_tokens) ?? 0;
+  const logTotalTokens = promptTokens + completionTokens;
+  if (logTotalTokens > 0) {
+    return {
+      actualTokens: logTotalTokens,
+      usageSource: '当前日志 token 合计',
+    };
+  }
+
+  return {
+    actualTokens: 0,
+    usageSource: '',
+  };
+};
+
+const buildAdvancedExtraChargeItems = (t, other, snapshot) => {
+  const priceSnapshot = getAdvancedPriceSnapshot(snapshot);
+  const baseInputPrice =
+    toAdvancedNumber(priceSnapshot.input_price) ??
+    getAdvancedLegacyInputPrice(other) ??
+    0;
+
+  const items = [];
+  const pushTokenItem = (label, tokenCount, unitPrice) => {
+    const tokens = toAdvancedNumber(tokenCount);
+    const price = toAdvancedNumber(unitPrice);
+    if (!tokens || !price) {
+      return;
+    }
+    items.push({
+      label,
+      formulaPart: `${label} ${renderNumber(tokens)} tokens / 1M tokens * ${renderQuota(price)}`,
+      amount: (tokens / 1000000) * price,
+      summary: `${label} ${renderQuota(price)} / 1M tokens`,
+    });
+  };
+  const pushCountItem = (label, callCount, unitPrice) => {
+    const count = toAdvancedNumber(callCount);
+    const price = toAdvancedNumber(unitPrice);
+    if (!count || !price) {
+      return;
+    }
+    items.push({
+      label,
+      formulaPart: `${label} ${renderNumber(count)} 次 * ${renderQuota(price)}`,
+      amount: count * price,
+      summary: `${label} ${renderNumber(count)} 次 × ${renderQuota(price)}`,
+    });
+  };
+
+  pushTokenItem(
+    t('缓存读取'),
+    other?.cache_tokens,
+    priceSnapshot.cache_read_price ?? (other?.cache_ratio ? baseInputPrice * other.cache_ratio : null),
+  );
+  pushTokenItem(
+    t('缓存创建'),
+    other?.cache_creation_tokens,
+    priceSnapshot.cache_create_price ??
+      (other?.cache_creation_ratio ? baseInputPrice * other.cache_creation_ratio : null),
+  );
+  pushTokenItem(
+    t('缓存创建(5分钟)'),
+    other?.cache_creation_tokens_5m,
+    other?.cache_creation_ratio_5m ? baseInputPrice * other.cache_creation_ratio_5m : null,
+  );
+  pushTokenItem(
+    t('缓存创建(1小时)'),
+    other?.cache_creation_tokens_1h,
+    other?.cache_creation_ratio_1h ? baseInputPrice * other.cache_creation_ratio_1h : null,
+  );
+  pushCountItem(t('联网搜索'), other?.web_search_call_count, other?.web_search_price);
+  pushCountItem(t('文件搜索'), other?.file_search_call_count, other?.file_search_price);
+  pushCountItem(t('图片生成'), other?.image_generation_call, other?.image_generation_call_price);
+  pushTokenItem(t('音频输入'), other?.audio_input_token_count, other?.audio_input_price);
+
+  return items;
+};
+
+const buildAdvancedExtraChargeLines = (t, log, other, snapshot) => {
+  const items = buildAdvancedExtraChargeItems(t, other, snapshot);
+  const lines = [];
+  if (other?.ws || other?.audio) {
+    if (other?.text_input > 0) {
+      lines.push(`${t('文字输入')}：${renderNumber(other.text_input)}`);
+    }
+    if (other?.text_output > 0) {
+      lines.push(`${t('文字输出')}：${renderNumber(other.text_output)}`);
+    }
+    if (other?.audio_input > 0) {
+      lines.push(`${t('音频输入')}：${renderNumber(other.audio_input)}`);
+    }
+    if (other?.audio_output > 0) {
+      lines.push(`${t('音频输出')}：${renderNumber(other.audio_output)}`);
+    }
+  }
+  items.forEach((item) => {
+    lines.push(`${t('附加收费')}：${item.summary}`);
+  });
+  return lines;
+};
+
+const buildAdvancedTextSegmentFormula = (t, log, other, snapshot) => {
+  const priceSnapshot = getAdvancedPriceSnapshot(snapshot);
+  const groupRatio = getAdvancedGroupRatio(other);
+  const inputTokens = toAdvancedNumber(log?.prompt_tokens) ?? 0;
+  const outputTokens = toAdvancedNumber(log?.completion_tokens) ?? 0;
+  const inputPrice =
+    toAdvancedNumber(priceSnapshot.input_price) ??
+    getAdvancedLegacyInputPrice(other) ??
+    0;
+  const outputPrice =
+    toAdvancedNumber(priceSnapshot.output_price) ??
+    (inputPrice && toAdvancedNumber(other?.completion_ratio) !== null
+      ? inputPrice * Number(other.completion_ratio)
+      : 0);
+  const extraItems = buildAdvancedExtraChargeItems(t, other, snapshot);
+
+  const baseParts = [];
+  let baseAmount = 0;
+
+  if (inputPrice > 0) {
+    baseParts.push(`${t('输入')} ${renderNumber(inputTokens)} tokens / 1M tokens * ${renderQuota(inputPrice)}`);
+    baseAmount += (inputTokens / 1000000) * inputPrice;
+  }
+  if (outputPrice > 0) {
+    baseParts.push(`${t('输出')} ${renderNumber(outputTokens)} tokens / 1M tokens * ${renderQuota(outputPrice)}`);
+    baseAmount += (outputTokens / 1000000) * outputPrice;
+  }
+
+  extraItems.forEach((item) => {
+    baseParts.push(item.formulaPart);
+    baseAmount += item.amount;
+  });
+
+  const formula = baseParts.length > 0 ? baseParts.join(' + ') : t('暂无可展示的高级计费公式');
+  return [
+    `${t('本次用量')}：${t('输入')} ${renderNumber(inputTokens)} tokens，${t('输出')} ${renderNumber(outputTokens)} tokens`,
+    `${t('最终计费公式')}：(${formula}) * ${t('分组倍率')} ${renderNumber(groupRatio)} = ${renderQuota(
+      baseAmount * groupRatio,
+    )}`,
+  ];
+};
+
+const resolveAdvancedUnitPrice = (snapshot, other) => {
+  const priceSnapshot = getAdvancedPriceSnapshot(snapshot);
+  return (
+    toAdvancedNumber(priceSnapshot.input_price) ??
+    toAdvancedNumber(priceSnapshot.output_price) ??
+    toAdvancedNumber(other?.model_price) ??
+    getAdvancedLegacyInputPrice(other) ??
+    0
+  );
+};
+
+const buildAdvancedMediaTaskFormula = (t, log, other, snapshot) => {
+  const thresholdSnapshot = getAdvancedThresholdSnapshot(snapshot);
+  const { actualTokens, usageSource } = getAdvancedActualUsageTokens(log, other);
+  const minTokens = toAdvancedNumber(thresholdSnapshot.min_tokens) ?? 0;
+  const effectiveTokens = Math.max(actualTokens, minTokens);
+  const unitPrice = resolveAdvancedUnitPrice(snapshot, other);
+  const groupRatio = getAdvancedGroupRatio(other);
+  const actualLabel = usageSource ? `${renderNumber(actualTokens)} tokens（${usageSource}）` : t('未记录');
+
+  return [
+    `${t('实际计费用量')}：${actualLabel}`,
+    `${t('最低 token 阈值')}：${renderNumber(minTokens)} tokens`,
+    `${t('生效计费用量')}：${renderNumber(effectiveTokens)} tokens（${t(
+      '取实际计费用量与最低阈值较大值',
+    )}）`,
+    `${t('最终计费公式')}：${renderNumber(
+      effectiveTokens,
+    )} tokens / 1M tokens * ${renderQuota(unitPrice)} * ${t('分组倍率')} ${renderNumber(
+      groupRatio,
+    )} = ${renderQuota(((effectiveTokens / 1000000) * unitPrice) * groupRatio)}`,
+  ];
+};
+
+const renderAdvancedBillingDetails = (t, other) => {
+  const snapshot = getAdvancedRuleSnapshot(other);
+  if (!snapshot) {
+    return renderAdvancedBillingDetailsBase(t, other);
+  }
+  const lines = [
+    t('高级规则计费'),
+    `${t('规则类型')}：${getAdvancedRuleTypeLabel(t, other?.advanced_rule_type || snapshot?.rule_type)}`,
+    ...buildAdvancedConditionLines(t, snapshot),
+    buildAdvancedPriceSummary(t, other, snapshot),
+    ...buildAdvancedExtraChargeLines(t, null, other, snapshot),
+  ];
+  return lines.filter(Boolean).join('\n');
+};
+
+const renderAdvancedBillingProcess = (t, log, other) => {
+  const snapshot = getAdvancedRuleSnapshot(other);
+  if (!snapshot) {
+    return renderAdvancedBillingProcessBase(t, log, other);
+  }
+  const ruleType = other?.advanced_rule_type || snapshot?.rule_type;
+  const groupRatio = getAdvancedGroupRatio(other);
+  const formulaLines =
+    ruleType === 'media_task'
+      ? buildAdvancedMediaTaskFormula(t, log, other, snapshot)
+      : buildAdvancedTextSegmentFormula(t, log, other, snapshot);
+  const lines = [
+    t('高级规则计费'),
+    `${t('规则类型')}：${getAdvancedRuleTypeLabel(t, ruleType)}`,
+    ...buildAdvancedConditionLines(t, snapshot),
+    buildAdvancedPriceSummary(t, other, snapshot),
+    ...buildAdvancedExtraChargeLines(t, log, other, snapshot),
+    ...formulaLines,
+    `${t('分组倍率')}：${renderNumber(groupRatio)}x`,
   ];
   return lines.filter(Boolean).join('\n');
 };

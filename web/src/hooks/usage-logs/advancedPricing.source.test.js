@@ -26,8 +26,14 @@ const hookSource = fs.readFileSync(
 );
 
 test('useUsageLogsData renders advanced billing details with a dedicated branch', () => {
-  assert.match(hookSource, /const renderAdvancedBillingDetails = \(t, other\) => \{/);
-  assert.match(hookSource, /const renderAdvancedBillingProcess = \(t, log, other\) => \{/);
+  assert.match(
+    hookSource,
+    /const renderAdvancedBillingDetails = \(t, other\) => \{/,
+  );
+  assert.match(
+    hookSource,
+    /const renderAdvancedBillingProcess = \(t, log, other\) => \{/,
+  );
   assert.match(
     hookSource,
     /other\?\.billing_mode === 'advanced'\s*\?\s*renderAdvancedBillingDetails\(t,\s*other\)\s*:/,
@@ -50,14 +56,71 @@ test('advanced billing branch prioritizes structured rule fields instead of lega
   assert.match(hookSource, /命中条件/);
   assert.match(hookSource, /单价摘要/);
   assert.match(hookSource, /实际计费依据/);
+
   const detailsBlock = hookSource.match(
     /const renderAdvancedBillingDetails = \(t, other\) => \{[\s\S]*?\n};/,
   )?.[0];
   const processBlock = hookSource.match(
     /const renderAdvancedBillingProcess = \(t, log, other\) => \{[\s\S]*?\n};/,
   )?.[0];
+
   assert.ok(detailsBlock, 'advanced billing details helper should exist');
   assert.ok(processBlock, 'advanced billing process helper should exist');
   assert.doesNotMatch(detailsBlock, /render(LogContent|ModelPrice)\(/);
   assert.doesNotMatch(processBlock, /render(LogContent|ModelPrice)\(/);
+});
+
+test('advanced billing process includes final formulas for text segments and media tasks', () => {
+  assert.match(
+    hookSource,
+    /const buildAdvancedTextSegmentFormula = \(t, log, other, snapshot\) => \{/,
+  );
+  assert.match(
+    hookSource,
+    /const buildAdvancedMediaTaskFormula = \(t, log, other, snapshot\) => \{/,
+  );
+  assert.match(hookSource, /最终计费公式/);
+  assert.match(hookSource, /实际计费用量/);
+  assert.match(hookSource, /生效计费用量/);
+  assert.match(hookSource, /effectiveTokens/);
+  assert.match(hookSource, /ruleType === 'media_task'/);
+  assert.match(
+    hookSource,
+    /\?\s*buildAdvancedMediaTaskFormula\(t,\s*log,\s*other,\s*snapshot\)/,
+  );
+  assert.match(
+    hookSource,
+    /:\s*buildAdvancedTextSegmentFormula\(t,\s*log,\s*other,\s*snapshot\)/,
+  );
+  assert.match(hookSource, /groupRatio/);
+  assert.match(hookSource, /priceSnapshot\.input_price/);
+  assert.match(hookSource, /priceSnapshot\.output_price/);
+  assert.match(hookSource, /thresholdSnapshot\.min_tokens/);
+});
+
+test('advanced billing helpers keep coexistence extras instead of swallowing legacy surcharge details', () => {
+  assert.match(
+    hookSource,
+    /const buildAdvancedExtraChargeLines = \(t, log, other, snapshot\) => \{/,
+  );
+  assert.match(hookSource, /web_search_price/);
+  assert.match(hookSource, /file_search_price/);
+  assert.match(hookSource, /image_generation_call_price/);
+  assert.match(hookSource, /cache_creation_tokens/);
+  assert.match(
+    hookSource,
+    /buildAdvancedExtraChargeLines\(t, log, other, snapshot\)/,
+  );
+  assert.match(
+    hookSource,
+    /buildAdvancedExtraChargeLines\(t, null, other, snapshot\)/,
+  );
+  assert.match(
+    hookSource,
+    /const buildAdvancedTextSegmentFormula = \(t, log, other, snapshot\) => \{[\s\S]*buildAdvancedExtraChargeItems\(t, other, snapshot\)/,
+  );
+  assert.match(
+    hookSource,
+    /const buildAdvancedMediaTaskFormula = \(t, log, other, snapshot\) => \{[\s\S]*getAdvancedActualUsageTokens\(log, other\)/,
+  );
 });
