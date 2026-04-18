@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -315,4 +316,85 @@ func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T
 	require.True(t, summary.IsClaudeUsageSemantic)
 	require.Equal(t, 172, summary.PromptTokens)
 	require.Equal(t, 798, summary.Quota)
+}
+
+func TestCalculateTextQuotaSummaryRebuildsAdvancedTextPricingFromActualOutputTokens(t *testing.T) {
+	restoreTextQuotaRatioSettings(t)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"advanced-output-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"advanced-output-model": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"output_min": 0,
+					"output_max": 100,
+					"input_price": 1,
+					"output_price": 1
+				},
+				{
+					"priority": 20,
+					"output_min": 101,
+					"output_max": 1000,
+					"input_price": 4,
+					"output_price": 4
+				}
+			]
+		}
+	}`))
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "advanced-output-model",
+		Request: &dto.OpenAIResponsesRequest{
+			ServiceTier: "default",
+		},
+		PriceData: types.PriceData{
+			BillingMode:          types.BillingModeAdvanced,
+			ModelRatio:           2,
+			CompletionRatio:      1,
+			AdvancedRuleType:     types.AdvancedRuleTypeTextSegment,
+			AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{MatchSummary: "output_tokens=1000"},
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     20,
+		CompletionTokens: 50,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 35, summary.Quota)
+	require.Equal(t, 0.5, summary.ModelRatio)
+	require.Equal(t, 1.0, summary.CompletionRatio)
+	require.NotNil(t, relayInfo.PriceData.AdvancedRuleSnapshot)
+	require.Contains(t, relayInfo.PriceData.AdvancedRuleSnapshot.MatchSummary, "output_tokens=50")
+}
+
+func restoreTextQuotaRatioSettings(t *testing.T) {
+	t.Helper()
+
+	advancedModeJSON := ratio_setting.AdvancedPricingMode2JSONString()
+	advancedRulesJSON := ratio_setting.AdvancedPricingRules2JSONString()
+	modelRatioJSON := ratio_setting.ModelRatio2JSONString()
+	completionRatioJSON := ratio_setting.CompletionRatio2JSONString()
+	cacheRatioJSON := ratio_setting.CacheRatio2JSONString()
+	createCacheRatioJSON := ratio_setting.CreateCacheRatio2JSONString()
+
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(advancedModeJSON))
+		require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(advancedRulesJSON))
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(modelRatioJSON))
+		require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(completionRatioJSON))
+		require.NoError(t, ratio_setting.UpdateCacheRatioByJSONString(cacheRatioJSON))
+		require.NoError(t, ratio_setting.UpdateCreateCacheRatioByJSONString(createCacheRatioJSON))
+	})
 }
