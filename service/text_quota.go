@@ -83,14 +83,14 @@ func rebuildAdvancedTextPriceDataForSettlement(ctx *gin.Context, relayInfo *rela
 	if relayInfo == nil || usage == nil {
 		return
 	}
-	if ratio_setting.GetEffectiveBillingMode(relayInfo.OriginModelName) != ratio_setting.BillingModeAdvanced {
-		return
-	}
-	ruleSet, ok := ratio_setting.GetAdvancedPricingRuleSet(relayInfo.OriginModelName)
-	if !ok || ruleSet.RuleType != ratio_setting.RuleTypeTextSegment {
+	staleAdvancedTextPricing := relayInfo.PriceData.BillingMode == types.BillingModeAdvanced &&
+		relayInfo.PriceData.AdvancedRuleType == types.AdvancedRuleTypeTextSegment
+	currentMayNeedRefresh := ratio_setting.GetEffectiveBillingMode(relayInfo.OriginModelName) == ratio_setting.BillingModeAdvanced
+	if !staleAdvancedTextPricing && !currentMayNeedRefresh {
 		return
 	}
 
+	originalGroupRatioInfo := relayInfo.PriceData.GroupRatioInfo
 	runtimeRelayInfo := *relayInfo
 	resolvedPriceData, err := relayhelper.ModelPriceHelper(ctx, &runtimeRelayInfo, usage.PromptTokens, &types.TokenCountMeta{
 		MaxTokens: usage.CompletionTokens,
@@ -99,6 +99,7 @@ func rebuildAdvancedTextPriceDataForSettlement(ctx *gin.Context, relayInfo *rela
 		logger.LogError(ctx, "failed to rebuild advanced text pricing for settlement: "+err.Error())
 		return
 	}
+	resolvedPriceData.GroupRatioInfo = originalGroupRatioInfo
 	resolvedPriceData.OtherRatios = relayInfo.PriceData.OtherRatios
 	relayInfo.PriceData = resolvedPriceData
 }
