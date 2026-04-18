@@ -85,6 +85,36 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	return finalizeModelPriceData(info, priceData), nil
 }
 
+func RefreshTextPriceDataForSettlement(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, completionTokens int) (types.PriceData, bool, error) {
+	if info == nil {
+		return types.PriceData{}, false, nil
+	}
+
+	staleAdvancedTextPricing := info.PriceData.BillingMode == types.BillingModeAdvanced &&
+		info.PriceData.AdvancedRuleType == types.AdvancedRuleTypeTextSegment
+	currentConfiguredAdvancedTextPricing := false
+	if ratio_setting.GetEffectiveBillingMode(info.OriginModelName) == ratio_setting.BillingModeAdvanced {
+		if ruleSet, ok := ratio_setting.GetAdvancedPricingRuleSet(info.OriginModelName); ok && ruleSet.RuleType == ratio_setting.RuleTypeTextSegment {
+			currentConfiguredAdvancedTextPricing = true
+		}
+	}
+	if !staleAdvancedTextPricing && !currentConfiguredAdvancedTextPricing {
+		return types.PriceData{}, false, nil
+	}
+
+	originalGroupRatioInfo := info.PriceData.GroupRatioInfo
+	runtimeRelayInfo := *info
+	priceData, err := ModelPriceHelper(c, &runtimeRelayInfo, promptTokens, &types.TokenCountMeta{
+		MaxTokens: completionTokens,
+	})
+	if err != nil {
+		return types.PriceData{}, false, err
+	}
+	priceData.GroupRatioInfo = originalGroupRatioInfo
+	priceData.OtherRatios = info.PriceData.OtherRatios
+	return priceData, true, nil
+}
+
 func finalizeAdvancedPriceData(modelName string, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo types.GroupRatioInfo, priceData types.PriceData) types.PriceData {
 	priceData.GroupRatioInfo = groupRatioInfo
 	priceData.UsePrice = false

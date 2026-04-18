@@ -13,7 +13,6 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayhelper "github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -79,36 +78,6 @@ func isLegacyClaudeDerivedOpenAIUsage(relayInfo *relaycommon.RelayInfo, usage *d
 	return usage.ClaudeCacheCreation5mTokens > 0 || usage.ClaudeCacheCreation1hTokens > 0
 }
 
-func rebuildAdvancedTextPriceDataForSettlement(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage) {
-	if relayInfo == nil || usage == nil {
-		return
-	}
-	staleAdvancedTextPricing := relayInfo.PriceData.BillingMode == types.BillingModeAdvanced &&
-		relayInfo.PriceData.AdvancedRuleType == types.AdvancedRuleTypeTextSegment
-	currentConfiguredAdvancedTextPricing := false
-	if ratio_setting.GetEffectiveBillingMode(relayInfo.OriginModelName) == ratio_setting.BillingModeAdvanced {
-		if ruleSet, ok := ratio_setting.GetAdvancedPricingRuleSet(relayInfo.OriginModelName); ok && ruleSet.RuleType == ratio_setting.RuleTypeTextSegment {
-			currentConfiguredAdvancedTextPricing = true
-		}
-	}
-	if !staleAdvancedTextPricing && !currentConfiguredAdvancedTextPricing {
-		return
-	}
-
-	originalGroupRatioInfo := relayInfo.PriceData.GroupRatioInfo
-	runtimeRelayInfo := *relayInfo
-	resolvedPriceData, err := relayhelper.ModelPriceHelper(ctx, &runtimeRelayInfo, usage.PromptTokens, &types.TokenCountMeta{
-		MaxTokens: usage.CompletionTokens,
-	})
-	if err != nil {
-		logger.LogError(ctx, "failed to rebuild advanced text pricing for settlement: "+err.Error())
-		return
-	}
-	resolvedPriceData.GroupRatioInfo = originalGroupRatioInfo
-	resolvedPriceData.OtherRatios = relayInfo.PriceData.OtherRatios
-	relayInfo.PriceData = resolvedPriceData
-}
-
 func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage) textQuotaSummary {
 	summary := textQuotaSummary{
 		ModelName:            relayInfo.OriginModelName,
@@ -134,7 +103,12 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 			TotalTokens:      relayInfo.GetEstimatePromptTokens(),
 		}
 	} else {
-		rebuildAdvancedTextPriceDataForSettlement(ctx, relayInfo, usage)
+		refreshedPriceData, ok, err := relayhelper.RefreshTextPriceDataForSettlement(ctx, relayInfo, usage.PromptTokens, usage.CompletionTokens)
+		if err != nil {
+			logger.LogError(ctx, "failed to rebuild advanced text pricing for settlement: "+err.Error())
+		} else if ok {
+			relayInfo.PriceData = refreshedPriceData
+		}
 		summary.CompletionRatio = relayInfo.PriceData.CompletionRatio
 		summary.CacheRatio = relayInfo.PriceData.CacheRatio
 		summary.ImageRatio = relayInfo.PriceData.ImageRatio
