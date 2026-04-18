@@ -2,6 +2,8 @@ package helper
 
 import (
 	"bytes"
+	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -637,7 +639,7 @@ func TestModelPriceHelperPerCallMatchesAdvancedMediaTaskWhenGeminiLegacyRawActio
 	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "raw_action=generate")
 }
 
-func TestResolveRawTaskActionInfersGeminiGenerateFromTaskRequestBeforeBuildRequestBody(t *testing.T) {
+func TestResolveRawTaskActionInfersGeminiGenerateBeforeBuildRequestBodyUsingProviderDefaultAction(t *testing.T) {
 	body := `{"model":"veo-3.0-generate-001","prompt":"video prompt","images":["test-image"]}`
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -653,7 +655,7 @@ func TestResolveRawTaskActionInfersGeminiGenerateFromTaskRequestBeforeBuildReque
 	require.Equal(t, constant.TaskActionGenerate, resolveRawTaskAction(info, c))
 }
 
-func TestResolveRawTaskActionInfersVertexTextGenerateWithoutImageBeforeBuildRequestBody(t *testing.T) {
+func TestResolveRawTaskActionInfersVertexTextGenerateWithoutImageBeforeBuildRequestBodyUsingProviderDefaultAction(t *testing.T) {
 	body := `{"model":"veo-3.0-generate-001","prompt":"video prompt"}`
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -668,7 +670,7 @@ func TestResolveRawTaskActionInfersVertexTextGenerateWithoutImageBeforeBuildRequ
 	require.Equal(t, constant.TaskActionTextGenerate, resolveRawTaskAction(info, c))
 }
 
-func TestResolveRawTaskActionInfersKlingTextGenerateWithoutImageBeforeBuildRequestBody(t *testing.T) {
+func TestResolveRawTaskActionInfersKlingTextGenerateWithoutImageBeforeBuildRequestBodyUsingProviderDefaultAction(t *testing.T) {
 	body := `{"model":"kling-v1","prompt":"video prompt"}`
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -684,20 +686,72 @@ func TestResolveRawTaskActionInfersKlingTextGenerateWithoutImageBeforeBuildReque
 	require.Equal(t, constant.TaskActionTextGenerate, resolveRawTaskAction(info, c))
 }
 
-func TestResolveRawTaskActionKeepsViduReferenceGenerateInferenceFromTaskRequest(t *testing.T) {
-	body := `{"model":"viduq2","prompt":"video prompt","images":["img-1","img-2","img-3"]}`
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewBufferString(body))
-	c.Request.Header.Set("Content-Type", "application/json")
+func TestModelPriceHelperPerCallMatchesAdvancedMediaTaskWhenJimengMultipartInfersFirstTailGenerateBeforeBuildRequestBody(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"task-advanced-media-jimeng-first-tail-model":0.33}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"task-advanced-media-jimeng-first-tail-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"task-advanced-media-jimeng-first-tail-model": {
+			"rule_type": "media_task",
+			"task_type": "firstTailGenerate",
+			"segments": [
+				{
+					"priority": 10,
+					"unit_price": 7.7
+				}
+			]
+		}
+	}`))
+
+	c := newMultipartTaskContext(t, "/v1/videos", map[string]string{
+		"model":  "task-advanced-media-jimeng-first-tail-model",
+		"prompt": "video prompt",
+	}, "input_reference", 2)
 	info := &relaycommon.RelayInfo{
-		ChannelMeta:   &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeVidu},
-		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+		OriginModelName: "task-advanced-media-jimeng-first-tail-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		ChannelMeta:     &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeJimeng},
+		TaskRelayInfo:   &relaycommon.TaskRelayInfo{},
 	}
 
 	require.Nil(t, relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate))
 	require.Equal(t, constant.TaskActionGenerate, info.Action)
-	require.Equal(t, constant.TaskActionReferenceGenerate, resolveRawTaskAction(info, c))
+
+	priceData, err := ModelPriceHelperPerCall(c, info)
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, types.AdvancedRuleTypeMediaTask, priceData.AdvancedRuleType)
+	require.True(t, priceData.UsePrice)
+	require.Equal(t, 7.7, priceData.ModelPrice)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "firstTailGenerate", priceData.AdvancedRuleSnapshot.TaskType)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "raw_action=firstTailGenerate")
+}
+
+func newMultipartTaskContext(t *testing.T, path string, fields map[string]string, fileField string, fileCount int) *gin.Context {
+	t.Helper()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for key, value := range fields {
+		require.NoError(t, writer.WriteField(key, value))
+	}
+	for i := 0; i < fileCount; i++ {
+		part, err := writer.CreateFormFile(fileField, fmt.Sprintf("%s-%d.png", fileField, i))
+		require.NoError(t, err)
+		_, err = part.Write([]byte("test-image"))
+		require.NoError(t, err)
+	}
+	require.NoError(t, writer.Close())
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body.Bytes()))
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	return c
 }
 
 func TestContainPriceOrRatioReturnsTrueForAdvancedOnlyModel(t *testing.T) {

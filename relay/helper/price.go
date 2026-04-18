@@ -409,6 +409,9 @@ func deriveRawTaskActionFromTaskRequest(info *relaycommon.RelayInfo, c *gin.Cont
 	if imageCount == 0 && strings.TrimSpace(taskReq.Image) != "" {
 		imageCount = 1
 	}
+	if multipartInputRefCount := taskMetadataIntValue(taskReq.Metadata, "input_reference_count"); multipartInputRefCount > imageCount {
+		imageCount = multipartInputRefCount
+	}
 	hasImage := imageCount > 0 || strings.TrimSpace(taskReq.InputReference) != ""
 
 	switch resolveTaskChannelType(info, c) {
@@ -429,6 +432,15 @@ func deriveRawTaskActionFromTaskRequest(info *relaycommon.RelayInfo, c *gin.Cont
 			return constant.TaskActionGenerate
 		}
 		return constant.TaskActionTextGenerate
+	case constant.ChannelTypeJimeng:
+		switch {
+		case imageCount > 1:
+			return constant.TaskActionFirstTailGenerate
+		case hasImage:
+			return constant.TaskActionGenerate
+		default:
+			return constant.TaskActionTextGenerate
+		}
 	}
 
 	if hasImage {

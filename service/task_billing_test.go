@@ -736,6 +736,7 @@ func TestNonTerminalUpdate_NoBilling(t *testing.T) {
 
 type mockAdaptor struct {
 	adjustReturn int
+	adjustCalls  int
 }
 
 func (m *mockAdaptor) Init(_ *relaycommon.RelayInfo) {}
@@ -744,6 +745,7 @@ func (m *mockAdaptor) FetchTask(string, string, map[string]any, string) (*http.R
 }
 func (m *mockAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) { return nil, nil }
 func (m *mockAdaptor) AdjustBillingOnComplete(_ *model.Task, _ *relaycommon.TaskInfo) int {
+	m.adjustCalls++
 	return m.adjustReturn
 }
 
@@ -861,14 +863,13 @@ func TestSettle_AdvancedMediaTaskUsesUsageTokensAndMinTokensBeforeLegacyBranches
 	assert.Equal(t, string(types.AdvancedRuleTypeMediaTask), other["advanced_rule_type"])
 }
 
-func TestSettle_AdvancedMediaTaskWithoutTotalTokensFallsBackToAdaptorAdjust(t *testing.T) {
+func TestSettle_AdvancedMediaTaskWithoutTotalTokensKeepsPreConsumedQuota(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()
 
 	const userID, tokenID, channelID = 37, 37, 37
 	const initQuota, tokenRemain = 10000, 8000
 	const preConsumed = 5000
-	const adaptorQuota = 3200
 
 	seedUser(t, userID, initQuota)
 	seedToken(t, tokenID, userID, "sk-advanced-media-no-total", tokenRemain)
@@ -886,19 +887,16 @@ func TestSettle_AdvancedMediaTaskWithoutTotalTokensFallsBackToAdaptorAdjust(t *t
 	}
 	roundTripTaskPrivateData(t, task)
 
-	adaptor := &mockAdaptor{adjustReturn: adaptorQuota}
+	adaptor := &mockAdaptor{adjustReturn: 3200}
 	taskResult := &relaycommon.TaskInfo{Status: model.TaskStatusSuccess, TotalTokens: 0}
 
 	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
 
-	assert.Equal(t, adaptorQuota, task.Quota)
-	assert.Equal(t, initQuota+(preConsumed-adaptorQuota), getUserQuota(t, userID))
-	assert.Equal(t, tokenRemain+(preConsumed-adaptorQuota), getTokenRemainQuota(t, tokenID))
-
-	log := getLastLog(t)
-	require.NotNil(t, log)
-	assert.Equal(t, model.LogTypeRefund, log.Type)
-	assert.Contains(t, log.Content, "adaptor")
+	assert.Equal(t, preConsumed, task.Quota)
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, 0, adaptor.adjustCalls)
+	assert.Equal(t, int64(0), countLogs(t))
 }
 
 func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {

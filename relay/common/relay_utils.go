@@ -103,6 +103,9 @@ func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string
 	if images := formData["images"]; len(images) > 0 {
 		req.Images = images
 	}
+	if files := c.Request.MultipartForm.File["input_reference"]; len(files) > 0 {
+		req.Metadata["input_reference_count"] = len(files)
+	}
 
 	for key, values := range formData {
 		if len(values) > 0 && !isKnownTaskField(key) {
