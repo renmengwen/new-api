@@ -1,6 +1,9 @@
 package helper
 
 import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/constant"
@@ -543,6 +546,50 @@ func TestModelPriceHelperPerCallMatchesAdvancedMediaTaskWhenLegacyRawActionTaskT
 	require.Equal(t, 6.6, priceData.ModelPrice)
 	require.NotNil(t, priceData.AdvancedRuleSnapshot)
 	require.Equal(t, "generate", priceData.AdvancedRuleSnapshot.TaskType)
+}
+
+func TestModelPriceHelperPerCallMatchesAdvancedMediaTaskWhenInfoActionProvidesSubmitTimeRawAction(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"task-advanced-media-info-action-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"task-advanced-media-info-action-model": {
+			"rule_type": "media_task",
+			"task_type": "video_generation",
+			"segments": [
+				{
+					"priority": 10,
+					"unit_price": 5.5
+				}
+			]
+		}
+	}`))
+
+	body := `{"model":"task-advanced-media-info-action-model","prompt":"video prompt","images":["test-image"],"size":"1280x720","duration":5}`
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewBufferString(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "task-advanced-media-info-action-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		TaskRelayInfo:   &relaycommon.TaskRelayInfo{},
+	}
+
+	require.Nil(t, relaycommon.ValidateMultipartDirect(c, info))
+	require.Equal(t, constant.TaskActionGenerate, info.Action)
+
+	priceData, err := ModelPriceHelperPerCall(c, info)
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, types.AdvancedRuleTypeMediaTask, priceData.AdvancedRuleType)
+	require.True(t, priceData.UsePrice)
+	require.Equal(t, 5.5, priceData.ModelPrice)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "video_generation", priceData.AdvancedRuleSnapshot.TaskType)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "raw_action=generate")
 }
 
 func TestContainPriceOrRatioReturnsTrueForAdvancedOnlyModel(t *testing.T) {

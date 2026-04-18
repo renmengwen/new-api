@@ -367,12 +367,21 @@ func buildAdvancedPricingTaskContext(c *gin.Context, info *relaycommon.RelayInfo
 
 func resolveRawTaskAction(info *relaycommon.RelayInfo, c *gin.Context) string {
 	if info != nil && info.TaskRelayInfo != nil {
-		return info.TaskRelayInfo.Action
+		if action := strings.TrimSpace(info.Action); action != "" {
+			return action
+		}
 	}
-	if c == nil {
-		return ""
+	if c != nil {
+		if action := strings.TrimSpace(c.GetString("action")); action != "" {
+			return action
+		}
+		if taskReq, err := relaycommon.GetTaskRequest(c); err == nil {
+			if action := deriveFallbackTaskAction(taskReq); action != "" {
+				return action
+			}
+		}
 	}
-	return c.GetString("action")
+	return ""
 }
 
 func resolveCanonicalTaskType(rawAction string) string {
@@ -389,6 +398,19 @@ func resolveCanonicalTaskType(rawAction string) string {
 	default:
 		return strings.TrimSpace(rawAction)
 	}
+}
+
+func deriveFallbackTaskAction(taskReq relaycommon.TaskSubmitReq) string {
+	if action := normalizeAdvancedTaskString(taskMetadataString(taskReq.Metadata, "action")); action != "" {
+		return action
+	}
+	if taskReq.HasImage() || strings.TrimSpace(taskReq.InputReference) != "" {
+		return constant.TaskActionGenerate
+	}
+	if taskReq.Prompt != "" || taskReq.Model != "" {
+		return constant.TaskActionTextGenerate
+	}
+	return ""
 }
 
 func firstTaskString(values ...string) string {

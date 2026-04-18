@@ -861,6 +861,46 @@ func TestSettle_AdvancedMediaTaskUsesUsageTokensAndMinTokensBeforeLegacyBranches
 	assert.Equal(t, string(types.AdvancedRuleTypeMediaTask), other["advanced_rule_type"])
 }
 
+func TestSettle_AdvancedMediaTaskWithoutTotalTokensFallsBackToAdaptorAdjust(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 37, 37, 37
+	const initQuota, tokenRemain = 10000, 8000
+	const preConsumed = 5000
+	const adaptorQuota = 3200
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-advanced-media-no-total", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.PerCallBilling = true
+	task.PrivateData.BillingContext.BillingMode = types.BillingModeAdvanced
+	task.PrivateData.BillingContext.AdvancedRuleType = types.AdvancedRuleTypeMediaTask
+	task.PrivateData.BillingContext.ModelPrice = 28
+	task.PrivateData.BillingContext.GroupRatio = 1
+	task.PrivateData.BillingContext.AdvancedRuleSnapshot = &types.AdvancedRuleSnapshot{
+		RuleType:     types.AdvancedRuleTypeMediaTask,
+		MatchSummary: "task_type=video_generation, raw_action=generate",
+	}
+	roundTripTaskPrivateData(t, task)
+
+	adaptor := &mockAdaptor{adjustReturn: adaptorQuota}
+	taskResult := &relaycommon.TaskInfo{Status: model.TaskStatusSuccess, TotalTokens: 0}
+
+	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+
+	assert.Equal(t, adaptorQuota, task.Quota)
+	assert.Equal(t, initQuota+(preConsumed-adaptorQuota), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+(preConsumed-adaptorQuota), getTokenRemainQuota(t, tokenID))
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Contains(t, log.Content, "adaptor")
+}
+
 func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()

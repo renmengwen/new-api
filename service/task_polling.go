@@ -545,14 +545,16 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 	if taskResult != nil && taskResult.TotalTokens > 0 {
 		syncTaskUsageToConsumeLog(ctx, task, taskResult)
 	}
+	advancedMediaTaskBilling := false
 	if bc := task.PrivateData.BillingContext; taskUsesAdvancedMediaTaskBilling(bc) {
+		advancedMediaTaskBilling = true
 		if taskResult != nil && taskResult.TotalTokens > 0 {
 			RecalculateTaskQuotaByAdvancedMediaTask(ctx, task, taskResult.TotalTokens)
+			return
 		}
-		return
 	}
 	// 0. 按次计费的任务不做差额结算
-	if bc := task.PrivateData.BillingContext; bc != nil && bc.PerCallBilling {
+	if bc := task.PrivateData.BillingContext; !advancedMediaTaskBilling && bc != nil && bc.PerCallBilling {
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次计费，跳过差额结算", task.TaskID))
 		return
 	}
