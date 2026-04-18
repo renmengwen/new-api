@@ -592,6 +592,114 @@ func TestModelPriceHelperPerCallMatchesAdvancedMediaTaskWhenInfoActionProvidesSu
 	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "raw_action=generate")
 }
 
+func TestModelPriceHelperPerCallMatchesAdvancedMediaTaskWhenGeminiLegacyRawActionNeedsTaskRequestInference(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"task-advanced-media-gemini-infer-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"task-advanced-media-gemini-infer-model": {
+			"rule_type": "media_task",
+			"task_type": "generate",
+			"segments": [
+				{
+					"priority": 10,
+					"unit_price": 4.4
+				}
+			]
+		}
+	}`))
+
+	body := `{"model":"task-advanced-media-gemini-infer-model","prompt":"video prompt","images":["test-image"],"size":"1280x720","duration":5}`
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewBufferString(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "task-advanced-media-gemini-infer-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		ChannelMeta:     &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeGemini},
+		TaskRelayInfo:   &relaycommon.TaskRelayInfo{},
+	}
+
+	require.Nil(t, relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionTextGenerate))
+	require.Equal(t, constant.TaskActionTextGenerate, info.Action)
+
+	priceData, err := ModelPriceHelperPerCall(c, info)
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, types.AdvancedRuleTypeMediaTask, priceData.AdvancedRuleType)
+	require.True(t, priceData.UsePrice)
+	require.Equal(t, 4.4, priceData.ModelPrice)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "generate", priceData.AdvancedRuleSnapshot.TaskType)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "raw_action=generate")
+}
+
+func TestResolveRawTaskActionInfersGeminiGenerateFromTaskRequestBeforeBuildRequestBody(t *testing.T) {
+	body := `{"model":"veo-3.0-generate-001","prompt":"video prompt","images":["test-image"]}`
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewBufferString(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	info := &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeGemini},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+
+	require.Nil(t, relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionTextGenerate))
+	require.Equal(t, constant.TaskActionTextGenerate, info.Action)
+	require.Equal(t, constant.TaskActionGenerate, resolveRawTaskAction(info, c))
+}
+
+func TestResolveRawTaskActionInfersVertexTextGenerateWithoutImageBeforeBuildRequestBody(t *testing.T) {
+	body := `{"model":"veo-3.0-generate-001","prompt":"video prompt"}`
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewBufferString(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	info := &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeVertexAi},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+
+	require.Nil(t, relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionTextGenerate))
+	require.Equal(t, constant.TaskActionTextGenerate, resolveRawTaskAction(info, c))
+}
+
+func TestResolveRawTaskActionInfersKlingTextGenerateWithoutImageBeforeBuildRequestBody(t *testing.T) {
+	body := `{"model":"kling-v1","prompt":"video prompt"}`
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewBufferString(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	info := &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeKling},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+
+	require.Nil(t, relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate))
+	require.Equal(t, constant.TaskActionGenerate, info.Action)
+	require.Equal(t, constant.TaskActionTextGenerate, resolveRawTaskAction(info, c))
+}
+
+func TestResolveRawTaskActionKeepsViduReferenceGenerateInferenceFromTaskRequest(t *testing.T) {
+	body := `{"model":"viduq2","prompt":"video prompt","images":["img-1","img-2","img-3"]}`
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewBufferString(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	info := &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeVidu},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+
+	require.Nil(t, relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate))
+	require.Equal(t, constant.TaskActionGenerate, info.Action)
+	require.Equal(t, constant.TaskActionReferenceGenerate, resolveRawTaskAction(info, c))
+}
+
 func TestContainPriceOrRatioReturnsTrueForAdvancedOnlyModel(t *testing.T) {
 	restoreRatioSettings(t)
 

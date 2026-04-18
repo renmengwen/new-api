@@ -366,19 +366,19 @@ func buildAdvancedPricingTaskContext(c *gin.Context, info *relaycommon.RelayInfo
 }
 
 func resolveRawTaskAction(info *relaycommon.RelayInfo, c *gin.Context) string {
-	if info != nil && info.TaskRelayInfo != nil {
-		if action := strings.TrimSpace(info.Action); action != "" {
-			return action
-		}
-	}
 	if c != nil {
+		if taskReq, err := relaycommon.GetTaskRequest(c); err == nil {
+			if action := deriveRawTaskActionFromTaskRequest(info, c, taskReq); action != "" {
+				return action
+			}
+		}
 		if action := strings.TrimSpace(c.GetString("action")); action != "" {
 			return action
 		}
-		if taskReq, err := relaycommon.GetTaskRequest(c); err == nil {
-			if action := deriveFallbackTaskAction(taskReq); action != "" {
-				return action
-			}
+	}
+	if info != nil && info.TaskRelayInfo != nil {
+		if action := strings.TrimSpace(info.Action); action != "" {
+			return action
 		}
 	}
 	return ""
@@ -400,17 +400,54 @@ func resolveCanonicalTaskType(rawAction string) string {
 	}
 }
 
-func deriveFallbackTaskAction(taskReq relaycommon.TaskSubmitReq) string {
+func deriveRawTaskActionFromTaskRequest(info *relaycommon.RelayInfo, c *gin.Context, taskReq relaycommon.TaskSubmitReq) string {
 	if action := normalizeAdvancedTaskString(taskMetadataString(taskReq.Metadata, "action")); action != "" {
 		return action
 	}
-	if taskReq.HasImage() || strings.TrimSpace(taskReq.InputReference) != "" {
+
+	imageCount := len(taskReq.Images)
+	if imageCount == 0 && strings.TrimSpace(taskReq.Image) != "" {
+		imageCount = 1
+	}
+	hasImage := imageCount > 0 || strings.TrimSpace(taskReq.InputReference) != ""
+
+	switch resolveTaskChannelType(info, c) {
+	case constant.ChannelTypeVidu:
+		if !hasImage {
+			return constant.TaskActionTextGenerate
+		}
+		switch {
+		case imageCount > 2:
+			return constant.TaskActionReferenceGenerate
+		case imageCount == 2:
+			return constant.TaskActionFirstTailGenerate
+		default:
+			return constant.TaskActionGenerate
+		}
+	case constant.ChannelTypeGemini, constant.ChannelTypeVertexAi, constant.ChannelTypeKling:
+		if hasImage {
+			return constant.TaskActionGenerate
+		}
+		return constant.TaskActionTextGenerate
+	}
+
+	if hasImage {
 		return constant.TaskActionGenerate
 	}
 	if taskReq.Prompt != "" || taskReq.Model != "" {
 		return constant.TaskActionTextGenerate
 	}
 	return ""
+}
+
+func resolveTaskChannelType(info *relaycommon.RelayInfo, c *gin.Context) int {
+	if info != nil && info.ChannelMeta != nil {
+		return info.ChannelType
+	}
+	if c == nil {
+		return 0
+	}
+	return c.GetInt("channel_type")
 }
 
 func firstTaskString(values ...string) string {
