@@ -50,7 +50,7 @@ const RatioSetting = () => {
     AutoGroups: '',
     DefaultUseAutoGroup: false,
     ExposeRatioEnabled: false,
-    ModelBillingMode: '',
+    AdvancedPricingMode: '',
     AdvancedPricingRules: '',
     UserUsableGroups: '',
     'group_ratio_setting.group_special_usable_group': '',

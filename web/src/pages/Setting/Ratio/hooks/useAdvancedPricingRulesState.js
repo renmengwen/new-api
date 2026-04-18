@@ -21,7 +21,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { API, showError, showSuccess } from '../../../../helpers';
 import {
   ADVANCED_PRICING_MODE_ADVANCED,
-  ADVANCED_PRICING_MODE_FIXED,
   FIXED_BILLING_MODE_PER_REQUEST,
   FIXED_BILLING_MODE_PER_TOKEN,
   MEDIA_TASK_RULE_TYPE,
@@ -32,6 +31,7 @@ import {
   getFixedBillingModeForModel,
   hasAdvancedPricingConfig,
   hasFixedPricingConfig,
+  normalizeFixedBillingMode,
   normalizeAdvancedPricingConfig,
   parseOptionJSON,
   validateTextSegmentRules,
@@ -71,12 +71,13 @@ const buildAdvancedPricingMap = (options = {}) => {
 };
 
 const buildBillingModeMap = (options = {}) => {
-  const parsedValue = parseOptionJSON(options.ModelBillingMode);
+  const parsedValue = parseOptionJSON(options.AdvancedPricingMode);
 
   return Object.entries(parsedValue).reduce((result, [modelName, mode]) => {
-    if (mode === ADVANCED_PRICING_MODE_ADVANCED) {
-      result[modelName] = ADVANCED_PRICING_MODE_ADVANCED;
-    }
+    result[modelName] =
+      mode === ADVANCED_PRICING_MODE_ADVANCED
+        ? ADVANCED_PRICING_MODE_ADVANCED
+        : normalizeFixedBillingMode(mode);
     return result;
   }, {});
 };
@@ -107,13 +108,13 @@ export function useAdvancedPricingRulesState({
   const [modelSearchText, setModelSearchText] = useState('');
   const [loading, setLoading] = useState(false);
   const [previewInput, setPreviewInput] = useState(EMPTY_PREVIEW_INPUT);
-  const [modelBillingModeMap, setModelBillingModeMap] = useState({});
+  const [advancedPricingModeMap, setAdvancedPricingModeMap] = useState({});
   const [advancedPricingMap, setAdvancedPricingMap] = useState({});
 
   const sourceMaps = useMemo(() => buildSourceMaps(options), [options]);
 
   useEffect(() => {
-    setModelBillingModeMap(buildBillingModeMap(options));
+    setAdvancedPricingModeMap(buildBillingModeMap(options));
     setAdvancedPricingMap(buildAdvancedPricingMap(options));
   }, [options]);
 
@@ -126,7 +127,7 @@ export function useAdvancedPricingRulesState({
       });
     });
 
-    Object.keys(modelBillingModeMap).forEach((modelName) => {
+    Object.keys(advancedPricingModeMap).forEach((modelName) => {
       modelNames.add(modelName);
     });
     Object.keys(advancedPricingMap).forEach((modelName) => {
@@ -144,13 +145,15 @@ export function useAdvancedPricingRulesState({
         return {
           name: modelName,
           fixedBillingMode,
-          selectedMode:
-            modelBillingModeMap[modelName] === ADVANCED_PRICING_MODE_ADVANCED
-              ? ADVANCED_PRICING_MODE_ADVANCED
-              : ADVANCED_PRICING_MODE_FIXED,
-          effectiveMode: getEffectiveBillingModeForModel({
-            selectedMode: modelBillingModeMap[modelName],
+            selectedMode: getEffectiveBillingModeForModel({
+            selectedMode: advancedPricingModeMap[modelName],
             fixedBillingMode,
+            advancedConfig,
+          }),
+          effectiveMode: getEffectiveBillingModeForModel({
+            selectedMode: advancedPricingModeMap[modelName],
+            fixedBillingMode,
+            advancedConfig,
           }),
           hasFixedPricing: hasFixedPricingConfig(modelName, sourceMaps),
           hasAdvancedPricing: hasAdvancedPricingConfig(advancedConfig),
@@ -158,7 +161,7 @@ export function useAdvancedPricingRulesState({
           advancedConfig,
         };
       });
-  }, [advancedPricingMap, candidateModelNames, modelBillingModeMap, sourceMaps]);
+  }, [advancedPricingMap, advancedPricingModeMap, candidateModelNames, sourceMaps]);
 
   const filteredModels = useMemo(() => {
     const keyword = modelSearchText.trim().toLowerCase();
@@ -240,18 +243,29 @@ export function useAdvancedPricingRulesState({
 
   const handleEffectiveModeChange = (nextMode) => {
     if (!selectedModel) {
-      return;
+      return false;
     }
 
-    setModelBillingModeMap((previous) => {
-      const nextMap = { ...previous };
-      if (nextMode === ADVANCED_PRICING_MODE_ADVANCED) {
-        nextMap[selectedModel.name] = ADVANCED_PRICING_MODE_ADVANCED;
-      } else {
-        delete nextMap[selectedModel.name];
-      }
-      return nextMap;
+    if (
+      nextMode === ADVANCED_PRICING_MODE_ADVANCED &&
+      !selectedModel.hasAdvancedPricing
+    ) {
+      showError(t('请先至少保存一条高级规则，再切换为高级规则生效'));
+      return false;
+    }
+
+    setAdvancedPricingModeMap((previous) => {
+      const normalizedMode =
+        nextMode === ADVANCED_PRICING_MODE_ADVANCED
+          ? ADVANCED_PRICING_MODE_ADVANCED
+          : normalizeFixedBillingMode(nextMode || selectedModel.fixedBillingMode);
+
+      return {
+        ...previous,
+        [selectedModel.name]: normalizedMode,
+      };
     });
+    return true;
   };
 
   const handleRuleTypeChange = (nextRuleType) => {
@@ -300,8 +314,19 @@ export function useAdvancedPricingRulesState({
     try {
       const responseList = await Promise.all([
         API.put('/api/option/', {
-          key: 'ModelBillingMode',
-          value: JSON.stringify(modelBillingModeMap, null, 2),
+          key: 'AdvancedPricingMode',
+          value: JSON.stringify(
+            models.reduce((result, model) => {
+              result[model.name] = getEffectiveBillingModeForModel({
+                selectedMode: advancedPricingModeMap[model.name],
+                fixedBillingMode: model.fixedBillingMode,
+                advancedConfig: advancedPricingMap[model.name],
+              });
+              return result;
+            }, {}),
+            null,
+            2,
+          ),
         }),
         API.put('/api/option/', {
           key: 'AdvancedPricingRules',
@@ -356,7 +381,6 @@ export function useAdvancedPricingRulesState({
 
 export {
   ADVANCED_PRICING_MODE_ADVANCED,
-  ADVANCED_PRICING_MODE_FIXED,
   MEDIA_TASK_RULE_TYPE,
   TEXT_SEGMENT_RULE_TYPE,
 };

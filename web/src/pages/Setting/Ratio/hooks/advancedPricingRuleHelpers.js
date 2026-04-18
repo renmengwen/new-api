@@ -17,12 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-export const ADVANCED_PRICING_MODE_FIXED = 'fixed';
 export const ADVANCED_PRICING_MODE_ADVANCED = 'advanced';
-export const TEXT_SEGMENT_RULE_TYPE = 'text-segment';
-export const MEDIA_TASK_RULE_TYPE = 'media-task';
-export const FIXED_BILLING_MODE_PER_TOKEN = 'per-token';
-export const FIXED_BILLING_MODE_PER_REQUEST = 'per-request';
+export const TEXT_SEGMENT_RULE_TYPE = 'text_segment';
+export const MEDIA_TASK_RULE_TYPE = 'media_task';
+export const FIXED_BILLING_MODE_PER_TOKEN = 'per_token';
+export const FIXED_BILLING_MODE_PER_REQUEST = 'per_request';
 
 const MILLION = 1000000;
 
@@ -111,7 +110,7 @@ const isRangeOverlap = (minAValue, maxAValue, minBValue, maxBValue) => {
 };
 
 export const createEmptyTextSegmentRule = (seed = Date.now()) => ({
-  id: `text-segment-${seed}`,
+  id: `text_segment-${seed}`,
   enabled: true,
   priority: '',
   inputMin: '',
@@ -127,7 +126,7 @@ export const createEmptyTextSegmentRule = (seed = Date.now()) => ({
 export const normalizeTextSegmentRule = (rule, index = 0) => ({
   ...createEmptyTextSegmentRule(index),
   ...rule,
-  id: rule?.id || `text-segment-${index + 1}`,
+  id: rule?.id || `text_segment-${index + 1}`,
   enabled: rule?.enabled !== false,
 });
 
@@ -284,7 +283,8 @@ export const normalizeAdvancedPricingConfig = (rawConfig) => {
   }
 
   const ruleType =
-    rawConfig.ruleType === MEDIA_TASK_RULE_TYPE
+    rawConfig.ruleType === MEDIA_TASK_RULE_TYPE ||
+    rawConfig.ruleType === 'media-task'
       ? MEDIA_TASK_RULE_TYPE
       : TEXT_SEGMENT_RULE_TYPE;
   const rules = Array.isArray(rawConfig.rules)
@@ -305,8 +305,16 @@ export const normalizeAdvancedPricingConfig = (rawConfig) => {
 export const hasAdvancedPricingConfig = (config) =>
   Array.isArray(config?.rules) && config.rules.length > 0;
 
+export const canUseAdvancedPricingMode = (config) =>
+  hasAdvancedPricingConfig(normalizeAdvancedPricingConfig(config));
+
 export const getAdvancedRuleType = (config) =>
   normalizeAdvancedPricingConfig(config).ruleType;
+
+export const normalizeFixedBillingMode = (mode) =>
+  mode === FIXED_BILLING_MODE_PER_REQUEST || mode === 'per-request'
+    ? FIXED_BILLING_MODE_PER_REQUEST
+    : FIXED_BILLING_MODE_PER_TOKEN;
 
 export const getFixedBillingModeForModel = (modelName, sourceMaps) =>
   hasValue(sourceMaps?.ModelPrice?.[modelName])
@@ -328,7 +336,10 @@ export const hasFixedPricingConfig = (modelName, sourceMaps) =>
 export const getEffectiveBillingModeForModel = ({
   selectedMode,
   fixedBillingMode,
+  advancedConfig,
 }) =>
   selectedMode === ADVANCED_PRICING_MODE_ADVANCED
-    ? ADVANCED_PRICING_MODE_ADVANCED
-    : fixedBillingMode || FIXED_BILLING_MODE_PER_TOKEN;
+    ? canUseAdvancedPricingMode(advancedConfig)
+      ? ADVANCED_PRICING_MODE_ADVANCED
+      : normalizeFixedBillingMode(fixedBillingMode)
+    : normalizeFixedBillingMode(selectedMode || fixedBillingMode);

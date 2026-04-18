@@ -25,9 +25,12 @@ import {
 } from './modelPricingVisibility';
 import {
   ADVANCED_PRICING_MODE_ADVANCED,
-  ADVANCED_PRICING_MODE_FIXED,
+  FIXED_BILLING_MODE_PER_REQUEST,
+  FIXED_BILLING_MODE_PER_TOKEN,
   TEXT_SEGMENT_RULE_TYPE,
+  getEffectiveBillingModeForModel,
   hasAdvancedPricingConfig,
+  normalizeFixedBillingMode,
   normalizeAdvancedPricingConfig,
 } from './advancedPricingRuleHelpers';
 
@@ -37,9 +40,9 @@ const EMPTY_CANDIDATE_MODEL_NAMES = [];
 
 const EMPTY_MODEL = {
   name: '',
-  billingMode: 'per-token',
-  effectivePricingMode: ADVANCED_PRICING_MODE_FIXED,
-  fixedBillingMode: 'per-token',
+  billingMode: FIXED_BILLING_MODE_PER_TOKEN,
+  effectivePricingMode: FIXED_BILLING_MODE_PER_TOKEN,
+  fixedBillingMode: FIXED_BILLING_MODE_PER_TOKEN,
   ruleType: '',
   hasAdvancedPricing: false,
   hasFixedPricing: false,
@@ -146,7 +149,9 @@ const buildModelState = (name, sourceMaps) => {
     sourceMaps.AudioCompletionRatio[name],
   );
   const fixedPrice = toNumericString(sourceMaps.ModelPrice[name]);
-  const fixedBillingMode = hasValue(fixedPrice) ? 'per-request' : 'per-token';
+  const fixedBillingMode = hasValue(fixedPrice)
+    ? FIXED_BILLING_MODE_PER_REQUEST
+    : FIXED_BILLING_MODE_PER_TOKEN;
   const advancedConfig = normalizeAdvancedPricingConfig(
     sourceMaps.AdvancedPricingRules?.[name],
   );
@@ -173,10 +178,11 @@ const buildModelState = (name, sourceMaps) => {
     ...EMPTY_MODEL,
     name,
     billingMode: fixedBillingMode,
-    effectivePricingMode:
-      sourceMaps.ModelBillingMode?.[name] === ADVANCED_PRICING_MODE_ADVANCED
-        ? ADVANCED_PRICING_MODE_ADVANCED
-        : ADVANCED_PRICING_MODE_FIXED,
+    effectivePricingMode: getEffectiveBillingModeForModel({
+      selectedMode: sourceMaps.AdvancedPricingMode?.[name],
+      fixedBillingMode,
+      advancedConfig,
+    }),
     fixedBillingMode,
     ruleType:
       hasAdvancedPricing || sourceMaps.AdvancedPricingRules?.[name]
@@ -287,7 +293,7 @@ export const getModelWarnings = (model, t) => {
   }
 
   if (
-    model.billingMode === 'per-token' &&
+    model.billingMode === FIXED_BILLING_MODE_PER_TOKEN &&
     hasDerivedPricing &&
     !hasValue(model.inputPrice)
   ) {
@@ -295,7 +301,7 @@ export const getModelWarnings = (model, t) => {
   }
 
   if (
-    model.billingMode === 'per-token' &&
+    model.billingMode === FIXED_BILLING_MODE_PER_TOKEN &&
     hasValue(model.audioOutputPrice) &&
     !hasValue(model.audioInputPrice)
   ) {
@@ -306,7 +312,10 @@ export const getModelWarnings = (model, t) => {
 };
 
 export const buildSummaryText = (model, t) => {
-  if (model.billingMode === 'per-request' && hasValue(model.fixedPrice)) {
+  if (
+    model.billingMode === FIXED_BILLING_MODE_PER_REQUEST &&
+    hasValue(model.fixedPrice)
+  ) {
     return `${t('按次')} $${model.fixedPrice} / ${t('次')}`;
   }
 
@@ -349,7 +358,7 @@ const serializeModel = (model, t) => {
     AudioCompletionRatio: null,
   };
 
-  if (model.billingMode === 'per-request') {
+  if (model.billingMode === FIXED_BILLING_MODE_PER_REQUEST) {
     if (hasValue(model.fixedPrice)) {
       result.ModelPrice = toNormalizedNumber(model.fixedPrice);
     }
@@ -458,7 +467,7 @@ const serializeModel = (model, t) => {
 export const buildPreviewRows = (model, t) => {
   if (!model) return [];
 
-  if (model.billingMode === 'per-request') {
+  if (model.billingMode === FIXED_BILLING_MODE_PER_REQUEST) {
     return [
       {
         key: 'ModelPrice',
@@ -616,7 +625,7 @@ export function useModelPricingEditorState({
       ImageRatio: parseOptionJSON(options.ImageRatio),
       AudioRatio: parseOptionJSON(options.AudioRatio),
       AudioCompletionRatio: parseOptionJSON(options.AudioCompletionRatio),
-      ModelBillingMode: parseOptionJSON(options.ModelBillingMode),
+      AdvancedPricingMode: parseOptionJSON(options.AdvancedPricingMode),
       AdvancedPricingRules: parseOptionJSON(options.AdvancedPricingRules),
     };
 
@@ -631,6 +640,8 @@ export function useModelPricingEditorState({
       ...Object.keys(sourceMaps.ImageRatio),
       ...Object.keys(sourceMaps.AudioRatio),
       ...Object.keys(sourceMaps.AudioCompletionRatio),
+      ...Object.keys(sourceMaps.AdvancedPricingMode),
+      ...Object.keys(sourceMaps.AdvancedPricingRules),
     ]);
 
     const nextModels = Array.from(names)
@@ -882,12 +893,24 @@ export function useModelPricingEditorState({
       ...model,
       billingMode: value,
       fixedBillingMode: value,
+      effectivePricingMode:
+        model.effectivePricingMode === ADVANCED_PRICING_MODE_ADVANCED
+          ? ADVANCED_PRICING_MODE_ADVANCED
+          : normalizeFixedBillingMode(value),
     }));
   };
 
   const handleEffectivePricingModeChange = (value) => {
     if (!selectedModel) {
-      return;
+      return false;
+    }
+
+    if (
+      value === ADVANCED_PRICING_MODE_ADVANCED &&
+      !selectedModel.hasAdvancedPricing
+    ) {
+      showError(t('请先至少保存一条高级规则，再切换为高级规则生效'));
+      return false;
     }
 
     upsertModel(selectedModel.name, (model) => ({
@@ -895,8 +918,9 @@ export function useModelPricingEditorState({
       effectivePricingMode:
         value === ADVANCED_PRICING_MODE_ADVANCED
           ? ADVANCED_PRICING_MODE_ADVANCED
-          : ADVANCED_PRICING_MODE_FIXED,
+          : normalizeFixedBillingMode(value || model.fixedBillingMode),
     }));
+    return true;
   };
 
   const addModel = (modelName) => {
@@ -974,7 +998,7 @@ export function useModelPricingEditorState({
         };
 
         if (
-          nextModel.billingMode === 'per-token' &&
+          nextModel.billingMode === FIXED_BILLING_MODE_PER_TOKEN &&
           nextModel.completionRatioLocked &&
           hasValue(nextModel.inputPrice) &&
           hasValue(nextModel.lockedCompletionRatio)
@@ -1030,7 +1054,7 @@ export function useModelPricingEditorState({
         ImageRatio: {},
         AudioRatio: {},
         AudioCompletionRatio: {},
-        ModelBillingMode: {},
+        AdvancedPricingMode: {},
       };
 
       for (const model of models) {
@@ -1040,9 +1064,7 @@ export function useModelPricingEditorState({
             output[key][model.name] = value;
           }
         });
-        if (model.effectivePricingMode === ADVANCED_PRICING_MODE_ADVANCED) {
-          output.ModelBillingMode[model.name] = ADVANCED_PRICING_MODE_ADVANCED;
-        }
+        output.AdvancedPricingMode[model.name] = model.effectivePricingMode;
       }
 
       const requestQueue = Object.entries(output).map(([key, value]) =>

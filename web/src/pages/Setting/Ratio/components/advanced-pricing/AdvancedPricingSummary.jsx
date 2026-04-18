@@ -32,8 +32,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import {
   ADVANCED_PRICING_MODE_ADVANCED,
-  ADVANCED_PRICING_MODE_FIXED,
   FIXED_BILLING_MODE_PER_REQUEST,
+  FIXED_BILLING_MODE_PER_TOKEN,
   MEDIA_TASK_RULE_TYPE,
   TEXT_SEGMENT_RULE_TYPE,
 } from '../../hooks/advancedPricingRuleHelpers';
@@ -160,15 +160,20 @@ export default function AdvancedPricingSummary({
               value={selectedModel.selectedMode}
               onChange={(event) => onEffectiveModeChange(event.target.value)}
             >
-              <Radio value={ADVANCED_PRICING_MODE_FIXED}>
+              <Radio value={selectedModel.fixedBillingMode || FIXED_BILLING_MODE_PER_TOKEN}>
                 {t('固定价格生效')}
               </Radio>
-              <Radio value={ADVANCED_PRICING_MODE_ADVANCED}>
+              <Radio
+                value={ADVANCED_PRICING_MODE_ADVANCED}
+                disabled={!selectedModel.hasAdvancedPricing}
+              >
                 {t('高级规则生效')}
               </Radio>
             </RadioGroup>
             <div className='mt-2 text-xs text-gray-500'>
-              {t('切换不会删除另一套配置，保存后新请求才会按新模式结算。')}
+              {selectedModel.hasAdvancedPricing
+                ? t('切换不会删除另一套配置，保存后新请求才会按新模式结算。')
+                : t('当前还没有高级规则配置，需先保存至少一条规则后才能切到高级规则生效。')}
             </div>
           </div>
 

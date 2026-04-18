@@ -21,9 +21,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  ADVANCED_PRICING_MODE_ADVANCED,
+  FIXED_BILLING_MODE_PER_REQUEST,
+  FIXED_BILLING_MODE_PER_TOKEN,
+  MEDIA_TASK_RULE_TYPE,
+  TEXT_SEGMENT_RULE_TYPE,
   buildTextSegmentConditionSummary,
   buildTextSegmentPreview,
+  canUseAdvancedPricingMode,
   findMatchingTextSegmentRule,
+  getEffectiveBillingModeForModel,
+  normalizeAdvancedPricingConfig,
   validateTextSegmentRules,
 } from './advancedPricingRuleHelpers.js';
 
@@ -147,4 +155,44 @@ test('buildTextSegmentPreview returns matched segment summary and estimated pric
   assert.equal(preview.priceSummary.totalCost, '0.003');
   assert.equal(preview.priceSummary.cacheReadPrice, '0.05');
   assert.equal(preview.priceSummary.cacheWritePrice, '0.1');
+});
+
+test('advanced pricing helper constants stay aligned with persisted runtime enums', () => {
+  assert.equal(ADVANCED_PRICING_MODE_ADVANCED, 'advanced');
+  assert.equal(FIXED_BILLING_MODE_PER_TOKEN, 'per_token');
+  assert.equal(FIXED_BILLING_MODE_PER_REQUEST, 'per_request');
+  assert.equal(TEXT_SEGMENT_RULE_TYPE, 'text_segment');
+  assert.equal(MEDIA_TASK_RULE_TYPE, 'media_task');
+});
+
+test('normalizeAdvancedPricingConfig preserves persisted rule type enums and advanced mode only applies with rules', () => {
+  const emptyConfig = normalizeAdvancedPricingConfig({
+    ruleType: 'media_task',
+    rules: [],
+  });
+  const configuredConfig = normalizeAdvancedPricingConfig({
+    ruleType: 'media_task',
+    rules: [{ id: 'media-rule-1' }],
+  });
+
+  assert.equal(emptyConfig.ruleType, 'media_task');
+  assert.equal(configuredConfig.ruleType, 'media_task');
+  assert.equal(canUseAdvancedPricingMode(emptyConfig), false);
+  assert.equal(canUseAdvancedPricingMode(configuredConfig), true);
+  assert.equal(
+    getEffectiveBillingModeForModel({
+      selectedMode: 'advanced',
+      fixedBillingMode: 'per_request',
+      advancedConfig: emptyConfig,
+    }),
+    'per_request',
+  );
+  assert.equal(
+    getEffectiveBillingModeForModel({
+      selectedMode: 'advanced',
+      fixedBillingMode: 'per_request',
+      advancedConfig: configuredConfig,
+    }),
+    'advanced',
+  );
 });

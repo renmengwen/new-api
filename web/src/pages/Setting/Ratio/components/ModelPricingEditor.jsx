@@ -50,8 +50,8 @@ import {
 } from '../hooks/useModelPricingEditorState';
 import {
   ADVANCED_PRICING_MODE_ADVANCED,
-  ADVANCED_PRICING_MODE_FIXED,
   FIXED_BILLING_MODE_PER_REQUEST,
+  FIXED_BILLING_MODE_PER_TOKEN,
   MEDIA_TASK_RULE_TYPE,
   TEXT_SEGMENT_RULE_TYPE,
 } from '../hooks/advancedPricingRuleHelpers';
@@ -520,17 +520,29 @@ export default function ModelPricingEditor({
                         handleEffectiveModeSwitch(event.target.value)
                       }
                     >
-                      <Radio value={ADVANCED_PRICING_MODE_FIXED}>
+                      <Radio
+                        value={
+                          selectedModel.fixedBillingMode ||
+                          FIXED_BILLING_MODE_PER_TOKEN
+                        }
+                      >
                         {t('固定价格生效')}
                       </Radio>
-                      <Radio value={ADVANCED_PRICING_MODE_ADVANCED}>
+                      <Radio
+                        value={ADVANCED_PRICING_MODE_ADVANCED}
+                        disabled={!selectedModel.hasAdvancedPricing}
+                      >
                         {t('高级规则生效')}
                       </Radio>
                     </RadioGroup>
                     <div className='mt-2 text-xs text-gray-500'>
-                      {t(
-                        '切换当前生效模式不会删除另一套配置；确认切换后，点击“应用更改”才会真正保存。',
-                      )}
+                      {selectedModel.hasAdvancedPricing
+                        ? t(
+                            '切换当前生效模式不会删除另一套配置；确认切换后，点击“应用更改”才会真正保存。',
+                          )
+                        : t(
+                            '当前还没有高级规则配置，需先进入高级规则页保存至少一条规则后才能切换。',
+                          )}
                     </div>
                     <Space wrap className='mt-3'>
                       <Button
@@ -549,8 +561,12 @@ export default function ModelPricingEditor({
                     value={selectedModel.billingMode}
                     onChange={(event) => handleBillingModeChange(event.target.value)}
                   >
-                    <Radio value='per-token'>{t('按量计费')}</Radio>
-                    <Radio value='per-request'>{t('按次计费')}</Radio>
+                    <Radio value={FIXED_BILLING_MODE_PER_TOKEN}>
+                      {t('按量计费')}
+                    </Radio>
+                    <Radio value={FIXED_BILLING_MODE_PER_REQUEST}>
+                      {t('按次计费')}
+                    </Radio>
                   </RadioGroup>
                   <div className='mt-2 text-xs text-gray-500'>
                     {t(
@@ -591,7 +607,7 @@ export default function ModelPricingEditor({
                   </Card>
                 ) : null}
 
-                {selectedModel.billingMode === 'per-request' ? (
+                {selectedModel.billingMode === FIXED_BILLING_MODE_PER_REQUEST ? (
                   <PriceInput
                     label={t('固定价格')}
                     value={selectedModel.fixedPrice}

@@ -22,16 +22,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const source = fs.readFileSync(
-  new URL('./AdvancedPricingRulesPage.jsx', import.meta.url),
+  new URL('./useAdvancedPricingRulesState.js', import.meta.url),
   'utf8',
 );
 
-test('advanced pricing page wires model list, summary, editor, preview, and save flow', () => {
-  assert.match(source, /useAdvancedPricingRulesState/);
-  assert.match(source, /<AdvancedPricingModelList/);
-  assert.match(source, /<AdvancedPricingSummary/);
-  assert.match(source, /<TextSegmentRuleEditor/);
-  assert.match(source, /<AdvancedPricingPreview/);
-  assert.match(source, /ruleType === 'text_segment'/);
-  assert.match(source, /API\.get\('\/api\/channel\/models_enabled'\)/);
+test('advanced pricing rules state uses legacy persisted mode key and guards advanced mode without rules', () => {
+  assert.match(source, /options\.AdvancedPricingMode/);
+  assert.match(source, /key: 'AdvancedPricingMode'/);
+  assert.doesNotMatch(source, /ModelBillingMode/);
+  assert.match(source, /!selectedModel\.hasAdvancedPricing/);
 });

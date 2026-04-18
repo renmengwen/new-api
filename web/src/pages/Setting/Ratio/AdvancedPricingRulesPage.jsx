@@ -110,6 +110,14 @@ export default function AdvancedPricingRulesPage(props) {
       return;
     }
 
+    if (
+      nextMode === 'advanced' &&
+      !selectedModel.hasAdvancedPricing
+    ) {
+      handleEffectiveModeChange(nextMode);
+      return;
+    }
+
     Modal.confirm({
       title: t('确认切换当前生效模式？'),
       content: t(
@@ -171,7 +179,7 @@ export default function AdvancedPricingRulesPage(props) {
                 description={t('请先从左侧列表选择一个模型')}
               />
             </Card>
-          ) : selectedAdvancedConfig.ruleType === 'text-segment' ? (
+          ) : selectedAdvancedConfig.ruleType === 'text_segment' ? (
             <>
               <TextSegmentRuleEditor
                 rules={selectedAdvancedConfig.rules}

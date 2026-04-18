@@ -30,4 +30,6 @@ test('pricing state hook resolves visible models separately from full-model save
   assert.match(source, /resolveInitialVisibleModelNames/);
   assert.match(source, /resolveVisibleModels/);
   assert.match(source, /for \(const model of models\)/);
+  assert.match(source, /AdvancedPricingMode/);
+  assert.doesNotMatch(source, /ModelBillingMode/);
 });
