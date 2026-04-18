@@ -67,3 +67,13 @@ test('pricing state hook only previews AdvancedPricingMode when the model is exp
   assert.match(source, /shouldPersistAdvancedPricingMode\(/);
   assert.match(source, /dirtyModeNames: model\.billingModeDirty \? \[model\.name\] : \[\]/);
 });
+
+test('pricing state hook keeps advanced pricing literals on the existing contract names', () => {
+  assert.match(helperSource, /BILLING_MODE_PER_TOKEN = 'per_token'/);
+  assert.match(helperSource, /BILLING_MODE_PER_REQUEST = 'per_request'/);
+  assert.match(helperSource, /BILLING_MODE_ADVANCED = 'advanced'/);
+  assert.doesNotMatch(source, /ModelBillingMode/);
+  assert.doesNotMatch(source, /pricing_mode/);
+  assert.doesNotMatch(source, /text-segment/);
+  assert.doesNotMatch(source, /media-task/);
+});

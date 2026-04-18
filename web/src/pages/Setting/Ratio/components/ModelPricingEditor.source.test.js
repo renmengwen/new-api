@@ -34,6 +34,16 @@ test('pricing editor list exposes billing mode and advanced rule type columns', 
   assert.match(source, /record\.advancedRuleType[\s\S]*\?[\s\S]*record\.advancedRuleType[\s\S]*:[\s\S]*'—'/);
 });
 
+test('pricing editor keeps billing mode literals aligned with the persisted contract', () => {
+  assert.match(source, /<Radio value='per_token'>/);
+  assert.match(source, /<Radio value='per_request'>/);
+  assert.match(source, /<Radio value='advanced'/);
+  assert.doesNotMatch(source, /ModelBillingMode/);
+  assert.doesNotMatch(source, /pricing_mode/);
+  assert.doesNotMatch(source, /per-token/);
+  assert.doesNotMatch(source, /per-request/);
+});
+
 test('pricing editor advanced mode hides fixed forms and shows advanced rule summary entry point', () => {
   assert.match(source, /const advancedBillingAvailable = canUseAdvancedBilling\(selectedModel\);/);
   assert.match(source, /<Radio value='advanced' disabled=\{!advancedBillingAvailable\}>/);

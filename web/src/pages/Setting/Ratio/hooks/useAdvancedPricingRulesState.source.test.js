@@ -146,3 +146,13 @@ test('advanced pricing state exposes current rule type and a minimal save api fo
   assert.doesNotMatch(source, /key: 'AdvancedPricingMode'/);
   assert.doesNotMatch(source, /key: 'AdvancedPricingRules'/);
 });
+
+test('advanced pricing state hook keeps option keys and rule literals on the existing contract', () => {
+  assert.match(source, /BILLING_MODE_PER_TOKEN/);
+  assert.match(source, /RULE_TYPE_TEXT_SEGMENT/);
+  assert.match(source, /buildAdvancedPricingSavePayload/);
+  assert.doesNotMatch(source, /ModelBillingMode/);
+  assert.doesNotMatch(source, /pricing_mode/);
+  assert.doesNotMatch(source, /text-segment/);
+  assert.doesNotMatch(source, /media-task/);
+});
