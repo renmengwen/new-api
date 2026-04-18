@@ -110,17 +110,27 @@ type TaskPrivateData struct {
 	BillingContext *TaskBillingContext `json:"billing_context,omitempty"` // 计费参数快照（用于轮询阶段重新计算）
 }
 
-// TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
+// TaskBillingContext stores the billing snapshot captured at task submission time.
 type TaskBillingContext struct {
-	ModelPrice           float64                     `json:"model_price,omitempty"`       // 模型单价
-	GroupRatio           float64                     `json:"group_ratio,omitempty"`       // 分组倍率
-	ModelRatio           float64                     `json:"model_ratio,omitempty"`       // 模型倍率
-	OtherRatios          map[string]float64          `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
-	OriginModelName      string                      `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
-	PerCallBilling       bool                        `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
+	ModelPrice           float64                     `json:"model_price,omitempty"` // Model unit price.
+	GroupRatio           float64                     `json:"group_ratio,omitempty"` // Group ratio snapshot.
+	ModelRatio           float64                     `json:"model_ratio,omitempty"` // Model ratio snapshot.
+	GroupRatioCaptured   bool                        `json:"group_ratio_captured,omitempty"`
+	ModelRatioCaptured   bool                        `json:"model_ratio_captured,omitempty"`
+	OtherRatios          map[string]float64          `json:"other_ratios,omitempty"`      // Additional ratio snapshots.
+	OriginModelName      string                      `json:"origin_model_name,omitempty"` // Must be OriginModelName.
+	PerCallBilling       bool                        `json:"per_call_billing,omitempty"`  // Skip polling-time delta settlement.
 	BillingMode          types.BillingMode           `json:"billing_mode,omitempty"`
 	AdvancedRuleType     types.AdvancedRuleType      `json:"advanced_rule_type,omitempty"`
 	AdvancedRuleSnapshot *types.AdvancedRuleSnapshot `json:"advanced_rule,omitempty"`
+}
+
+func (c *TaskBillingContext) HasCapturedModelRatio() bool {
+	return c != nil && (c.ModelRatioCaptured || c.ModelRatio != 0)
+}
+
+func (c *TaskBillingContext) HasCapturedGroupRatio() bool {
+	return c != nil && (c.GroupRatioCaptured || c.GroupRatio != 0)
 }
 
 // GetUpstreamTaskID 获取上游真实 task ID（用于与 provider 通信）

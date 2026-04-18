@@ -581,6 +581,8 @@ func RelayTask(c *gin.Context) {
 			ModelPrice:           relayInfo.PriceData.ModelPrice,
 			GroupRatio:           relayInfo.PriceData.GroupRatioInfo.GroupRatio,
 			ModelRatio:           relayInfo.PriceData.ModelRatio,
+			GroupRatioCaptured:   relayInfo.PriceData.BillingMode == types.BillingModePerToken,
+			ModelRatioCaptured:   relayInfo.PriceData.BillingMode == types.BillingModePerToken,
 			OtherRatios:          relayInfo.PriceData.OtherRatios,
 			OriginModelName:      relayInfo.OriginModelName,
 			PerCallBilling:       common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName),

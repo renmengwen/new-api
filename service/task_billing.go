@@ -362,7 +362,9 @@ func resolveTaskTokenBillingRatios(task *model.Task) (taskTokenBillingRatios, bo
 		return taskTokenBillingRatios{}, false
 	}
 	if bc := task.PrivateData.BillingContext; bc != nil &&
-		bc.BillingMode == types.BillingModePerToken {
+		bc.BillingMode == types.BillingModePerToken &&
+		bc.HasCapturedModelRatio() &&
+		bc.HasCapturedGroupRatio() {
 		return taskTokenBillingRatios{
 			modelRatio:         bc.ModelRatio,
 			groupRatio:         bc.GroupRatio,
@@ -374,7 +376,7 @@ func resolveTaskTokenBillingRatios(task *model.Task) (taskTokenBillingRatios, bo
 
 	modelName := taskModelName(task)
 	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
-	if !hasRatioSetting || modelRatio <= 0 {
+	if !hasRatioSetting {
 		return taskTokenBillingRatios{}, false
 	}
 
