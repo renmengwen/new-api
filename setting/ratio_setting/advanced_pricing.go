@@ -102,6 +102,7 @@ type AdvancedPricingRuntimeContext struct {
 	PromptTokens int
 	Meta         *types.TokenCountMeta
 	Request      dto.Request
+	Task         *AdvancedPricingTaskContext
 }
 
 type advancedTextRuntimeContext struct {
@@ -110,6 +111,28 @@ type advancedTextRuntimeContext struct {
 	serviceTier  string
 	cacheRead    *bool
 	cacheCreate  *bool
+}
+
+type AdvancedPricingTaskContext struct {
+	InferenceMode      string
+	Audio              *bool
+	InputVideo         *bool
+	Resolution         string
+	AspectRatio        string
+	OutputDuration     int
+	InputVideoDuration int
+	Draft              *bool
+}
+
+type advancedMediaRuntimeContext struct {
+	inferenceMode      string
+	audio              *bool
+	inputVideo         *bool
+	resolution         string
+	aspectRatio        string
+	outputDuration     int
+	inputVideoDuration int
+	draft              *bool
 }
 
 func (ruleSet *AdvancedPricingRuleSet) UnmarshalJSON(data []byte) error {
@@ -190,7 +213,7 @@ func ResolveAdvancedPriceData(modelName string, ctx AdvancedPricingRuntimeContex
 	case RuleTypeTextSegment:
 		return resolveAdvancedTextPriceData(modelName, ctx, ruleSet)
 	case RuleTypeMediaTask:
-		return types.PriceData{}, false, nil
+		return resolveAdvancedMediaTaskPriceData(ctx, ruleSet)
 	default:
 		return types.PriceData{}, false, fmt.Errorf("model %s has invalid advanced pricing rule type: %s", modelName, ruleSet.RuleType)
 	}
@@ -251,6 +274,42 @@ func resolveAdvancedTextPriceData(modelName string, ctx AdvancedPricingRuntimeCo
 	}, true, nil
 }
 
+func resolveAdvancedMediaTaskPriceData(ctx AdvancedPricingRuntimeContext, ruleSet AdvancedPricingRuleSet) (types.PriceData, bool, error) {
+	runtimeCtx := buildAdvancedMediaRuntimeContext(ctx)
+	segment, ok := findMatchedMediaTaskSegment(ruleSet.Segments, runtimeCtx, ctx.PromptTokens)
+	if !ok {
+		return types.PriceData{}, false, nil
+	}
+	if segment.UnitPrice == nil {
+		return types.PriceData{}, false, fmt.Errorf("advanced media task segment is missing unit_price")
+	}
+
+	return types.PriceData{
+		ModelPrice:           *segment.UnitPrice,
+		BillingMode:          types.BillingModeAdvanced,
+		AdvancedRuleType:     ruleSet.RuleType,
+		AdvancedRuleSnapshot: buildAdvancedMediaRuleSnapshot(ruleSet.RuleType, segment, runtimeCtx, ctx.PromptTokens),
+		UsePrice:             true,
+	}, true, nil
+}
+
+func buildAdvancedMediaRuntimeContext(ctx AdvancedPricingRuntimeContext) advancedMediaRuntimeContext {
+	runtimeCtx := advancedMediaRuntimeContext{}
+	if ctx.Task == nil {
+		return runtimeCtx
+	}
+
+	runtimeCtx.inferenceMode = normalizeAdvancedPricingComparableString(ctx.Task.InferenceMode)
+	runtimeCtx.audio = cloneAdvancedBoolPtr(ctx.Task.Audio)
+	runtimeCtx.inputVideo = cloneAdvancedBoolPtr(ctx.Task.InputVideo)
+	runtimeCtx.resolution = normalizeAdvancedPricingComparableString(ctx.Task.Resolution)
+	runtimeCtx.aspectRatio = normalizeAdvancedPricingComparableString(ctx.Task.AspectRatio)
+	runtimeCtx.outputDuration = ctx.Task.OutputDuration
+	runtimeCtx.inputVideoDuration = ctx.Task.InputVideoDuration
+	runtimeCtx.draft = cloneAdvancedBoolPtr(ctx.Task.Draft)
+	return runtimeCtx
+}
+
 func getRuntimeOutputTokens(meta *types.TokenCountMeta) int {
 	if meta == nil {
 		return 0
@@ -269,6 +328,10 @@ func extractAdvancedPricingServiceTier(request dto.Request) string {
 	default:
 		return ""
 	}
+}
+
+func normalizeAdvancedPricingComparableString(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func normalizeAdvancedPricingRawString(data []byte) string {
@@ -459,6 +522,20 @@ func findMatchedTextSegment(segments []AdvancedPriceRule, runtimeCtx advancedTex
 	return AdvancedPriceRule{}, false
 }
 
+func findMatchedMediaTaskSegment(segments []AdvancedPriceRule, runtimeCtx advancedMediaRuntimeContext, promptTokens int) (AdvancedPriceRule, bool) {
+	sortedSegments := append([]AdvancedPriceRule(nil), segments...)
+	sort.Slice(sortedSegments, func(i, j int) bool {
+		return *sortedSegments[i].Priority < *sortedSegments[j].Priority
+	})
+
+	for _, segment := range sortedSegments {
+		if matchAdvancedMediaTaskSegment(segment, runtimeCtx, promptTokens) {
+			return segment, true
+		}
+	}
+	return AdvancedPriceRule{}, false
+}
+
 func matchAdvancedTextSegment(segment AdvancedPriceRule, runtimeCtx advancedTextRuntimeContext) bool {
 	if hasIntRange(segment.InputMin, segment.InputMax) && !isAdvancedTokenCountInRange(runtimeCtx.inputTokens, segment.InputMin, segment.InputMax) {
 		return false
@@ -478,6 +555,37 @@ func matchAdvancedTextSegment(segment AdvancedPriceRule, runtimeCtx advancedText
 		if runtimeCtx.cacheCreate == nil || *segment.CacheCreate != *runtimeCtx.cacheCreate {
 			return false
 		}
+	}
+	return true
+}
+
+func matchAdvancedMediaTaskSegment(segment AdvancedPriceRule, runtimeCtx advancedMediaRuntimeContext, promptTokens int) bool {
+	if inferenceMode := normalizeAdvancedPricingComparableString(segment.InferenceMode); inferenceMode != "" && inferenceMode != runtimeCtx.inferenceMode {
+		return false
+	}
+	if segment.Audio != nil && !boolPointerEqual(segment.Audio, runtimeCtx.audio) {
+		return false
+	}
+	if segment.InputVideo != nil && !boolPointerEqual(segment.InputVideo, runtimeCtx.inputVideo) {
+		return false
+	}
+	if resolution := normalizeAdvancedPricingComparableString(segment.Resolution); resolution != "" && resolution != runtimeCtx.resolution {
+		return false
+	}
+	if aspectRatio := normalizeAdvancedPricingComparableString(segment.AspectRatio); aspectRatio != "" && aspectRatio != runtimeCtx.aspectRatio {
+		return false
+	}
+	if hasIntRange(segment.OutputDurationMin, segment.OutputDurationMax) && !isAdvancedTokenCountInRange(runtimeCtx.outputDuration, segment.OutputDurationMin, segment.OutputDurationMax) {
+		return false
+	}
+	if hasIntRange(segment.InputVideoDurationMin, segment.InputVideoDurationMax) && !isAdvancedTokenCountInRange(runtimeCtx.inputVideoDuration, segment.InputVideoDurationMin, segment.InputVideoDurationMax) {
+		return false
+	}
+	if segment.Draft != nil && !boolPointerEqual(segment.Draft, runtimeCtx.draft) {
+		return false
+	}
+	if segment.MinTokens != nil && promptTokens < *segment.MinTokens {
+		return false
 	}
 	return true
 }
@@ -529,6 +637,15 @@ func buildAdvancedRuleSnapshot(ruleType AdvancedRuleType, segment AdvancedPriceR
 	}
 }
 
+func buildAdvancedMediaRuleSnapshot(ruleType AdvancedRuleType, segment AdvancedPriceRule, runtimeCtx advancedMediaRuntimeContext, promptTokens int) *types.AdvancedRuleSnapshot {
+	return &types.AdvancedRuleSnapshot{
+		RuleType:      ruleType,
+		MatchSummary:  buildAdvancedMediaMatchSummary(segment, runtimeCtx, promptTokens),
+		ConditionTags: buildAdvancedMediaConditionTags(segment),
+		Priority:      cloneAdvancedIntPtr(segment.Priority),
+	}
+}
+
 func buildAdvancedMatchSummary(segment AdvancedPriceRule, runtimeCtx advancedTextRuntimeContext) string {
 	parts := []string{
 		fmt.Sprintf("priority=%d", valueFromAdvancedIntPtr(segment.Priority)),
@@ -537,6 +654,39 @@ func buildAdvancedMatchSummary(segment AdvancedPriceRule, runtimeCtx advancedTex
 	}
 	if runtimeCtx.serviceTier != "" {
 		parts = append(parts, fmt.Sprintf("service_tier=%s", runtimeCtx.serviceTier))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func buildAdvancedMediaMatchSummary(segment AdvancedPriceRule, runtimeCtx advancedMediaRuntimeContext, promptTokens int) string {
+	parts := []string{
+		fmt.Sprintf("priority=%d", valueFromAdvancedIntPtr(segment.Priority)),
+		fmt.Sprintf("prompt_tokens=%d", promptTokens),
+		fmt.Sprintf("unit_price=%g", valueFromAdvancedFloatPtr(segment.UnitPrice)),
+	}
+	if runtimeCtx.inferenceMode != "" {
+		parts = append(parts, fmt.Sprintf("inference_mode=%s", runtimeCtx.inferenceMode))
+	}
+	if runtimeCtx.resolution != "" {
+		parts = append(parts, fmt.Sprintf("resolution=%s", runtimeCtx.resolution))
+	}
+	if runtimeCtx.aspectRatio != "" {
+		parts = append(parts, fmt.Sprintf("aspect_ratio=%s", runtimeCtx.aspectRatio))
+	}
+	if runtimeCtx.outputDuration > 0 {
+		parts = append(parts, fmt.Sprintf("output_duration=%d", runtimeCtx.outputDuration))
+	}
+	if runtimeCtx.inputVideoDuration > 0 {
+		parts = append(parts, fmt.Sprintf("input_video_duration=%d", runtimeCtx.inputVideoDuration))
+	}
+	if runtimeCtx.audio != nil {
+		parts = append(parts, fmt.Sprintf("audio=%t", *runtimeCtx.audio))
+	}
+	if runtimeCtx.inputVideo != nil {
+		parts = append(parts, fmt.Sprintf("input_video=%t", *runtimeCtx.inputVideo))
+	}
+	if runtimeCtx.draft != nil {
+		parts = append(parts, fmt.Sprintf("draft=%t", *runtimeCtx.draft))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -561,6 +711,38 @@ func buildAdvancedConditionTags(segment AdvancedPriceRule) []string {
 	return tags
 }
 
+func buildAdvancedMediaConditionTags(segment AdvancedPriceRule) []string {
+	tags := make([]string, 0, 9)
+	if inferenceMode := normalizeAdvancedPricingComparableString(segment.InferenceMode); inferenceMode != "" {
+		tags = append(tags, fmt.Sprintf("inference_mode:%s", inferenceMode))
+	}
+	if segment.Audio != nil {
+		tags = append(tags, fmt.Sprintf("audio:%t", *segment.Audio))
+	}
+	if segment.InputVideo != nil {
+		tags = append(tags, fmt.Sprintf("input_video:%t", *segment.InputVideo))
+	}
+	if resolution := normalizeAdvancedPricingComparableString(segment.Resolution); resolution != "" {
+		tags = append(tags, fmt.Sprintf("resolution:%s", resolution))
+	}
+	if aspectRatio := normalizeAdvancedPricingComparableString(segment.AspectRatio); aspectRatio != "" {
+		tags = append(tags, fmt.Sprintf("aspect_ratio:%s", aspectRatio))
+	}
+	if hasIntRange(segment.OutputDurationMin, segment.OutputDurationMax) {
+		tags = append(tags, fmt.Sprintf("output_duration:%d-%d", *segment.OutputDurationMin, *segment.OutputDurationMax))
+	}
+	if hasIntRange(segment.InputVideoDurationMin, segment.InputVideoDurationMax) {
+		tags = append(tags, fmt.Sprintf("input_video_duration:%d-%d", *segment.InputVideoDurationMin, *segment.InputVideoDurationMax))
+	}
+	if segment.Draft != nil {
+		tags = append(tags, fmt.Sprintf("draft:%t", *segment.Draft))
+	}
+	if segment.MinTokens != nil {
+		tags = append(tags, fmt.Sprintf("min_tokens:%d", *segment.MinTokens))
+	}
+	return tags
+}
+
 func cloneAdvancedIntPtr(v *int) *int {
 	if v == nil {
 		return nil
@@ -575,6 +757,13 @@ func cloneAdvancedFloatPtr(v *float64) *float64 {
 	}
 	cloned := *v
 	return &cloned
+}
+
+func valueFromAdvancedFloatPtr(v *float64) float64 {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 func cloneAdvancedBoolPtr(v *bool) *bool {

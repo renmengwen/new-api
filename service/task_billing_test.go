@@ -517,6 +517,39 @@ func TestRecalculate_AdvancedBillingIncludesSnapshotAndSummary(t *testing.T) {
 	assert.Contains(t, other, "advanced_rule")
 }
 
+func TestRecalculateTaskQuotaByTokensUsesStoredPerTokenBillingContext(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 16, 16, 16
+	const initQuota, preConsumed = 10000, 2000
+	const tokenRemain = 5000
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-task-per-token", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.BillingMode = types.BillingModePerToken
+	task.PrivateData.BillingContext.ModelRatio = 3
+	task.PrivateData.BillingContext.GroupRatio = 1
+	task.PrivateData.BillingContext.OtherRatios = map[string]float64{
+		"seconds": 2,
+	}
+
+	RecalculateTaskQuotaByTokens(ctx, task, 100)
+
+	require.Equal(t, 600, task.Quota)
+	assert.Equal(t, initQuota+(preConsumed-600), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+(preConsumed-600), getTokenRemainQuota(t, tokenID))
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	var other map[string]interface{}
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.Equal(t, string(types.BillingModePerToken), other["billing_mode"])
+}
+
 // ===========================================================================
 // CAS + Billing integration tests
 // Simulates the flow in updateVideoSingleTask (service/task_polling.go)

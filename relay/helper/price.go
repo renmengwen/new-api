@@ -2,6 +2,7 @@ package helper
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -117,13 +118,16 @@ func RefreshTextPriceDataForSettlement(c *gin.Context, info *relaycommon.RelayIn
 
 func finalizeAdvancedPriceData(modelName string, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo types.GroupRatioInfo, priceData types.PriceData) types.PriceData {
 	priceData.GroupRatioInfo = groupRatioInfo
-	priceData.UsePrice = false
 	priceData.ImageRatio, _ = ratio_setting.GetImageRatio(modelName)
 	priceData.AudioRatio = ratio_setting.GetAudioRatio(modelName)
 	priceData.AudioCompletionRatio = ratio_setting.GetAudioCompletionRatio(modelName)
 	priceData.CacheCreation5mRatio = priceData.CacheCreationRatio
 	priceData.CacheCreation1hRatio = priceData.CacheCreationRatio * claudeCacheCreation1hMultiplier
-	priceData.QuotaToPreConsume = int(float64(getPreConsumedTokens(promptTokens, meta)) * priceData.ModelRatio * groupRatioInfo.GroupRatio)
+	if priceData.UsePrice {
+		priceData.QuotaToPreConsume = int(priceData.ModelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
+	} else {
+		priceData.QuotaToPreConsume = int(float64(getPreConsumedTokens(promptTokens, meta)) * priceData.ModelRatio * groupRatioInfo.GroupRatio)
+	}
 	applyFreeModelPreConsume(&priceData)
 	return priceData
 }
@@ -228,6 +232,9 @@ func getConfiguredModelRatio(modelName string) (float64, bool, string) {
 
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
 	groupRatioInfo := HandleGroupRatio(c, info)
+	if priceData, ok, err := resolveExplicitPerCallPriceData(c, info, groupRatioInfo); ok || err != nil {
+		return priceData, err
+	}
 
 	modelPrice, success := ratio_setting.GetModelPrice(info.OriginModelName, true)
 	if !success {
@@ -259,6 +266,245 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 		Quota:          quota,
 		GroupRatioInfo: groupRatioInfo,
 	}, nil
+}
+
+func resolveExplicitPerCallPriceData(c *gin.Context, info *relaycommon.RelayInfo, groupRatioInfo types.GroupRatioInfo) (types.PriceData, bool, error) {
+	mode, hasExplicitMode := ratio_setting.GetExplicitBillingMode(info.OriginModelName)
+	if !hasExplicitMode {
+		return types.PriceData{}, false, nil
+	}
+
+	switch mode {
+	case ratio_setting.BillingModePerToken:
+		priceData, err := buildPerTokenPriceData(info, 0, nil, groupRatioInfo, true)
+		if err != nil {
+			return types.PriceData{}, true, err
+		}
+		return finalizePerCallPriceData(priceData), true, nil
+	case ratio_setting.BillingModePerRequest:
+		priceData, err := buildPerRequestPriceData(info, nil, groupRatioInfo)
+		if err != nil {
+			return types.PriceData{}, true, err
+		}
+		return finalizePerCallPriceData(priceData), true, nil
+	case ratio_setting.BillingModeAdvanced:
+		priceData, ok, err := ratio_setting.ResolveAdvancedPriceData(info.OriginModelName, ratio_setting.AdvancedPricingRuntimeContext{
+			Request: info.Request,
+			Task:    buildAdvancedPricingTaskContext(c),
+		})
+		if err != nil {
+			return types.PriceData{}, true, err
+		}
+		if ok {
+			return finalizePerCallPriceData(finalizeAdvancedPriceData(info.OriginModelName, 0, nil, groupRatioInfo, priceData)), true, nil
+		}
+		fallbackPriceData, fallbackErr := resolveLegacyPerCallPriceData(info, groupRatioInfo)
+		return fallbackPriceData, true, fallbackErr
+	default:
+		return types.PriceData{}, true, fmt.Errorf("unsupported billing mode: %s", mode)
+	}
+}
+
+func resolveLegacyPerCallPriceData(info *relaycommon.RelayInfo, groupRatioInfo types.GroupRatioInfo) (types.PriceData, error) {
+	mode := ratio_setting.GetLegacyBillingMode(info.OriginModelName)
+	switch mode {
+	case ratio_setting.BillingModePerToken:
+		priceData, err := buildPerTokenPriceData(info, 0, nil, groupRatioInfo, false)
+		if err != nil {
+			return types.PriceData{}, err
+		}
+		return finalizePerCallPriceData(priceData), nil
+	case ratio_setting.BillingModePerRequest:
+		priceData, err := buildPerRequestPriceData(info, nil, groupRatioInfo)
+		if err != nil {
+			return types.PriceData{}, err
+		}
+		return finalizePerCallPriceData(priceData), nil
+	default:
+		return types.PriceData{}, fmt.Errorf("unsupported billing mode: %s", mode)
+	}
+}
+
+func finalizePerCallPriceData(priceData types.PriceData) types.PriceData {
+	priceData.Quota = priceData.QuotaToPreConsume
+	return priceData
+}
+
+func buildAdvancedPricingTaskContext(c *gin.Context) *ratio_setting.AdvancedPricingTaskContext {
+	if c == nil {
+		return nil
+	}
+
+	taskReq, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return nil
+	}
+
+	runtimeCtx := &ratio_setting.AdvancedPricingTaskContext{
+		InferenceMode:      normalizeAdvancedTaskString(firstTaskString(taskReq.Mode, taskMetadataString(taskReq.Metadata, "inference_mode", "inferenceMode"))),
+		Resolution:         normalizeAdvancedTaskString(firstTaskString(taskMetadataString(taskReq.Metadata, "resolution", "Resolution"), deriveTaskResolution(taskReq.Size))),
+		AspectRatio:        normalizeAdvancedTaskString(firstTaskString(taskMetadataString(taskReq.Metadata, "aspect_ratio", "aspectRatio"), deriveTaskAspectRatio(taskReq.Size))),
+		OutputDuration:     resolveTaskOutputDuration(taskReq),
+		InputVideoDuration: taskMetadataIntValue(taskReq.Metadata, "input_video_duration", "inputVideoDuration"),
+	}
+
+	if value, ok := taskMetadataBool(taskReq.Metadata, "audio", "generate_audio", "generateAudio"); ok {
+		runtimeCtx.Audio = &value
+	}
+	if value, ok := taskMetadataBool(taskReq.Metadata, "input_video", "inputVideo"); ok {
+		runtimeCtx.InputVideo = &value
+	}
+	if value, ok := taskMetadataBool(taskReq.Metadata, "draft"); ok {
+		runtimeCtx.Draft = &value
+	}
+
+	return runtimeCtx
+}
+
+func firstTaskString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func normalizeAdvancedTaskString(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func taskMetadataString(metadata map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		value, ok := metadata[key]
+		if !ok {
+			continue
+		}
+		if trimmed := strings.TrimSpace(common.Interface2String(value)); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func taskMetadataBool(metadata map[string]interface{}, keys ...string) (bool, bool) {
+	for _, key := range keys {
+		value, ok := metadata[key]
+		if !ok {
+			continue
+		}
+		switch data := value.(type) {
+		case bool:
+			return data, true
+		case string:
+			parsed, err := strconv.ParseBool(strings.TrimSpace(data))
+			if err == nil {
+				return parsed, true
+			}
+		case int:
+			return data != 0, true
+		case int64:
+			return data != 0, true
+		case float64:
+			return data != 0, true
+		}
+	}
+	return false, false
+}
+
+func taskMetadataIntValue(metadata map[string]interface{}, keys ...string) int {
+	for _, key := range keys {
+		value, ok := metadata[key]
+		if !ok {
+			continue
+		}
+		switch data := value.(type) {
+		case int:
+			return data
+		case int64:
+			return int(data)
+		case float64:
+			return int(data)
+		case string:
+			parsed, err := strconv.Atoi(strings.TrimSpace(data))
+			if err == nil {
+				return parsed
+			}
+		}
+	}
+	return 0
+}
+
+func resolveTaskOutputDuration(taskReq relaycommon.TaskSubmitReq) int {
+	if taskReq.Duration > 0 {
+		return taskReq.Duration
+	}
+	if seconds, err := strconv.Atoi(strings.TrimSpace(taskReq.Seconds)); err == nil && seconds > 0 {
+		return seconds
+	}
+	return taskMetadataIntValue(taskReq.Metadata, "duration", "durationSeconds", "duration_seconds", "output_duration")
+}
+
+func deriveTaskResolution(size string) string {
+	width, height, ok := parseTaskSize(size)
+	if !ok {
+		return ""
+	}
+	longEdge := width
+	if height > longEdge {
+		longEdge = height
+	}
+	switch {
+	case longEdge >= 3840:
+		return "4k"
+	case longEdge >= 1920:
+		return "1080p"
+	case longEdge >= 1280:
+		return "720p"
+	case longEdge >= 854:
+		return "480p"
+	default:
+		return ""
+	}
+}
+
+func deriveTaskAspectRatio(size string) string {
+	width, height, ok := parseTaskSize(size)
+	if !ok || width <= 0 || height <= 0 {
+		return ""
+	}
+	divisor := greatestCommonDivisor(width, height)
+	return fmt.Sprintf("%d:%d", width/divisor, height/divisor)
+}
+
+func parseTaskSize(size string) (int, int, bool) {
+	normalized := strings.ToLower(strings.TrimSpace(size))
+	parts := strings.Split(normalized, "x")
+	if len(parts) != 2 {
+		parts = strings.Split(normalized, "*")
+	}
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	width, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return 0, 0, false
+	}
+	height, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return 0, 0, false
+	}
+	return width, height, true
+}
+
+func greatestCommonDivisor(left, right int) int {
+	for right != 0 {
+		left, right = right, left%right
+	}
+	if left == 0 {
+		return 1
+	}
+	return left
 }
 
 func ContainPriceOrRatio(modelName string) bool {

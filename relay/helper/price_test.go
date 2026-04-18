@@ -291,6 +291,90 @@ func TestModelPriceHelperUsesWildcardAdvancedRuleForCompactModel(t *testing.T) {
 	require.NotNil(t, priceData.AdvancedRuleSnapshot)
 }
 
+func TestModelPriceHelperPerCallHonorsExplicitPerTokenMode(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"task-per-token-model":6}`))
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"task-per-token-model":0.25}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"task-per-token-model":2.5}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"task-per-token-model":"per_token"}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "task-per-token-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+
+	priceData, err := ModelPriceHelperPerCall(c, info)
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModePerToken, priceData.BillingMode)
+	require.False(t, priceData.UsePrice)
+	require.Equal(t, 6.0, priceData.ModelRatio)
+	require.Equal(t, 0.0, priceData.ModelPrice)
+	require.Greater(t, priceData.Quota, 0)
+}
+
+func TestModelPriceHelperPerCallHonorsExplicitPerRequestMode(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"task-per-request-model":6}`))
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"task-per-request-model":0.25}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"task-per-request-model":"per_request"}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "task-per-request-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+
+	priceData, err := ModelPriceHelperPerCall(c, info)
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModePerRequest, priceData.BillingMode)
+	require.True(t, priceData.UsePrice)
+	require.Equal(t, 0.25, priceData.ModelPrice)
+	require.Equal(t, 0.0, priceData.ModelRatio)
+	require.Greater(t, priceData.Quota, 0)
+}
+
+func TestModelPriceHelperPerCallReturnsAdvancedMediaTaskPriceDataWhenRuleMatches(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"task-advanced-media-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"task-advanced-media-model": {
+			"rule_type": "media_task",
+			"segments": [
+				{
+					"priority": 10,
+					"unit_price": 8.8,
+					"remark": "task advanced rule"
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "task-advanced-media-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+
+	priceData, err := ModelPriceHelperPerCall(c, info)
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.True(t, priceData.UsePrice)
+	require.Equal(t, types.AdvancedRuleTypeMediaTask, priceData.AdvancedRuleType)
+	require.Equal(t, 8.8, priceData.ModelPrice)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Greater(t, priceData.Quota, 0)
+}
+
 func TestContainPriceOrRatioReturnsTrueForAdvancedOnlyModel(t *testing.T) {
 	restoreRatioSettings(t)
 
