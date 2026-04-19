@@ -68,6 +68,7 @@ type AdvancedPriceRule struct {
 	ServiceTier    string `json:"service_tier,omitempty"`
 	InputModality  string `json:"input_modality,omitempty"`
 	OutputModality string `json:"output_modality,omitempty"`
+	BillingUnit    string `json:"billing_unit,omitempty"`
 	CacheRead      *bool  `json:"cache_read,omitempty"`
 	CacheCreate    *bool  `json:"cache_create,omitempty"`
 
@@ -391,11 +392,8 @@ func normalizeAdvancedPricingRawString(data []byte) string {
 }
 
 func collectAdvancedTextInputModalities(ctx AdvancedPricingRuntimeContext) []string {
-	if len(ctx.InputModalities) > 0 {
-		return normalizeAdvancedPricingModalities(ctx.InputModalities)
-	}
-
-	modalities := make([]string, 0, 6)
+	modalities := make([]string, 0, 6+len(ctx.InputModalities))
+	modalities = append(modalities, ctx.InputModalities...)
 	modalities = append(modalities, extractAdvancedPricingRequestInputModalities(ctx.Request)...)
 	if ctx.Meta != nil {
 		for _, file := range ctx.Meta.Files {
@@ -486,20 +484,19 @@ func extractResponsesRequestDeclaredInputModalities(req *dto.OpenAIResponsesRequ
 			modalities = append(modalities, "image")
 		case "input_file":
 			modalities = append(modalities, "file")
+		case "input_video":
+			modalities = append(modalities, "video")
 		}
 	}
-	if len(req.Instructions) > 0 || len(req.Text) > 0 || len(req.Prompt) > 0 {
+	if len(req.Instructions) > 0 || len(req.Prompt) > 0 {
 		modalities = append(modalities, "text")
 	}
 	return modalities
 }
 
 func collectAdvancedTextOutputModalities(ctx AdvancedPricingRuntimeContext) []string {
-	if len(ctx.OutputModalities) > 0 {
-		return normalizeAdvancedPricingModalities(ctx.OutputModalities)
-	}
-
-	modalities := make([]string, 0, 2)
+	modalities := make([]string, 0, 2+len(ctx.OutputModalities))
+	modalities = append(modalities, ctx.OutputModalities...)
 	switch req := ctx.Request.(type) {
 	case *dto.GeneralOpenAIRequest:
 		modalities = append(modalities, extractAdvancedPricingRawStringSlice(req.Modalities)...)
@@ -589,6 +586,8 @@ func extractResponsesRequestInputModalities(data []byte) []string {
 				modalities = append(modalities, "image")
 			case "input_file":
 				modalities = append(modalities, "file")
+			case "input_video":
+				modalities = append(modalities, "video")
 			}
 		}
 	}

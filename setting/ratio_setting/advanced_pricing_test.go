@@ -3,6 +3,7 @@ package ratio_setting
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -271,6 +272,27 @@ func TestParseAdvancedPricingConfigSupportsP1ModalityFields(t *testing.T) {
 	require.Equal(t, 900, *segment.OverageThreshold)
 }
 
+func TestParseAdvancedPricingConfigPreservesSegmentBillingUnit(t *testing.T) {
+	cfg, err := ParseAdvancedPricingConfig(`{
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "billing_unit": "per_input_token",
+              "input_price": 1.2
+            }
+          ]
+        }
+      }
+    }`)
+	require.NoError(t, err)
+
+	require.Len(t, cfg.ModelRules["gpt-5"].Segments, 1)
+	require.Equal(t, "per_input_token", cfg.ModelRules["gpt-5"].Segments[0].BillingUnit)
+}
+
 func TestParseAdvancedPricingConfigAllowsOverlappingTextSegmentsWithDifferentModalityConditions(t *testing.T) {
 	cfg, err := ParseAdvancedPricingConfig(`{
       "rules": {
@@ -301,6 +323,44 @@ func TestParseAdvancedPricingConfigAllowsOverlappingTextSegmentsWithDifferentMod
     }`)
 	require.NoError(t, err)
 	require.Len(t, cfg.ModelRules["gpt-4o-realtime-preview"].Segments, 2)
+}
+
+func TestCollectAdvancedTextModalitiesMergesRequestModalitiesWithAudioFormatHints(t *testing.T) {
+	message := dto.Message{Role: "user"}
+	message.SetStringContent("Summarize this call")
+
+	ctx := AdvancedPricingRuntimeContext{
+		Request: &dto.GeneralOpenAIRequest{
+			Messages:   []dto.Message{message},
+			Modalities: []byte(`["text","audio"]`),
+		},
+		InputModalities:  []string{"audio"},
+		OutputModalities: []string{"audio"},
+	}
+
+	require.Equal(t, []string{"audio", "text"}, collectAdvancedTextInputModalities(ctx))
+	require.Equal(t, []string{"audio", "text"}, collectAdvancedTextOutputModalities(ctx))
+}
+
+func TestCollectAdvancedTextInputModalitiesIgnoresResponsesTextOutputConfig(t *testing.T) {
+	ctx := AdvancedPricingRuntimeContext{
+		Request: &dto.OpenAIResponsesRequest{
+			Input: []byte(`[{"role":"user","content":[{"type":"input_image","image_url":"https://example.com/image.png"}]}]`),
+			Text:  []byte(`{"format":{"type":"json_schema","name":"answer","schema":{"type":"object"}}}`),
+		},
+	}
+
+	require.Equal(t, []string{"image"}, collectAdvancedTextInputModalities(ctx))
+}
+
+func TestCollectAdvancedTextInputModalitiesIncludesResponsesVideoInputs(t *testing.T) {
+	ctx := AdvancedPricingRuntimeContext{
+		Request: &dto.OpenAIResponsesRequest{
+			Input: []byte(`[{"role":"user","content":[{"type":"input_video","video_url":"https://example.com/video.mp4"}]}]`),
+		},
+	}
+
+	require.Equal(t, []string{"video"}, collectAdvancedTextInputModalities(ctx))
 }
 
 func TestParseAdvancedPricingConfigRejectsDuplicatePriority(t *testing.T) {
