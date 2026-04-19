@@ -1170,7 +1170,6 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
   const matchedRule = findMatchingTextSegmentRule(rules, previewInput);
   const inputTokens = toNullableNumber(previewInput?.inputTokens) ?? 0;
   const outputTokens = toNullableNumber(previewInput?.outputTokens) ?? 0;
-  const serviceTier = normalizeStringField(previewInput?.serviceTier).trim();
 
   if (!matchedRule) {
     return {
@@ -1202,7 +1201,6 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
   const matchedSegmentPreview = serializeTextSegmentRule(matchedRule);
   const conditionSummary = buildTextSegmentPreviewConditionSummary(matchedRule);
   const formulaSummary = `(${formatNumber(inputTokens)} tokens × ${formatNumber(inputPrice)} + ${formatNumber(outputTokens)} tokens × ${formatNumber(outputPrice)}) / 1,000,000`;
-  const serviceTierSummary = serviceTier ? `，服务层 ${serviceTier}` : '';
 
   return {
     matchedRule,
@@ -1210,7 +1208,7 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
     conditionSummary,
     formulaSummary,
     logPreview: {
-      detailSummary: `命中文本分段规则：${conditionSummary}${serviceTierSummary}`,
+      detailSummary: `命中文本分段规则：${conditionSummary}`,
       processSummary: `输入 ${formatNumber(inputTokens)} tokens × ${formatNumber(inputPrice)} + 输出 ${formatNumber(outputTokens)} tokens × ${formatNumber(outputPrice)}`,
     },
     priceSummary: {

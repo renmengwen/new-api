@@ -487,6 +487,62 @@ test('buildTextSegmentPreview matches service tier case-insensitively', () => {
   assert.match(preview.conditionSummary, /default/i);
 });
 
+test('buildTextSegmentPreview detailSummary does not show preview service tier when matched rule has no tier', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-no-tier',
+        enabled: true,
+        priority: 10,
+        inputMin: 0,
+        inputMax: 16000,
+        outputMin: 0,
+        outputMax: 8000,
+        inputPrice: '0.3',
+        outputPrice: '0.6',
+      },
+    ],
+    {
+      inputTokens: 1024,
+      outputTokens: 512,
+      serviceTier: 'priority',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-no-tier');
+  assert.doesNotMatch(preview.logPreview.detailSummary, /priority/i);
+});
+
+test('buildTextSegmentPreview detailSummary does not duplicate matched rule service tier', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-priority',
+        enabled: true,
+        priority: 10,
+        inputMin: 0,
+        inputMax: 16000,
+        outputMin: 0,
+        outputMax: 8000,
+        serviceTier: 'priority',
+        inputPrice: '0.3',
+        outputPrice: '0.6',
+      },
+    ],
+    {
+      inputTokens: 1024,
+      outputTokens: 512,
+      serviceTier: 'priority',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-priority');
+  assert.equal(
+    preview.logPreview.detailSummary.match(/priority/gi)?.length ?? 0,
+    1,
+  );
+});
+
 test('buildTextSegmentConditionSummary includes modality and schema-supported extension fields', () => {
   const summary = buildTextSegmentConditionSummary({
     inputModality: 'audio',
