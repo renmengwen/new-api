@@ -421,6 +421,45 @@ test('buildTextSegmentPreview matches service tier case-insensitively', () => {
   assert.match(preview.conditionSummary, /default/i);
 });
 
+test('buildTextSegmentPreview matches modality-aware rules and exposes cache/tool scaffolding fields', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-audio',
+        enabled: true,
+        priority: 1,
+        inputModality: 'audio',
+        outputModality: 'text',
+        billingUnit: 'per_million_tokens',
+        cacheStoragePrice: '1',
+        toolUsageType: 'google_search',
+        freeQuota: '500',
+        overageThreshold: '1000',
+        inputPrice: '1',
+        outputPrice: '2.5',
+      },
+    ],
+    {
+      inputModality: 'audio',
+      outputModality: 'text',
+      toolUsageType: 'google_search',
+      toolUsageCount: '750',
+      inputTokens: '128',
+      outputTokens: '64',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-audio');
+  assert.equal(preview.priceSummary.cacheStoragePrice, '1');
+  assert.equal(preview.priceSummary.toolUsageCount, '750');
+  assert.equal(preview.priceSummary.freeQuota, '500');
+  assert.equal(preview.priceSummary.overageThreshold, '1000');
+  assert.equal(preview.priceSummary.billingUnit, 'per_million_tokens');
+  assert.equal(preview.matchedSegmentPreview.input_modality, 'audio');
+  assert.equal(preview.matchedSegmentPreview.output_modality, 'text');
+  assert.equal(preview.matchedSegmentPreview.tool_usage_type, 'google_search');
+});
+
 test('getTextSegmentRuleEditorMeta counts enabled rules and treats explicit zero default price as configured', () => {
   assert.deepEqual(
     getTextSegmentRuleEditorMeta(
@@ -535,6 +574,40 @@ test('buildMediaTaskPreview returns an unmatched preview when task conditions mi
   assert.equal(preview.matchedSegmentPreview, null);
   assert.equal(preview.formulaSummary, '');
   assert.equal(preview.priceSummary.estimatedCost, '');
+});
+
+test('buildMediaTaskPreview matches output modality, image tier, and tool usage scaffolding fields', () => {
+  const preview = buildMediaTaskPreview(
+    [
+      {
+        id: 'media-image',
+        priority: 1,
+        outputModality: 'image',
+        billingUnit: 'per_image',
+        imageSizeTier: '2k',
+        toolUsageType: 'google_search',
+        freeQuota: '100',
+        overageThreshold: '250',
+        unitPrice: '0.4',
+      },
+    ],
+    {
+      outputModality: 'image',
+      imageSizeTier: '2k',
+      toolUsageType: 'google_search',
+      toolUsageCount: '120',
+      usageTotalTokens: '1',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'media-image');
+  assert.equal(preview.priceSummary.toolUsageCount, '120');
+  assert.equal(preview.priceSummary.freeQuota, '100');
+  assert.equal(preview.priceSummary.overageThreshold, '250');
+  assert.equal(preview.priceSummary.billingUnit, 'per_image');
+  assert.equal(preview.matchedSegmentPreview.output_modality, 'image');
+  assert.equal(preview.matchedSegmentPreview.image_size_tier, '2k');
+  assert.equal(preview.matchedSegmentPreview.tool_usage_type, 'google_search');
 });
 
 test('advanced pricing helper constants stay aligned with persisted runtime enums', () => {
@@ -668,6 +741,39 @@ test('normalizeAdvancedPricingConfig round-trips canonical text_segment configs 
   assert.deepEqual(serializeAdvancedPricingConfig(normalizedConfig), canonicalConfig);
 });
 
+test('normalizeAdvancedPricingConfig round-trips canonical text_segment configs with modality-aware extension fields', () => {
+  const canonicalConfig = {
+    rule_type: 'text_segment',
+    display_name: 'Gemini 2.5 Flash',
+    billing_unit: 'per_million_tokens',
+    segments: [
+      {
+        priority: 1,
+        input_modality: 'audio',
+        output_modality: 'text',
+        billing_unit: 'per_million_tokens',
+        cache_storage_price: 1,
+        tool_usage_type: 'google_search',
+        free_quota: 500,
+        overage_threshold: 1000,
+        input_price: 1,
+        output_price: 2.5,
+      },
+    ],
+  };
+
+  const normalizedConfig = normalizeAdvancedPricingConfig(canonicalConfig);
+
+  assert.equal(normalizedConfig.rules[0].inputModality, 'audio');
+  assert.equal(normalizedConfig.rules[0].outputModality, 'text');
+  assert.equal(normalizedConfig.rules[0].billingUnit, 'per_million_tokens');
+  assert.equal(normalizedConfig.rules[0].cacheStoragePrice, '1');
+  assert.equal(normalizedConfig.rules[0].toolUsageType, 'google_search');
+  assert.equal(normalizedConfig.rules[0].freeQuota, '500');
+  assert.equal(normalizedConfig.rules[0].overageThreshold, '1000');
+  assert.deepEqual(serializeAdvancedPricingConfig(normalizedConfig), canonicalConfig);
+});
+
 test('serializeAdvancedPricingConfig emits canonical media_task json and preserves explicit zero and false values', () => {
   const serializedConfig = serializeAdvancedPricingConfig({
     ruleType: 'media_task',
@@ -719,6 +825,49 @@ test('serializeAdvancedPricingConfig emits canonical media_task json and preserv
         remark: '草稿模式',
         unit_price: 0.18,
         min_tokens: 0,
+      },
+    ],
+  });
+});
+
+test('serializeAdvancedPricingConfig emits media task extension fields for modality, tier, and tool scaffolding', () => {
+  const serializedConfig = serializeAdvancedPricingConfig({
+    ruleType: 'media_task',
+    displayName: 'Gemini Image',
+    taskType: 'image_generation',
+    billingUnit: 'per_image',
+    rules: [
+      {
+        id: 'media_task-1',
+        priority: '1',
+        inputModality: 'image',
+        outputModality: 'image',
+        billingUnit: 'per_image',
+        imageSizeTier: '2k',
+        toolUsageType: 'google_search',
+        freeQuota: '100',
+        overageThreshold: '250',
+        unitPrice: '0.4',
+      },
+    ],
+  });
+
+  assert.deepEqual(serializedConfig, {
+    rule_type: 'media_task',
+    display_name: 'Gemini Image',
+    task_type: 'image_generation',
+    billing_unit: 'per_image',
+    segments: [
+      {
+        priority: 1,
+        input_modality: 'image',
+        output_modality: 'image',
+        billing_unit: 'per_image',
+        image_size_tier: '2k',
+        tool_usage_type: 'google_search',
+        free_quota: 100,
+        overage_threshold: 250,
+        unit_price: 0.4,
       },
     ],
   });

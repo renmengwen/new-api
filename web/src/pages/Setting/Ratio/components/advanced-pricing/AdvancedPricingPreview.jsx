@@ -47,6 +47,21 @@ const MEDIA_TASK_PREVIEW_PRICE_FIELDS = [
   { key: 'estimatedCost', label: '预估费用' },
 ];
 
+const TEXT_SEGMENT_PREVIEW_SCAFFOLD_FIELDS = [
+  { key: 'cacheStoragePrice', label: '缓存存储单价' },
+  { key: 'toolUsageCount', label: 'Tool Usage Count' },
+  { key: 'freeQuota', label: 'Free Quota' },
+  { key: 'overageThreshold', label: 'Overage Threshold' },
+  { key: 'billingUnit', label: '计费单位' },
+];
+
+const MEDIA_TASK_PREVIEW_SCAFFOLD_FIELDS = [
+  { key: 'toolUsageCount', label: 'Tool Usage Count' },
+  { key: 'freeQuota', label: 'Free Quota' },
+  { key: 'overageThreshold', label: 'Overage Threshold' },
+  { key: 'billingUnit', label: '计费单位' },
+];
+
 const BOOLEAN_PREVIEW_OPTIONS = [
   { value: '', label: '不限' },
   { value: 'true', label: '是' },
@@ -105,6 +120,12 @@ export default function AdvancedPricingPreview({
     draftCoefficient: t('草稿系数'),
     estimatedCost: t('预估费用'),
   };
+
+  mediaTaskPreviewLabels.cacheStoragePrice = t('缓存存储单价');
+  mediaTaskPreviewLabels.toolUsageCount = t('Tool Usage Count');
+  mediaTaskPreviewLabels.freeQuota = t('Free Quota');
+  mediaTaskPreviewLabels.overageThreshold = t('Overage Threshold');
+  mediaTaskPreviewLabels.billingUnit = t('计费单位');
 
   const renderSavePreviewCard = () => (
     <Card
@@ -302,6 +323,40 @@ export default function AdvancedPricingPreview({
                 onChange={(value) => onPreviewInputChange?.('serviceTier', value)}
               />
             </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('输入模态')}</div>
+              <Input
+                value={previewInput?.inputModality || ''}
+                placeholder={t('例如 text / audio')}
+                onChange={(value) => onPreviewInputChange?.('inputModality', value)}
+              />
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('输出模态')}</div>
+              <Input
+                value={previewInput?.outputModality || ''}
+                placeholder={t('例如 text / image')}
+                onChange={(value) => onPreviewInputChange?.('outputModality', value)}
+              />
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('Tool Usage')}</div>
+              <Input
+                value={previewInput?.toolUsageType || ''}
+                placeholder={t('例如 google_search')}
+                onChange={(value) => onPreviewInputChange?.('toolUsageType', value)}
+              />
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>
+                {t('Tool Usage Count')}
+              </div>
+              <Input
+                value={previewInput?.toolUsageCount || ''}
+                placeholder={t('例如 1000')}
+                onChange={(value) => onPreviewInputChange?.('toolUsageCount', value)}
+              />
+            </div>
           </div>
 
           <Space wrap>
@@ -326,7 +381,10 @@ export default function AdvancedPricingPreview({
               description={t('新增或编辑文本分段规则后，这里会显示命中结果与费用摘要。')}
             />
           ) : previewResult?.matchedRule ? (
-            renderMatchedPreview(TEXT_SEGMENT_PREVIEW_PRICE_FIELDS)
+            renderMatchedPreview([
+              ...TEXT_SEGMENT_PREVIEW_PRICE_FIELDS,
+              ...TEXT_SEGMENT_PREVIEW_SCAFFOLD_FIELDS,
+            ])
           ) : (
             <Empty
               title={t('未命中规则')}
@@ -420,6 +478,48 @@ export default function AdvancedPricingPreview({
                 }
               />
             </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('输入模态')}</div>
+              <Input
+                value={previewInput?.inputModality || ''}
+                placeholder={t('例如 image / audio')}
+                onChange={(value) => onPreviewInputChange?.('inputModality', value)}
+              />
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('输出模态')}</div>
+              <Input
+                value={previewInput?.outputModality || ''}
+                placeholder={t('例如 image / video')}
+                onChange={(value) => onPreviewInputChange?.('outputModality', value)}
+              />
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('图像档位')}</div>
+              <Input
+                value={previewInput?.imageSizeTier || ''}
+                placeholder={t('例如 1k / 2k / 4k')}
+                onChange={(value) => onPreviewInputChange?.('imageSizeTier', value)}
+              />
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('Tool Usage')}</div>
+              <Input
+                value={previewInput?.toolUsageType || ''}
+                placeholder={t('例如 google_search')}
+                onChange={(value) => onPreviewInputChange?.('toolUsageType', value)}
+              />
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>
+                {t('Tool Usage Count')}
+              </div>
+              <Input
+                value={previewInput?.toolUsageCount || ''}
+                placeholder={t('例如 1000')}
+                onChange={(value) => onPreviewInputChange?.('toolUsageCount', value)}
+              />
+            </div>
           </div>
 
           <div style={{ width: '100%' }}>
@@ -492,7 +592,10 @@ export default function AdvancedPricingPreview({
               description={t('新增或编辑媒体任务规则后，这里会显示命中结果与计费摘要。')}
             />
           ) : previewResult?.matchedRule ? (
-            renderMatchedPreview(MEDIA_TASK_PREVIEW_PRICE_FIELDS)
+            renderMatchedPreview([
+              ...MEDIA_TASK_PREVIEW_PRICE_FIELDS,
+              ...MEDIA_TASK_PREVIEW_SCAFFOLD_FIELDS,
+            ])
           ) : (
             <Empty
               title={t('未命中规则')}

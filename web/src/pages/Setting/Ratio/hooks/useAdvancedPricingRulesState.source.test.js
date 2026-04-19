@@ -47,6 +47,11 @@ test('advanced pricing rules state prefers canonical AdvancedPricingConfig while
   assert.match(source, /handleTextSegmentConfigChange/);
   assert.match(source, /handleMediaTaskConfigChange/);
   assert.match(source, /serviceTier/);
+  assert.match(source, /inputModality: ''/);
+  assert.match(source, /outputModality: ''/);
+  assert.match(source, /imageSizeTier: ''/);
+  assert.match(source, /toolUsageType: ''/);
+  assert.match(source, /toolUsageCount: ''/);
   assert.match(source, /buildMediaTaskPreview/);
   assert.match(source, /rawAction: ''/);
   assert.match(source, /usageTotalTokens: ''/);
@@ -61,6 +66,10 @@ test('advanced pricing rules state prefers canonical AdvancedPricingConfig while
   assert.match(
     source,
     /const PREVIEW_BOOLEAN_FIELDS = new Set\(\['inputVideo', 'audio', 'draft'\]\);/,
+  );
+  assert.match(
+    source,
+    /const PREVIEW_NUMERIC_FIELDS = new Set\(\[[\s\S]*'toolUsageCount'[\s\S]*\]\);/,
   );
   assert.match(source, /typeof refresh === 'function'/);
 });

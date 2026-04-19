@@ -68,6 +68,17 @@ test('advanced pricing preview supports media task inputs, summaries, and matche
   assert.match(previewSource, /matchedSegmentPreview/);
 });
 
+test('advanced pricing preview wires modality, image tier, and tool usage scaffolding inputs', () => {
+  assert.match(previewSource, /onPreviewInputChange\?\.\('inputModality', value\)/);
+  assert.match(previewSource, /onPreviewInputChange\?\.\('outputModality', value\)/);
+  assert.match(previewSource, /onPreviewInputChange\?\.\('imageSizeTier', value\)/);
+  assert.match(previewSource, /onPreviewInputChange\?\.\('toolUsageType', value\)/);
+  assert.match(previewSource, /onPreviewInputChange\?\.\('toolUsageCount', value\)/);
+  assert.match(previewSource, /freeQuota/);
+  assert.match(previewSource, /overageThreshold/);
+  assert.match(previewSource, /cacheStoragePrice/);
+});
+
 test('advanced pricing preview localizes save preview and media task summary copy for the chinese admin ui', () => {
   assert.match(previewSource, /title=\{t\('保存预览'\)\}/);
   assert.match(previewSource, /t\('当前模型'\)/);

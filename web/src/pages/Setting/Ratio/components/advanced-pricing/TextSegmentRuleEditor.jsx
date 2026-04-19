@@ -84,6 +84,21 @@ const TEXT_SEGMENT_FIELDS = [
     regex: INTEGER_INPUT_REGEX,
   },
   {
+    field: 'inputModality',
+    label: '输入模态',
+    placeholder: '例如 text / audio',
+  },
+  {
+    field: 'outputModality',
+    label: '输出模态',
+    placeholder: '例如 text / image',
+  },
+  {
+    field: 'billingUnit',
+    label: '计费单位',
+    placeholder: '例如 per_million_tokens',
+  },
+  {
     field: 'serviceTier',
     label: '服务层级',
     placeholder: '例如：standard / premium',
@@ -111,6 +126,29 @@ const TEXT_SEGMENT_FIELDS = [
     label: '缓存写单价',
     placeholder: '可选',
     regex: DECIMAL_INPUT_REGEX,
+  },
+  {
+    field: 'cacheStoragePrice',
+    label: '缓存存储单价',
+    placeholder: '可选',
+    regex: DECIMAL_INPUT_REGEX,
+  },
+  {
+    field: 'toolUsageType',
+    label: 'Tool Usage',
+    placeholder: '例如 google_search',
+  },
+  {
+    field: 'freeQuota',
+    label: 'Free Quota',
+    placeholder: '可选',
+    regex: INTEGER_INPUT_REGEX,
+  },
+  {
+    field: 'overageThreshold',
+    label: 'Overage Threshold',
+    placeholder: '可选',
+    regex: INTEGER_INPUT_REGEX,
   },
 ];
 

@@ -57,9 +57,19 @@ test('text segment rule editor keeps the modern config contract, summary metadat
   assert.match(source, /error\.includes\(candidateRule\.id\)/);
   assert.doesNotMatch(source, /error\.includes\(String\(candidateRule\.priority\)\)/);
   assert.doesNotMatch(source, /LegacyTextSegmentRuleEditor/);
-  assert.doesNotMatch(source, /Modal/);
+  assert.doesNotMatch(source, /<Modal/);
   assert.doesNotMatch(source, /onRuleTypeChange/);
   assert.doesNotMatch(source, /onRuleFieldChange/);
+});
+
+test('text segment rule editor renders modality, unit, cache storage, and tool scaffolding fields', () => {
+  assert.match(source, /field: 'inputModality'/);
+  assert.match(source, /field: 'outputModality'/);
+  assert.match(source, /field: 'billingUnit'/);
+  assert.match(source, /field: 'cacheStoragePrice'/);
+  assert.match(source, /field: 'toolUsageType'/);
+  assert.match(source, /field: 'freeQuota'/);
+  assert.match(source, /field: 'overageThreshold'/);
 });
 
 test('text segment rule editor uses readable chinese billing summary labels in tables and preview tags', () => {
@@ -78,7 +88,6 @@ test('text segment rule editor uses readable chinese billing summary labels in t
   assert.doesNotMatch(source, /`cache_write_price:/);
   assert.doesNotMatch(source, /`segments=/);
   assert.doesNotMatch(source, /`priority=/);
-  assert.doesNotMatch(source, /billing_unit/);
   assert.doesNotMatch(source, /当前 segments JSON/);
   assert.doesNotMatch(source, /命中 segment JSON/);
 });

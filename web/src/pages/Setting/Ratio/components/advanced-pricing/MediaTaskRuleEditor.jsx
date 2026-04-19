@@ -122,6 +122,21 @@ export default function MediaTaskRuleEditor({
         placeholder: t('如 fast / quality'),
       },
       {
+        field: 'inputModality',
+        label: t('输入模态'),
+        placeholder: t('例如 image / audio'),
+      },
+      {
+        field: 'outputModality',
+        label: t('输出模态'),
+        placeholder: t('例如 image / video'),
+      },
+      {
+        field: 'billingUnit',
+        label: t('计费单位'),
+        placeholder: t('例如 per_image'),
+      },
+      {
         field: 'resolution',
         label: t('分辨率'),
         placeholder: t('如 720p / 1080p'),
@@ -172,6 +187,28 @@ export default function MediaTaskRuleEditor({
         label: t('草稿系数'),
         placeholder: t('如 0.5'),
         regex: DECIMAL_INPUT_REGEX,
+      },
+      {
+        field: 'imageSizeTier',
+        label: t('图像档位'),
+        placeholder: t('例如 1k / 2k / 4k'),
+      },
+      {
+        field: 'toolUsageType',
+        label: t('Tool Usage'),
+        placeholder: t('例如 google_search'),
+      },
+      {
+        field: 'freeQuota',
+        label: t('Free Quota'),
+        placeholder: t('可选'),
+        regex: INTEGER_INPUT_REGEX,
+      },
+      {
+        field: 'overageThreshold',
+        label: t('Overage Threshold'),
+        placeholder: t('可选'),
+        regex: INTEGER_INPUT_REGEX,
       },
     ],
     [t],
