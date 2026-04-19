@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -50,12 +51,13 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	}
 
 	if mode == ratio_setting.BillingModeAdvanced {
-		advancedPriceData, ok, err := ratio_setting.ResolveAdvancedPriceData(info.OriginModelName, buildAdvancedPricingRuntimeContext(info, promptTokens, meta))
+		advancedPriceData, ok, err := ratio_setting.ResolveAdvancedPriceData(info.OriginModelName, buildAdvancedPricingRuntimeContext(c, info, promptTokens, meta))
 		if err != nil {
 			return types.PriceData{}, err
 		}
 		if ok {
 			priceData := finalizeAdvancedPriceData(info.OriginModelName, promptTokens, meta, groupRatioInfo, advancedPriceData)
+			priceData = attachAdvancedTextRuntimeContext(info, priceData)
 			return finalizeModelPriceData(info, priceData), nil
 		}
 		return types.PriceData{}, advancedPricingNoMatchError(info.OriginModelName)
@@ -283,14 +285,16 @@ func resolveExplicitPerCallPriceData(c *gin.Context, info *relaycommon.RelayInfo
 		}
 		return finalizePerCallPriceData(priceData), true, nil
 	case ratio_setting.BillingModeAdvanced:
-		runtimeCtx := buildAdvancedPricingRuntimeContext(info, 0, nil)
+		runtimeCtx := buildAdvancedPricingRuntimeContext(c, info, 0, nil)
 		runtimeCtx.Task = buildAdvancedPricingTaskContext(c, info)
 		priceData, ok, err := ratio_setting.ResolveAdvancedPriceData(info.OriginModelName, runtimeCtx)
 		if err != nil {
 			return types.PriceData{}, true, err
 		}
 		if ok {
-			return finalizePerCallPriceData(finalizeAdvancedPriceData(info.OriginModelName, 0, nil, groupRatioInfo, priceData)), true, nil
+			priceData = finalizeAdvancedPriceData(info.OriginModelName, 0, nil, groupRatioInfo, priceData)
+			priceData = attachAdvancedTextRuntimeContext(info, priceData)
+			return finalizePerCallPriceData(priceData), true, nil
 		}
 		return types.PriceData{}, true, advancedPricingNoMatchError(info.OriginModelName)
 	default:
@@ -328,7 +332,7 @@ func finalizePerCallPriceData(priceData types.PriceData) types.PriceData {
 	return priceData
 }
 
-func buildAdvancedPricingRuntimeContext(info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) ratio_setting.AdvancedPricingRuntimeContext {
+func buildAdvancedPricingRuntimeContext(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) ratio_setting.AdvancedPricingRuntimeContext {
 	runtimeCtx := ratio_setting.AdvancedPricingRuntimeContext{
 		PromptTokens: promptTokens,
 		Meta:         meta,
@@ -345,7 +349,97 @@ func buildAdvancedPricingRuntimeContext(info *relaycommon.RelayInfo, promptToken
 	if strings.TrimSpace(info.OutputAudioFormat) != "" {
 		runtimeCtx.OutputModalities = append(runtimeCtx.OutputModalities, "audio")
 	}
+	runtimeCtx.ToolUsageType, runtimeCtx.ToolUsageCount = resolveAdvancedTextToolUsage(c, info)
 	return runtimeCtx
+}
+
+func resolveAdvancedTextToolUsage(c *gin.Context, info *relaycommon.RelayInfo) (string, int) {
+	if info != nil && info.ResponsesUsageInfo != nil && info.ResponsesUsageInfo.BuiltInTools != nil {
+		if webSearchTool, exists := info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview]; exists && webSearchTool != nil && webSearchTool.CallCount > 0 {
+			return "web_search", webSearchTool.CallCount
+		}
+	}
+	if info != nil && strings.HasSuffix(strings.TrimSpace(info.OriginModelName), "search-preview") {
+		return "web_search", 1
+	}
+	if c != nil {
+		if count := c.GetInt("claude_web_search_requests"); count > 0 {
+			return "web_search", count
+		}
+	}
+	return "", 0
+}
+
+func attachAdvancedTextRuntimeContext(info *relaycommon.RelayInfo, priceData types.PriceData) types.PriceData {
+	if info == nil || priceData.BillingMode != types.BillingModeAdvanced || priceData.AdvancedRuleType != types.AdvancedRuleTypeTextSegment {
+		return priceData
+	}
+
+	if priceData.AdvancedPricingContext == nil {
+		priceData.AdvancedPricingContext = &types.AdvancedPricingContextSnapshot{}
+	}
+	if priceData.AdvancedRuleSnapshot != nil && strings.TrimSpace(priceData.AdvancedPricingContext.BillingUnit) == "" {
+		priceData.AdvancedPricingContext.BillingUnit = strings.TrimSpace(priceData.AdvancedRuleSnapshot.BillingUnit)
+	}
+	if priceData.AdvancedPricingContext.ImageCount == nil {
+		if imageCount, ok := resolveAdvancedTextImageCount(info, priceData); ok {
+			priceData.AdvancedPricingContext.ImageCount = common.GetPointer(imageCount)
+		}
+	}
+	return priceData
+}
+
+func resolveAdvancedTextImageCount(info *relaycommon.RelayInfo, priceData types.PriceData) (int, bool) {
+	if info == nil || info.Request == nil || !usesAdvancedTextImageCount(info, priceData) {
+		return 0, false
+	}
+
+	switch req := info.Request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		if req.N != nil && *req.N > 0 {
+			return *req.N, true
+		}
+		return 1, true
+	default:
+		return 0, false
+	}
+}
+
+func usesAdvancedTextImageCount(info *relaycommon.RelayInfo, priceData types.PriceData) bool {
+	if isAdvancedTextImageGenerationPath(info.RequestURLPath) {
+		return true
+	}
+	if priceData.AdvancedRuleSnapshot != nil {
+		if strings.EqualFold(priceData.AdvancedRuleSnapshot.BillingUnit, types.AdvancedBillingUnitPerImage) {
+			return true
+		}
+		if strings.EqualFold(priceData.AdvancedRuleSnapshot.OutputModality, "image") {
+			return true
+		}
+	}
+	if priceData.AdvancedPricingContext == nil {
+		return false
+	}
+	if strings.EqualFold(priceData.AdvancedPricingContext.BillingUnit, types.AdvancedBillingUnitPerImage) {
+		return true
+	}
+	for _, modality := range priceData.AdvancedPricingContext.OutputModalities {
+		if strings.EqualFold(modality, "image") {
+			return true
+		}
+	}
+	return false
+}
+
+func isAdvancedTextImageGenerationPath(path string) bool {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return false
+	}
+	if idx := strings.Index(trimmed, "?"); idx >= 0 {
+		trimmed = trimmed[:idx]
+	}
+	return strings.HasPrefix(trimmed, "/v1/images/generations")
 }
 
 func buildAdvancedPricingTaskContext(c *gin.Context, info *relaycommon.RelayInfo) *ratio_setting.AdvancedPricingTaskContext {

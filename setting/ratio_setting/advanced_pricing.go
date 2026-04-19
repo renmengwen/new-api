@@ -116,6 +116,8 @@ type AdvancedPricingRuntimeContext struct {
 	Task             *AdvancedPricingTaskContext
 	InputModalities  []string
 	OutputModalities []string
+	ToolUsageType    string
+	ToolUsageCount   int
 }
 
 type advancedTextRuntimeContext struct {
@@ -126,6 +128,8 @@ type advancedTextRuntimeContext struct {
 	outputModalities []string
 	imageSizeTier    string
 	imageCount       *int
+	toolUsageType    string
+	toolUsageCount   int
 	cacheRead        *bool
 	cacheCreate      *bool
 }
@@ -345,6 +349,8 @@ func buildAdvancedTextRuntimeContext(ctx AdvancedPricingRuntimeContext) advanced
 		outputModalities: collectAdvancedTextOutputModalities(ctx),
 		imageSizeTier:    extractAdvancedTextImageSizeTier(ctx),
 		imageCount:       extractAdvancedTextImageCount(ctx),
+		toolUsageType:    normalizeAdvancedPricingComparableString(ctx.ToolUsageType),
+		toolUsageCount:   ctx.ToolUsageCount,
 	}
 }
 
@@ -971,6 +977,12 @@ func matchAdvancedTextSegment(segment AdvancedPriceRule, runtimeCtx advancedText
 	if imageSizeTier := normalizeAdvancedPricingImageSizeTier(segment.ImageSizeTier); imageSizeTier != "" && imageSizeTier != runtimeCtx.imageSizeTier {
 		return false
 	}
+	if toolUsageType := normalizeAdvancedPricingComparableString(segment.ToolUsageType); toolUsageType != "" && toolUsageType != runtimeCtx.toolUsageType {
+		return false
+	}
+	if segment.ToolUsageCount != nil && runtimeCtx.toolUsageCount < *segment.ToolUsageCount {
+		return false
+	}
 	if segment.CacheRead != nil {
 		if runtimeCtx.cacheRead == nil || *segment.CacheRead != *runtimeCtx.cacheRead {
 			return false
@@ -1111,14 +1123,18 @@ func buildAdvancedMediaRuleSnapshot(ruleType AdvancedRuleType, taskType string, 
 }
 
 func buildAdvancedPricingContextSnapshot(billingUnit string, segment AdvancedPriceRule, runtimeCtx advancedTextRuntimeContext) *types.AdvancedPricingContextSnapshot {
+	var toolUsageCount *int
+	if runtimeCtx.toolUsageCount > 0 {
+		toolUsageCount = cloneAdvancedIntPtr(&runtimeCtx.toolUsageCount)
+	}
 	return &types.AdvancedPricingContextSnapshot{
 		BillingUnit:      billingUnit,
 		InputModalities:  cloneAdvancedStringSlice(runtimeCtx.inputModalities),
 		OutputModalities: cloneAdvancedStringSlice(runtimeCtx.outputModalities),
 		ImageSizeTier:    runtimeCtx.imageSizeTier,
 		ImageCount:       cloneAdvancedIntPtr(runtimeCtx.imageCount),
-		ToolUsageType:    normalizeAdvancedPricingComparableString(segment.ToolUsageType),
-		ToolUsageCount:   cloneAdvancedIntPtr(segment.ToolUsageCount),
+		ToolUsageType:    runtimeCtx.toolUsageType,
+		ToolUsageCount:   toolUsageCount,
 		FreeQuota:        cloneAdvancedIntPtr(segment.FreeQuota),
 		OverageThreshold: cloneAdvancedIntPtr(segment.OverageThreshold),
 	}
@@ -1152,6 +1168,12 @@ func buildAdvancedMatchSummary(segment AdvancedPriceRule, runtimeCtx advancedTex
 	}
 	if runtimeCtx.imageSizeTier != "" {
 		parts = append(parts, fmt.Sprintf("image_size_tier=%s", runtimeCtx.imageSizeTier))
+	}
+	if runtimeCtx.toolUsageType != "" {
+		parts = append(parts, fmt.Sprintf("tool_usage_type=%s", runtimeCtx.toolUsageType))
+	}
+	if runtimeCtx.toolUsageCount > 0 {
+		parts = append(parts, fmt.Sprintf("tool_usage_count=%d", runtimeCtx.toolUsageCount))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -1600,7 +1622,9 @@ func hasTextCondition(segment AdvancedPriceRule) bool {
 		normalizeAdvancedPricingServiceTier(segment.ServiceTier) != "" ||
 		normalizeAdvancedPricingComparableString(segment.InputModality) != "" ||
 		normalizeAdvancedPricingComparableString(segment.OutputModality) != "" ||
-		normalizeAdvancedPricingImageSizeTier(segment.ImageSizeTier) != ""
+		normalizeAdvancedPricingImageSizeTier(segment.ImageSizeTier) != "" ||
+		normalizeAdvancedPricingComparableString(segment.ToolUsageType) != "" ||
+		segment.ToolUsageCount != nil
 }
 
 func validateUnsupportedTextRuntimeFields(modelName string, segment AdvancedPriceRule) error {
@@ -1654,6 +1678,9 @@ func textSegmentsOverlap(left, right AdvancedPriceRule) bool {
 		return false
 	}
 	if normalizeAdvancedPricingImageSizeTier(left.ImageSizeTier) != normalizeAdvancedPricingImageSizeTier(right.ImageSizeTier) {
+		return false
+	}
+	if normalizeAdvancedPricingComparableString(left.ToolUsageType) != normalizeAdvancedPricingComparableString(right.ToolUsageType) {
 		return false
 	}
 	if !boolPointerEqual(left.CacheRead, right.CacheRead) {

@@ -334,6 +334,65 @@ func TestModelPriceHelperMatchesAdvancedTextSegmentByModalityAndCapturesRuntimeC
 	require.Equal(t, []string{"audio"}, priceData.AdvancedPricingContext.OutputModalities)
 }
 
+func TestModelPriceHelperMatchesAdvancedTextSegmentByResponsesWebSearchUsage(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"responses-grounding-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"responses-grounding-model": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_1000_calls",
+			"segments": [
+				{
+					"priority": 10,
+					"input_price": 2
+				},
+				{
+					"priority": 20,
+					"tool_usage_type": "web_search",
+					"tool_usage_count": 2,
+					"input_price": 14
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "responses-grounding-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         &dto.OpenAIResponsesRequest{},
+		ResponsesUsageInfo: &relaycommon.ResponsesUsageInfo{
+			BuiltInTools: map[string]*relaycommon.BuildInToolInfo{
+				dto.BuildInToolWebSearchPreview: {
+					ToolName:          dto.BuildInToolWebSearchPreview,
+					CallCount:         3,
+					SearchContextSize: "medium",
+				},
+			},
+		},
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{})
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, 7.0, priceData.ModelRatio)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, types.AdvancedBillingUnitPer1000Calls, priceData.AdvancedRuleSnapshot.BillingUnit)
+	require.Equal(t, "web_search", priceData.AdvancedRuleSnapshot.ToolUsageType)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot.ThresholdSnapshot.ToolUsageCount)
+	require.Equal(t, 2, *priceData.AdvancedRuleSnapshot.ThresholdSnapshot.ToolUsageCount)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_type=web_search")
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_count=3")
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, types.AdvancedBillingUnitPer1000Calls, priceData.AdvancedPricingContext.BillingUnit)
+	require.Equal(t, "web_search", priceData.AdvancedPricingContext.ToolUsageType)
+	require.NotNil(t, priceData.AdvancedPricingContext.ToolUsageCount)
+	require.Equal(t, 3, *priceData.AdvancedPricingContext.ToolUsageCount)
+}
+
 func TestModelPriceHelperMatchesAdvancedTextSegmentPerSecondForGeminiLiveAudio(t *testing.T) {
 	restoreRatioSettings(t)
 
@@ -440,6 +499,59 @@ func TestModelPriceHelperMatchesAdvancedTextSegmentPerImageForGeminiImageGenerat
 	require.Equal(t, types.AdvancedBillingUnitPerImage, priceData.AdvancedRuleSnapshot.BillingUnit)
 	require.Equal(t, "image", priceData.AdvancedRuleSnapshot.OutputModality)
 	require.Equal(t, []string{"image"}, priceData.AdvancedPricingContext.OutputModalities)
+}
+
+func TestModelPriceHelperCapturesImageCountForChatBasedPerImageBilling(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gemini-3.1-flash-image-chat-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gemini-3.1-flash-image-chat-preview": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_image",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000000,
+					"output_modality": "image",
+					"image_size_tier": "2k",
+					"input_price": 0.5,
+					"output_price": 3
+				}
+			]
+		}
+	}`))
+
+	imageCount := 2
+	request := &dto.GeneralOpenAIRequest{
+		Model:      "gemini-3.1-flash-image-chat-preview",
+		Prompt:     "Generate two stylized skyline illustrations",
+		Size:       "2048x2048",
+		N:          &imageCount,
+		Modalities: []byte(`["image"]`),
+	}
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3.1-flash-image-chat-preview",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         request,
+		RequestURLPath:  "/v1/chat/completions",
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 64, request.GetTokenCountMeta())
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, types.AdvancedBillingUnitPerImage, priceData.AdvancedRuleSnapshot.BillingUnit)
+	require.Equal(t, "2k", priceData.AdvancedRuleSnapshot.ImageSizeTier)
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, "2k", priceData.AdvancedPricingContext.ImageSizeTier)
+	require.NotNil(t, priceData.AdvancedPricingContext.ImageCount)
+	require.Equal(t, 2, *priceData.AdvancedPricingContext.ImageCount)
 }
 
 func TestModelPriceHelperMatchesAdvancedTextSegmentByImageSizeTier(t *testing.T) {

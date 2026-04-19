@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -723,6 +724,9 @@ func TestCalculateTextQuotaSummarySettlementUsesLiveDurationForAdvancedPerSecond
 	require.Equal(t, 3000000, summary.Quota)
 	require.Equal(t, types.BillingModeAdvanced, relayInfo.PriceData.BillingMode)
 	require.Equal(t, types.AdvancedBillingUnitPerSecond, relayInfo.PriceData.AdvancedRuleSnapshot.BillingUnit)
+	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext)
+	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext.LiveDurationSecs)
+	require.GreaterOrEqual(t, *relayInfo.PriceData.AdvancedPricingContext.LiveDurationSecs, 3)
 }
 
 func TestCalculateTextQuotaSummarySettlementUsesImageCountForAdvancedPerImage(t *testing.T) {
@@ -794,6 +798,161 @@ func TestCalculateTextQuotaSummarySettlementUsesImageCountForAdvancedPerImage(t 
 	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext)
 	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext.ImageCount)
 	require.Equal(t, 2, *relayInfo.PriceData.AdvancedPricingContext.ImageCount)
+}
+
+func TestCalculateTextQuotaSummarySettlementUsesImageCountForChatBasedAdvancedPerImage(t *testing.T) {
+	restoreTextQuotaRatioSettings(t)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gemini-3.1-flash-image-chat-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gemini-3.1-flash-image-chat-preview": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_image",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000000,
+					"output_modality": "image",
+					"image_size_tier": "2k",
+					"input_price": 0.5,
+					"output_price": 3
+				}
+			]
+		}
+	}`))
+
+	imageCount := 2
+	request := &dto.GeneralOpenAIRequest{
+		Model:      "gemini-3.1-flash-image-chat-preview",
+		Prompt:     "Generate two stylized skyline illustrations",
+		Size:       "2048x2048",
+		N:          &imageCount,
+		Modalities: []byte(`["image"]`),
+	}
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3.1-flash-image-chat-preview",
+		Request:         request,
+		RequestURLPath:  "/v1/chat/completions",
+		PriceData: types.PriceData{
+			BillingMode:      types.BillingModeAdvanced,
+			AdvancedRuleType: types.AdvancedRuleTypeTextSegment,
+			GroupRatioInfo:   types.GroupRatioInfo{GroupRatio: 1},
+			AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{
+				RuleType:    types.AdvancedRuleTypeTextSegment,
+				BillingUnit: types.AdvancedBillingUnitPerImage,
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     516,
+		CompletionTokens: 0,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 3500000, summary.Quota)
+	require.Equal(t, types.BillingModeAdvanced, relayInfo.PriceData.BillingMode)
+	require.NotNil(t, relayInfo.PriceData.AdvancedRuleSnapshot)
+	require.Equal(t, types.AdvancedBillingUnitPerImage, relayInfo.PriceData.AdvancedRuleSnapshot.BillingUnit)
+	require.Equal(t, "2k", relayInfo.PriceData.AdvancedRuleSnapshot.ImageSizeTier)
+	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext)
+	require.Equal(t, "2k", relayInfo.PriceData.AdvancedPricingContext.ImageSizeTier)
+	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext.ImageCount)
+	require.Equal(t, 2, *relayInfo.PriceData.AdvancedPricingContext.ImageCount)
+}
+
+func TestCalculateAdvancedNonTokenQuotaUsesFreeQuotaAndThresholdForPer1000Calls(t *testing.T) {
+	priceData := types.PriceData{
+		BillingMode:      types.BillingModeAdvanced,
+		AdvancedRuleType: types.AdvancedRuleTypeTextSegment,
+		AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{
+			RuleType:    types.AdvancedRuleTypeTextSegment,
+			BillingUnit: types.AdvancedBillingUnitPer1000Calls,
+			PriceSnapshot: types.AdvancedRulePriceSnapshot{
+				InputPrice: common.GetPointer(14.0),
+			},
+		},
+		AdvancedPricingContext: &types.AdvancedPricingContextSnapshot{
+			BillingUnit:      types.AdvancedBillingUnitPer1000Calls,
+			ToolUsageType:    "web_search",
+			ToolUsageCount:   common.GetPointer(2500),
+			FreeQuota:        common.GetPointer(500),
+			OverageThreshold: common.GetPointer(2000),
+		},
+	}
+
+	quota, used := calculateAdvancedNonTokenQuota(textQuotaSummary{}, priceData, decimal.NewFromInt(1), decimal.NewFromFloat(common.QuotaPerUnit))
+
+	require.True(t, used)
+	require.True(t, quota.Equal(decimal.NewFromInt(14).Mul(decimal.NewFromFloat(common.QuotaPerUnit))))
+}
+
+func TestCalculateTextQuotaSummarySettlementSkipsLegacyWebSearchQuotaWhenAdvancedPer1000CallsMatches(t *testing.T) {
+	restoreTextQuotaRatioSettings(t)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Set("chat_completion_web_search_context_size", "medium")
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"grounding-search-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"grounding-search-preview": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_1000_calls",
+			"segments": [
+				{
+					"priority": 10,
+					"input_price": 2
+				},
+				{
+					"priority": 20,
+					"tool_usage_type": "web_search",
+					"tool_usage_count": 1,
+					"overage_threshold": 1,
+					"input_price": 14
+				}
+			]
+		}
+	}`))
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "grounding-search-preview",
+		Request: &dto.GeneralOpenAIRequest{
+			Model: "grounding-search-preview",
+		},
+		PriceData: types.PriceData{
+			BillingMode:     types.BillingModePerToken,
+			ModelRatio:      6,
+			CompletionRatio: 2.5,
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     10,
+		CompletionTokens: 0,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 1, summary.WebSearchCallCount)
+	require.Greater(t, summary.WebSearchPrice, 0.0)
+	require.Equal(t, int(14*common.QuotaPerUnit), summary.Quota)
+	require.Equal(t, types.BillingModeAdvanced, relayInfo.PriceData.BillingMode)
+	require.NotNil(t, relayInfo.PriceData.AdvancedRuleSnapshot)
+	require.Equal(t, types.AdvancedBillingUnitPer1000Calls, relayInfo.PriceData.AdvancedRuleSnapshot.BillingUnit)
+	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext)
+	require.Equal(t, "web_search", relayInfo.PriceData.AdvancedPricingContext.ToolUsageType)
+	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext.ToolUsageCount)
+	require.Equal(t, 1, *relayInfo.PriceData.AdvancedPricingContext.ToolUsageCount)
 }
 
 func restoreTextQuotaRatioSettings(t *testing.T) {
