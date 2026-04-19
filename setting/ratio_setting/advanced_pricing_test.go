@@ -104,8 +104,8 @@ func TestParseAdvancedPricingConfigAllowsTextRuleWithoutOutputPrice(t *testing.T
 	require.Equal(t, 1.2, *cfg.ModelRules["gpt-5"].Segments[0].InputPrice)
 }
 
-func TestParseAdvancedPricingConfigRejectsTextRuleWithoutConditions(t *testing.T) {
-	_, err := ParseAdvancedPricingConfig(`{
+func TestParseAdvancedPricingConfigAllowsSingleDefaultTextRuleWithoutConditions(t *testing.T) {
+	cfg, err := ParseAdvancedPricingConfig(`{
       "rules": {
         "gpt-5": {
           "rule_type": "text_segment",
@@ -115,7 +115,24 @@ func TestParseAdvancedPricingConfigRejectsTextRuleWithoutConditions(t *testing.T
         }
       }
     }`)
-	require.ErrorContains(t, err, "condition")
+	require.NoError(t, err)
+	require.Len(t, cfg.ModelRules["gpt-5"].Segments, 1)
+	require.Equal(t, 1.2, *cfg.ModelRules["gpt-5"].Segments[0].InputPrice)
+}
+
+func TestParseAdvancedPricingConfigRejectsMultipleDefaultTextRulesWithoutConditions(t *testing.T) {
+	_, err := ParseAdvancedPricingConfig(`{
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {"priority": 10, "input_price": 1.2},
+            {"priority": 20, "input_price": 2.4}
+          ]
+        }
+      }
+    }`)
+	require.ErrorContains(t, err, "default")
 }
 
 func TestParseAdvancedPricingConfigAllowsMediaRuleWithoutMinTokens(t *testing.T) {
@@ -155,6 +172,21 @@ func TestParseAdvancedPricingConfigAllowsExactRanges(t *testing.T) {
 	require.Equal(t, 32, *cfg.ModelRules["gpt-5"].Segments[0].InputMax)
 	require.Equal(t, 5, *cfg.ModelRules["veo-3.1-fast-generate-preview"].Segments[0].OutputDurationMin)
 	require.Equal(t, 5, *cfg.ModelRules["veo-3.1-fast-generate-preview"].Segments[0].OutputDurationMax)
+}
+
+func TestParseAdvancedPricingConfigMatchesTextServiceTierCaseInsensitively(t *testing.T) {
+	cfg, err := ParseAdvancedPricingConfig(`{
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {"priority": 10, "service_tier": "Default", "input_price": 1.2}
+          ]
+        }
+      }
+    }`)
+	require.NoError(t, err)
+	require.Equal(t, "default", cfg.ModelRules["gpt-5"].Segments[0].ServiceTier)
 }
 
 func TestParseAdvancedPricingConfigRejectsDuplicatePriority(t *testing.T) {

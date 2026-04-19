@@ -91,6 +91,17 @@ test('pricing state hook keeps legacy billing fallback when AdvancedPricingMode 
   assert.match(helperSource, /explicitBillingMode: hasExplicitBillingMode \? explicitMode : ''/);
 });
 
+test('pricing state hook localizes advanced rule type labels in summary text', () => {
+  assert.match(helperSource, /export const getAdvancedRuleTypeText = \(advancedRuleType, t\) => \{/);
+  assert.match(helperSource, /advancedRuleType === 'media_task'/);
+  assert.match(helperSource, /advancedRuleType === 'text_segment'/);
+  assert.match(source, /getAdvancedRuleTypeText/);
+  assert.match(
+    source,
+    /`\$\{t\('高级规则'\)\} · \$\{getAdvancedRuleTypeText\(model\.advancedRuleType, t\)\}`/,
+  );
+});
+
 test('pricing state hook only previews AdvancedPricingMode when the model is explicit or user-dirty', () => {
   assert.match(source, /shouldPersistAdvancedPricingMode\(/);
   assert.match(source, /dirtyModeNames: model\.billingModeDirty \? \[model\.name\] : \[\]/);

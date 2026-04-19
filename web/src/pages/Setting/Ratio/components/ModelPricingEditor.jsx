@@ -52,6 +52,7 @@ import {
   BILLING_MODE_CHANGE_CONFIRM_CONTENT,
   BILLING_MODE_CHANGE_CONFIRM_TITLE,
   canUseAdvancedBilling,
+  getAdvancedRuleTypeText,
   hasEditableFixedPricingConfig,
   resolveBatchBillingModeConfirmation,
 } from '../hooks/modelPricingEditorHelpers';
@@ -206,10 +207,8 @@ export default function ModelPricingEditor({
         dataIndex: 'advancedRuleType',
         key: 'advancedRuleType',
         render: (_, record) =>
-          record.billingMode === 'advanced'
-            ? record.advancedRuleType
-              ? record.advancedRuleType
-              : '—'
+          record.advancedRuleType
+            ? getAdvancedRuleTypeText(record.advancedRuleType, t)
             : '—',
       },
       {
@@ -541,7 +540,7 @@ export default function ModelPricingEditor({
                     <Text strong>{t('当前规则类型')}</Text>
                     <Text>
                       {selectedModel.advancedRuleType
-                        ? selectedModel.advancedRuleType
+                        ? getAdvancedRuleTypeText(selectedModel.advancedRuleType, t)
                         : '—'}
                     </Text>
                     <Text strong>{t('固定价格配置')}</Text>

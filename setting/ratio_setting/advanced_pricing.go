@@ -329,14 +329,18 @@ func getRuntimeOutputTokens(meta *types.TokenCountMeta) int {
 func extractAdvancedPricingServiceTier(request dto.Request) string {
 	switch req := request.(type) {
 	case *dto.OpenAIResponsesRequest:
-		return strings.TrimSpace(req.ServiceTier)
+		return normalizeAdvancedPricingServiceTier(req.ServiceTier)
 	case *dto.ClaudeRequest:
-		return strings.TrimSpace(req.ServiceTier)
+		return normalizeAdvancedPricingServiceTier(req.ServiceTier)
 	case *dto.GeneralOpenAIRequest:
-		return normalizeAdvancedPricingRawString(req.ServiceTier)
+		return normalizeAdvancedPricingServiceTier(normalizeAdvancedPricingRawString(req.ServiceTier))
 	default:
 		return ""
 	}
+}
+
+func normalizeAdvancedPricingServiceTier(value string) string {
+	return normalizeAdvancedPricingComparableString(value)
 }
 
 func normalizeAdvancedPricingComparableString(value string) string {
@@ -523,10 +527,21 @@ func findMatchedTextSegment(segments []AdvancedPriceRule, runtimeCtx advancedTex
 		return *sortedSegments[i].Priority < *sortedSegments[j].Priority
 	})
 
+	var defaultSegment *AdvancedPriceRule
 	for _, segment := range sortedSegments {
+		if !hasTextCondition(segment) {
+			if defaultSegment == nil {
+				segmentCopy := segment
+				defaultSegment = &segmentCopy
+			}
+			continue
+		}
 		if matchAdvancedTextSegment(segment, runtimeCtx) {
 			return segment, true
 		}
+	}
+	if defaultSegment != nil {
+		return *defaultSegment, true
 	}
 	return AdvancedPriceRule{}, false
 }
@@ -552,7 +567,7 @@ func matchAdvancedTextSegment(segment AdvancedPriceRule, runtimeCtx advancedText
 	if hasIntRange(segment.OutputMin, segment.OutputMax) && !isAdvancedTokenCountInRange(runtimeCtx.outputTokens, segment.OutputMin, segment.OutputMax) {
 		return false
 	}
-	if serviceTier := strings.TrimSpace(segment.ServiceTier); serviceTier != "" && serviceTier != runtimeCtx.serviceTier {
+	if serviceTier := normalizeAdvancedPricingServiceTier(segment.ServiceTier); serviceTier != "" && serviceTier != runtimeCtx.serviceTier {
 		return false
 	}
 	if segment.CacheRead != nil {
@@ -636,7 +651,7 @@ func buildAdvancedRuleSnapshot(ruleType AdvancedRuleType, segment AdvancedPriceR
 		MatchSummary:  buildAdvancedMatchSummary(segment, runtimeCtx),
 		ConditionTags: buildAdvancedConditionTags(segment),
 		Priority:      cloneAdvancedIntPtr(segment.Priority),
-		ServiceTier:   strings.TrimSpace(segment.ServiceTier),
+		ServiceTier:   normalizeAdvancedPricingServiceTier(segment.ServiceTier),
 		CacheRead:     cloneAdvancedBoolPtr(segment.CacheRead),
 		CacheCreate:   cloneAdvancedBoolPtr(segment.CacheCreate),
 		PriceSnapshot: types.AdvancedRulePriceSnapshot{
@@ -726,7 +741,7 @@ func buildAdvancedConditionTags(segment AdvancedPriceRule) []string {
 	if hasIntRange(segment.OutputMin, segment.OutputMax) {
 		tags = append(tags, fmt.Sprintf("output:%d-%d", *segment.OutputMin, *segment.OutputMax))
 	}
-	if serviceTier := strings.TrimSpace(segment.ServiceTier); serviceTier != "" {
+	if serviceTier := normalizeAdvancedPricingServiceTier(segment.ServiceTier); serviceTier != "" {
 		tags = append(tags, fmt.Sprintf("service_tier:%s", serviceTier))
 	}
 	if segment.CacheRead != nil {
@@ -908,6 +923,7 @@ func ParseAdvancedPricingConfig(jsonStr string) (*AdvancedPricingConfig, error) 
 	if cfg.ModelRules == nil {
 		cfg.ModelRules = make(map[string]AdvancedPricingRuleSet)
 	}
+	normalizeAdvancedPricingRuleServiceTiers(cfg.ModelRules)
 	if err := validateAdvancedPricingModes(cfg.ModelModes); err != nil {
 		return nil, err
 	}
@@ -915,6 +931,21 @@ func ParseAdvancedPricingConfig(jsonStr string) (*AdvancedPricingConfig, error) 
 		return nil, err
 	}
 	return cfg, nil
+}
+
+func normalizeAdvancedPricingRuleServiceTiers(rules map[string]AdvancedPricingRuleSet) {
+	for modelName, ruleSet := range rules {
+		if len(ruleSet.Segments) == 0 {
+			continue
+		}
+		normalizedSegments := make([]AdvancedPriceRule, len(ruleSet.Segments))
+		for index, segment := range ruleSet.Segments {
+			segment.ServiceTier = normalizeAdvancedPricingServiceTier(segment.ServiceTier)
+			normalizedSegments[index] = segment
+		}
+		ruleSet.Segments = normalizedSegments
+		rules[modelName] = ruleSet
+	}
 }
 
 func normalizeAdvancedPricingJSON(jsonStr string) string {
@@ -999,6 +1030,7 @@ func validateUniqueSegmentPriorities(modelName string, segments []AdvancedPriceR
 }
 
 func validateTextSegmentRules(modelName string, segments []AdvancedPriceRule) error {
+	defaultSegmentCount := 0
 	for _, segment := range segments {
 		if err := validateTextRange(modelName, "input", segment.InputMin, segment.InputMax); err != nil {
 			return err
@@ -1010,7 +1042,7 @@ func validateTextSegmentRules(modelName string, segments []AdvancedPriceRule) er
 			return err
 		}
 		if !hasTextCondition(segment) {
-			return fmt.Errorf("model %s text segment requires at least one condition", modelName)
+			defaultSegmentCount++
 		}
 		if segment.InputPrice == nil {
 			return fmt.Errorf("model %s text segment is missing input_price", modelName)
@@ -1031,9 +1063,15 @@ func validateTextSegmentRules(modelName string, segments []AdvancedPriceRule) er
 			return fmt.Errorf("model %s text segment cache_create_price cannot be negative", modelName)
 		}
 	}
+	if defaultSegmentCount > 1 {
+		return fmt.Errorf("model %s text segment allows at most one default segment", modelName)
+	}
 
 	for i := 0; i < len(segments); i++ {
 		for j := i + 1; j < len(segments); j++ {
+			if !hasTextCondition(segments[i]) || !hasTextCondition(segments[j]) {
+				continue
+			}
 			if textSegmentsOverlap(segments[i], segments[j]) {
 				return fmt.Errorf("model %s text segment 区间 overlap", modelName)
 			}
@@ -1061,7 +1099,7 @@ func validateTextRange(modelName, rangeName string, minVal, maxVal *int) error {
 func hasTextCondition(segment AdvancedPriceRule) bool {
 	return hasIntRange(segment.InputMin, segment.InputMax) ||
 		hasIntRange(segment.OutputMin, segment.OutputMax) ||
-		strings.TrimSpace(segment.ServiceTier) != ""
+		normalizeAdvancedPricingServiceTier(segment.ServiceTier) != ""
 }
 
 func validateUnsupportedTextRuntimeFields(modelName string, segment AdvancedPriceRule) error {
@@ -1093,7 +1131,7 @@ func hasIntRange(minVal, maxVal *int) bool {
 }
 
 func textSegmentsOverlap(left, right AdvancedPriceRule) bool {
-	if strings.TrimSpace(left.ServiceTier) != strings.TrimSpace(right.ServiceTier) {
+	if normalizeAdvancedPricingServiceTier(left.ServiceTier) != normalizeAdvancedPricingServiceTier(right.ServiceTier) {
 		return false
 	}
 	if !boolPointerEqual(left.CacheRead, right.CacheRead) {

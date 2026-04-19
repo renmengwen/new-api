@@ -125,3 +125,10 @@ test('media task rule editor uses readable chinese summary labels instead of tec
   assert.doesNotMatch(source, /保存后 segments JSON/);
   assert.doesNotMatch(source, /命中 segment JSON/);
 });
+test('media task rule editor uses Semi top-level TextArea export instead of Input.TextArea', () => {
+  assert.match(
+    source,
+    /import \{[\s\S]*TextArea,[\s\S]*\} from '@douyinfe\/semi-ui';/,
+  );
+  assert.doesNotMatch(source, /Input\.TextArea/);
+});

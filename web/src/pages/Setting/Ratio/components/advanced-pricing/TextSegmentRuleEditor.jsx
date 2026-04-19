@@ -29,6 +29,7 @@ import {
   Space,
   Table,
   Tag,
+  TextArea,
   Typography,
 } from '@douyinfe/semi-ui';
 import { IconDelete, IconEdit, IconPlus } from '@douyinfe/semi-icons';
@@ -46,7 +47,6 @@ import {
 } from '../../hooks/advancedPricingRuleHelpers';
 import { useIsMobile } from '../../../../../hooks/common/useIsMobile';
 
-const { TextArea } = Input;
 const { Text } = Typography;
 const INTEGER_INPUT_REGEX = /^\d*$/;
 const DECIMAL_INPUT_REGEX = /^(\d+(\.\d*)?|\.\d*)?$/;

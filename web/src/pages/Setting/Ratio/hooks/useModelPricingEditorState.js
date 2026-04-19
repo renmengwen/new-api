@@ -33,6 +33,7 @@ import {
   BILLING_MODE_PER_TOKEN,
   buildAdvancedPricingModePayload,
   canUseAdvancedBilling,
+  getAdvancedRuleTypeText,
   hasValue,
   isBasePricingUnset,
   resolveBillingMode,
@@ -334,7 +335,7 @@ export const getModelWarnings = (model, t) => {
 export const buildSummaryText = (model, t) => {
   if (model.billingMode === BILLING_MODE_ADVANCED) {
     return model.advancedRuleType
-      ? `${t('高级规则')} · ${model.advancedRuleType}`
+      ? `${t('高级规则')} · ${getAdvancedRuleTypeText(model.advancedRuleType, t)}`
       : t('高级规则');
   }
 

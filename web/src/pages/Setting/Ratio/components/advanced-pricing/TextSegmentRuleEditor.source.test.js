@@ -82,3 +82,11 @@ test('text segment rule editor uses readable chinese billing summary labels in t
   assert.doesNotMatch(source, /当前 segments JSON/);
   assert.doesNotMatch(source, /命中 segment JSON/);
 });
+test('text segment rule editor uses Semi top-level TextArea export instead of Input.TextArea', () => {
+  assert.match(
+    source,
+    /import \{[\s\S]*TextArea,[\s\S]*\} from '@douyinfe\/semi-ui';/,
+  );
+  assert.doesNotMatch(source, /const \{ TextArea \} = Input;/);
+  assert.doesNotMatch(source, /Input\.TextArea/);
+});

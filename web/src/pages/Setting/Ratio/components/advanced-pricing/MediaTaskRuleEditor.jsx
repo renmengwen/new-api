@@ -29,6 +29,7 @@ import {
   Space,
   Table,
   Tag,
+  TextArea,
   Typography,
 } from '@douyinfe/semi-ui';
 import { IconDelete, IconEdit, IconPlus } from '@douyinfe/semi-icons';
@@ -479,7 +480,7 @@ export default function MediaTaskRuleEditor({
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
             <div className='mb-1 font-medium text-gray-700'>{t('备注')}</div>
-            <Input.TextArea
+            <TextArea
               value={config?.note || ''}
               placeholder={t('填写给运营看的规则说明')}
               onChange={(value) => handleRuleSetFieldChange('note', value)}
@@ -649,7 +650,7 @@ export default function MediaTaskRuleEditor({
 
           <div style={{ width: '100%' }}>
             <div className='mb-1 font-medium text-gray-700'>{t('备注')}</div>
-            <Input.TextArea
+            <TextArea
               value={draftRule.remark}
               placeholder={t('如 首帧图生视频 / 草稿模式')}
               onChange={(value) => handleDraftFieldChange('remark', value)}

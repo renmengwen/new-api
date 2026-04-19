@@ -62,9 +62,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 			priceData := finalizeAdvancedPriceData(info.OriginModelName, promptTokens, meta, groupRatioInfo, advancedPriceData)
 			return finalizeModelPriceData(info, priceData), nil
 		}
-
-		mode = ratio_setting.GetLegacyBillingMode(info.OriginModelName)
-		hasExplicitMode = false
+		return types.PriceData{}, advancedPricingNoMatchError(info.OriginModelName)
 	}
 
 	var (
@@ -299,11 +297,15 @@ func resolveExplicitPerCallPriceData(c *gin.Context, info *relaycommon.RelayInfo
 		if ok {
 			return finalizePerCallPriceData(finalizeAdvancedPriceData(info.OriginModelName, 0, nil, groupRatioInfo, priceData)), true, nil
 		}
-		fallbackPriceData, fallbackErr := resolveLegacyPerCallPriceData(info, groupRatioInfo)
-		return fallbackPriceData, true, fallbackErr
+		return types.PriceData{}, true, advancedPricingNoMatchError(info.OriginModelName)
 	default:
 		return types.PriceData{}, true, fmt.Errorf("unsupported billing mode: %s", mode)
 	}
+}
+
+func advancedPricingNoMatchError(modelName string) error {
+	matchName := ratio_setting.FormatMatchingModelName(modelName)
+	return fmt.Errorf("model %s advanced pricing did not match any active rule", matchName)
 }
 
 func resolveLegacyPerCallPriceData(info *relaycommon.RelayInfo, groupRatioInfo types.GroupRatioInfo) (types.PriceData, error) {

@@ -97,9 +97,7 @@ export const buildTextSegmentConditionSummary = (rule) => {
     rule?.outputMax,
   );
   const summaries = [inputSummary, outputSummary].filter(Boolean);
-  const serviceTier = normalizeStringField(
-    rule?.serviceTier ?? rule?.service_tier,
-  ).trim();
+  const serviceTier = normalizeRuleServiceTier(rule);
 
   if (serviceTier) {
     summaries.push(`服务层=${serviceTier}`);
@@ -144,7 +142,9 @@ const isRangeOverlap = (minAValue, maxAValue, minBValue, maxBValue) => {
 };
 
 const normalizeRuleServiceTier = (rule) =>
-  normalizeStringField(rule?.serviceTier ?? rule?.service_tier).trim();
+  normalizeStringField(rule?.serviceTier ?? rule?.service_tier)
+    .trim()
+    .toLowerCase();
 
 const isServiceTierOverlap = (leftValue, rightValue) => {
   const normalizedLeftValue = normalizeStringField(leftValue).trim();
@@ -599,7 +599,7 @@ export const serializeTextSegmentRule = (rule) => {
   setSerializedStringField(
     serializedRule,
     'service_tier',
-    normalizedRule.serviceTier,
+    normalizeRuleServiceTier(normalizedRule),
   );
   setSerializedNumberField(serializedRule, 'input_price', normalizedRule.inputPrice);
   setSerializedNumberField(
@@ -724,6 +724,7 @@ export const validateTextSegmentRules = (rules = []) => {
     (rule) => rule?.enabled !== false,
   );
   const matchableRules = enabledRules.filter((rule) => hasTextSegmentCondition(rule));
+  const defaultRules = enabledRules.filter((rule) => !hasTextSegmentCondition(rule));
   const priorityRuleMap = new Map();
 
   enabledRules.forEach((rule) => {
@@ -742,10 +743,6 @@ export const validateTextSegmentRules = (rules = []) => {
       priorityRuleMap.set(priority, ruleId);
     }
 
-    if (!hasTextSegmentCondition(rule)) {
-      errors.push(`${ruleId}: at least one condition is required`);
-    }
-
     if (inputMin !== null && inputMax !== null && inputMin > inputMax) {
       errors.push(`${ruleId}: 输入最小值不能大于输入最大值`);
     }
@@ -758,6 +755,10 @@ export const validateTextSegmentRules = (rules = []) => {
       errors.push(`${ruleId}: 请输入输入价格`);
     }
   });
+
+  if (defaultRules.length > 1) {
+    errors.push('default text segment can only be configured once');
+  }
 
   for (let index = 0; index < matchableRules.length; index += 1) {
     const currentRule = matchableRules[index];
@@ -801,24 +802,26 @@ export const validateTextSegmentRules = (rules = []) => {
 
 export const findMatchingTextSegmentRule = (rules = [], previewInput = {}) => {
   const sortedRules = sortTextSegmentRules(rules).filter(
-    (rule) => rule?.enabled !== false && hasTextSegmentCondition(rule),
+    (rule) => rule?.enabled !== false,
   );
+  const defaultRule =
+    sortedRules.find((rule) => !hasTextSegmentCondition(rule)) || null;
+  const conditionalRules = sortedRules.filter((rule) => hasTextSegmentCondition(rule));
   const inputTokens = toNullableNumber(previewInput?.inputTokens) ?? 0;
   const outputTokens = toNullableNumber(previewInput?.outputTokens) ?? 0;
-  const previewServiceTier = normalizeStringField(
-    previewInput?.serviceTier,
-  ).trim();
+  const previewServiceTier = normalizeStringField(previewInput?.serviceTier)
+    .trim()
+    .toLowerCase();
 
   return (
-    sortedRules.find(
+    conditionalRules.find(
       (rule) =>
         isRangeMatch(inputTokens, rule?.inputMin, rule?.inputMax) &&
         isRangeMatch(outputTokens, rule?.outputMin, rule?.outputMax) &&
-        (!normalizeStringField(rule?.serviceTier ?? rule?.service_tier).trim() ||
-          normalizeStringField(
-            rule?.serviceTier ?? rule?.service_tier,
-          ).trim() === previewServiceTier),
-    ) || null
+        (!normalizeRuleServiceTier(rule) ||
+          normalizeRuleServiceTier(rule) === previewServiceTier),
+    ) ||
+    defaultRule
   );
 };
 

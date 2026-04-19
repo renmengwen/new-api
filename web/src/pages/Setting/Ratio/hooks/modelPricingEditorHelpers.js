@@ -59,6 +59,16 @@ export const resolveBillingMode = ({
 export const canUseAdvancedBilling = (model) =>
   hasValue(model?.advancedRuleType);
 
+export const getAdvancedRuleTypeText = (advancedRuleType, t) => {
+  if (advancedRuleType === 'media_task') {
+    return t('媒体任务');
+  }
+  if (advancedRuleType === 'text_segment') {
+    return t('文本分段');
+  }
+  return '—';
+};
+
 export const hasEditableFixedPricingConfig = (model) =>
   Boolean(
     model &&

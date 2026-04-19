@@ -29,9 +29,9 @@ const source = fs.readFileSync(
 test('pricing editor list exposes billing mode and advanced rule type columns', () => {
   assert.match(source, /title:\s*t\('计费模式'\)/);
   assert.match(source, /title:\s*t\('规则类型'\)/);
-  assert.match(source, /record\.billingMode === 'advanced'/);
   assert.match(source, /t\('高级规则'\)/);
-  assert.match(source, /record\.advancedRuleType[\s\S]*\?[\s\S]*record\.advancedRuleType[\s\S]*:[\s\S]*'—'/);
+  assert.match(source, /getAdvancedRuleTypeText/);
+  assert.match(source, /record\.advancedRuleType[\s\S]*\?[\s\S]*getAdvancedRuleTypeText\(record\.advancedRuleType, t\)[\s\S]*:[\s\S]*'—'/);
 });
 
 test('pricing editor accepts initial model selection bridge props and forwards them to the state hook', () => {
@@ -67,6 +67,7 @@ test('pricing editor exposes advanced rule status summary and edit entry point i
   assert.match(source, /t\('高级规则配置'\)/);
   assert.match(source, /t\('当前规则类型'\)/);
   assert.match(source, /t\('固定价格配置'\)/);
+  assert.match(source, /getAdvancedRuleTypeText\(selectedModel\.advancedRuleType, t\)/);
   assert.match(source, /hasAdvancedRulesConfigured \? t\('已配置'\) : t\('未配置'\)/);
   assert.match(source, /hasReservedFixedPricing \? t\('已保留'\) : t\('未配置'\)/);
   assert.match(source, /t\('固定价格配置保留但不生效。'\)/);

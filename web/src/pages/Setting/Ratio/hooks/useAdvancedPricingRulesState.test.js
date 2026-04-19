@@ -207,7 +207,7 @@ test('validateTextSegmentRules allows overlapping ranges when service tiers diff
   assert.equal(errors.length, 0);
 });
 
-test('validateTextSegmentRules rejects rules without any matching condition', () => {
+test('validateTextSegmentRules allows a single default text rule without conditions', () => {
   const errors = validateTextSegmentRules([
     {
       id: 'rule-no-condition',
@@ -223,9 +223,38 @@ test('validateTextSegmentRules rejects rules without any matching condition', ()
     },
   ]);
 
-  assert.ok(
-    errors.some((error) => error.includes('rule-no-condition') && error.includes('at least one condition is required')),
-  );
+  assert.equal(errors.length, 0);
+});
+
+test('validateTextSegmentRules rejects multiple default text rules without conditions', () => {
+  const errors = validateTextSegmentRules([
+    {
+      id: 'rule-no-condition-a',
+      enabled: true,
+      priority: 1,
+      inputMin: '',
+      inputMax: '',
+      outputMin: '',
+      outputMax: '',
+      serviceTier: '',
+      inputPrice: '0.2',
+      outputPrice: '0.4',
+    },
+    {
+      id: 'rule-no-condition-b',
+      enabled: true,
+      priority: 2,
+      inputMin: '',
+      inputMax: '',
+      outputMin: '',
+      outputMax: '',
+      serviceTier: '',
+      inputPrice: '0.3',
+      outputPrice: '0.5',
+    },
+  ]);
+
+  assert.ok(errors.some((error) => error.includes('default')));
 });
 
 test('findMatchingTextSegmentRule returns the enabled highest-priority matching segment', () => {
@@ -266,7 +295,7 @@ test('findMatchingTextSegmentRule returns the enabled highest-priority matching 
   assert.equal(matchedRule?.id, 'small-window');
 });
 
-test('buildTextSegmentPreview ignores rules that have no matching conditions', () => {
+test('buildTextSegmentPreview uses default text rule when no conditional rule matches', () => {
   const preview = buildTextSegmentPreview(
     [
       {
@@ -288,9 +317,9 @@ test('buildTextSegmentPreview ignores rules that have no matching conditions', (
     },
   );
 
-  assert.equal(preview.matchedRule, null);
-  assert.equal(preview.formulaSummary, '');
-  assert.equal(preview.priceSummary.totalCost, '');
+  assert.equal(preview.matchedRule?.id, 'unconditional');
+  assert.match(preview.formulaSummary, /4096/);
+  assert.notEqual(preview.priceSummary.totalCost, '');
 });
 
 test('buildTextSegmentPreview returns matched segment summary and estimated prices', () => {
@@ -363,6 +392,33 @@ test('buildTextSegmentPreview matches service tier specific segments and exposes
   assert.match(preview.conditionSummary, /服务层=priority/);
   assert.match(preview.formulaSummary, /1024/);
   assert.match(preview.logPreview.detailSummary, /priority/i);
+});
+
+test('buildTextSegmentPreview matches service tier case-insensitively', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-default',
+        enabled: true,
+        priority: 10,
+        inputMin: 0,
+        inputMax: 16000,
+        outputMin: 0,
+        outputMax: 8000,
+        serviceTier: 'Default',
+        inputPrice: '0.3',
+        outputPrice: '0.6',
+      },
+    ],
+    {
+      inputTokens: 1024,
+      outputTokens: 512,
+      serviceTier: 'default',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-default');
+  assert.match(preview.conditionSummary, /default/i);
 });
 
 test('getTextSegmentRuleEditorMeta counts enabled rules and treats explicit zero default price as configured', () => {

@@ -100,7 +100,7 @@ func TestModelPriceHelperKeepsFixedPerTokenLogicWhenModeIsPerToken(t *testing.T)
 	require.Nil(t, priceData.AdvancedRuleSnapshot)
 }
 
-func TestModelPriceHelperFallsBackToFixedLogicWhenAdvancedRuleDoesNotMatch(t *testing.T) {
+func TestModelPriceHelperReturnsErrorWhenAdvancedRuleDoesNotMatch(t *testing.T) {
 	restoreRatioSettings(t)
 
 	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"fallback-model":9}`))
@@ -132,13 +132,88 @@ func TestModelPriceHelperFallsBackToFixedLogicWhenAdvancedRuleDoesNotMatch(t *te
 		},
 	}
 
+	_, err := ModelPriceHelper(c, info, 256, &types.TokenCountMeta{MaxTokens: 2048})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "advanced pricing")
+	require.ErrorContains(t, err, "fallback-model")
+}
+
+func TestModelPriceHelperUsesDefaultAdvancedTextSegmentWhenNoConditionalRuleMatches(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"default-advanced-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"default-advanced-model": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 100,
+					"service_tier": "priority",
+					"input_price": 4,
+					"output_price": 10
+				},
+				{
+					"priority": 99,
+					"input_price": 3,
+					"output_price": 9
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "default-advanced-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request: &dto.OpenAIResponsesRequest{
+			ServiceTier: "default",
+		},
+	}
+
 	priceData, err := ModelPriceHelper(c, info, 256, &types.TokenCountMeta{MaxTokens: 2048})
 	require.NoError(t, err)
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, 1.5, priceData.ModelRatio)
+	require.Equal(t, 3.0, priceData.CompletionRatio)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+}
 
-	require.Equal(t, types.BillingModePerToken, priceData.BillingMode)
-	require.Equal(t, 9.0, priceData.ModelRatio)
-	require.Equal(t, 5.0, priceData.CompletionRatio)
-	require.Nil(t, priceData.AdvancedRuleSnapshot)
+func TestModelPriceHelperMatchesAdvancedTextSegmentServiceTierCaseInsensitively(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"service-tier-case-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"service-tier-case-model": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"service_tier": "Default",
+					"input_price": 4,
+					"output_price": 8
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "service-tier-case-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request: &dto.OpenAIResponsesRequest{
+			ServiceTier: "default",
+		},
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{MaxTokens: 256})
+	require.NoError(t, err)
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, 2.0, priceData.ModelRatio)
+	require.Equal(t, 2.0, priceData.CompletionRatio)
 }
 
 func TestModelPriceHelperHonorsExplicitPerTokenModeWhenPriceAndRatioBothExist(t *testing.T) {
@@ -396,7 +471,7 @@ func TestModelPriceHelperPerCallReturnsAdvancedMediaTaskPriceDataWhenRuleMatches
 	require.Greater(t, priceData.Quota, 0)
 }
 
-func TestModelPriceHelperPerCallFallsBackToLegacyPriceWhenAdvancedMediaTaskDoesNotMatch(t *testing.T) {
+func TestModelPriceHelperPerCallReturnsErrorWhenAdvancedMediaTaskDoesNotMatch(t *testing.T) {
 	restoreRatioSettings(t)
 
 	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"task-advanced-media-fallback-model":0.25}`))
@@ -426,14 +501,10 @@ func TestModelPriceHelperPerCallFallsBackToLegacyPriceWhenAdvancedMediaTaskDoesN
 	}
 	info.TaskRelayInfo = &relaycommon.TaskRelayInfo{Action: constant.TaskActionGenerate}
 
-	priceData, err := ModelPriceHelperPerCall(c, info)
-	require.NoError(t, err)
-
-	require.Equal(t, types.BillingModePerRequest, priceData.BillingMode)
-	require.True(t, priceData.UsePrice)
-	require.Equal(t, 0.25, priceData.ModelPrice)
-	require.Equal(t, types.AdvancedRuleType(""), priceData.AdvancedRuleType)
-	require.Nil(t, priceData.AdvancedRuleSnapshot)
+	_, err := ModelPriceHelperPerCall(c, info)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "advanced pricing")
+	require.ErrorContains(t, err, "task-advanced-media-fallback-model")
 }
 
 func TestModelPriceHelperPerCallDoesNotDropAdvancedMediaTaskWhenMinTokensConfigured(t *testing.T) {
