@@ -18,274 +18,581 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-
 import { API, showError, showSuccess } from '../../../../helpers';
-import { BILLING_MODE_PER_TOKEN } from './modelPricingEditorHelpers';
 import {
-  RULE_TYPE_TEXT_SEGMENT,
-  buildAdvancedPricingSavePayload,
-  buildAdvancedPricingState,
-  buildRuleDraft,
+  ADVANCED_PRICING_MODE_ADVANCED,
+  FIXED_BILLING_MODE_PER_REQUEST,
+  FIXED_BILLING_MODE_PER_TOKEN,
+  MEDIA_TASK_RULE_TYPE,
+  TEXT_SEGMENT_RULE_TYPE,
+  buildAdvancedPricingConfigPayload,
+  buildAdvancedPricingSaveMaps,
+  buildMediaTaskPreview,
+  buildTextSegmentPreview,
+  getAdvancedRuleType,
+  getAdvancedPricingMapValidationErrors,
+  getAdvancedPricingValidationErrors,
+  getEffectiveBillingModeForModel,
+  getFixedBillingModeForModel,
+  hasAdvancedPricingConfig,
+  hasFixedPricingConfig,
+  mergeAdvancedPricingDraftMap,
+  mergeAdvancedPricingModeDraftMap,
+  normalizeFixedBillingMode,
+  normalizeAdvancedPricingConfig,
   parseOptionJSON,
-  reduceOptionsByKey,
-} from './advancedPricingRulesStateHelpers';
+  saveAdvancedPricingOptions,
+} from './advancedPricingRuleHelpers';
+import { resolveAdvancedPricingSelectedModelName } from './advancedPricingSelection';
 
-export default function useAdvancedPricingRulesState({
+const EMPTY_PREVIEW_INPUT = {
+  inputTokens: '',
+  outputTokens: '',
+  serviceTier: '',
+  rawAction: '',
+  inferenceMode: '',
+  inputVideo: '',
+  audio: '',
+  resolution: '',
+  aspectRatio: '',
+  outputDuration: '',
+  inputVideoDuration: '',
+  draft: '',
+  usageTotalTokens: '',
+};
+
+const MODEL_OPTION_KEYS = [
+  'ModelPrice',
+  'ModelRatio',
+  'CompletionRatio',
+  'CacheRatio',
+  'CreateCacheRatio',
+  'ImageRatio',
+  'AudioRatio',
+  'AudioCompletionRatio',
+];
+
+const NUMERIC_INPUT_REGEX = /^\d*$/;
+const PREVIEW_NUMERIC_FIELDS = new Set([
+  'inputTokens',
+  'outputTokens',
+  'outputDuration',
+  'inputVideoDuration',
+  'usageTotalTokens',
+]);
+const PREVIEW_BOOLEAN_FIELDS = new Set(['inputVideo', 'audio', 'draft']);
+
+const buildSourceMaps = (options = {}) =>
+  MODEL_OPTION_KEYS.reduce((result, key) => {
+    result[key] = parseOptionJSON(options[key]);
+    return result;
+  }, {});
+
+const parseAdvancedPricingConfigOption = (rawValue) => {
+  const parsedValue = parseOptionJSON(rawValue);
+
+  return {
+    billing_mode:
+      parsedValue?.billing_mode &&
+      typeof parsedValue.billing_mode === 'object' &&
+      !Array.isArray(parsedValue.billing_mode)
+        ? parsedValue.billing_mode
+        : {},
+    rules:
+      parsedValue?.rules &&
+      typeof parsedValue.rules === 'object' &&
+      !Array.isArray(parsedValue.rules)
+        ? parsedValue.rules
+        : {},
+  };
+};
+
+const buildAdvancedPricingMap = (rulesMap = {}) => {
+  return Object.entries(rulesMap).reduce((result, [modelName, config]) => {
+    result[modelName] = normalizeAdvancedPricingConfig(config);
+    return result;
+  }, {});
+};
+
+const buildBillingModeMap = (modeMap = {}) => {
+  return Object.entries(modeMap).reduce((result, [modelName, mode]) => {
+    result[modelName] =
+      mode === ADVANCED_PRICING_MODE_ADVANCED
+        ? ADVANCED_PRICING_MODE_ADVANCED
+        : normalizeFixedBillingMode(mode);
+    return result;
+  }, {});
+};
+
+export function useAdvancedPricingRulesState({
   options,
   refresh,
   t,
-  initialModelName = '',
-  initialModelSelectionKey = 0,
+  candidateModelNames = [],
+  selectedModelName: externalSelectedModelName,
+  onSelectedModelChange,
+  initialSelectedModelName = '',
+  initialSelectionVersion = 0,
 }) {
-  const [enabledModelNames, setEnabledModelNames] = useState([]);
-  const [launchModelName, setLaunchModelName] = useState('');
-  const [models, setModels] = useState([]);
-  const [searchText, setSearchText] = useState('');
-  const [selectedModelName, setSelectedModelName] = useState('');
-  const [draftRules, setDraftRules] = useState({});
-  const [draftBillingModes, setDraftBillingModes] = useState({});
-  const [saving, setSaving] = useState(false);
-  const draftRulesRef = useRef({});
-  const draftBillingModesRef = useRef({});
-  const dirtyRuleModelNamesRef = useRef(new Set());
-  const dirtyBillingModeModelNamesRef = useRef(new Set());
-  const selectedModelNameRef = useRef('');
+  const isControlledSelection = externalSelectedModelName !== undefined;
+  const [selectedModelName, setSelectedModelNameState] = useState(
+    isControlledSelection
+      ? (externalSelectedModelName ?? '')
+      : (initialSelectedModelName || ''),
+  );
+  const lastAppliedInitialSelectionVersionRef = useRef(null);
+  const [modelSearchText, setModelSearchText] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [previewInput, setPreviewInput] = useState(EMPTY_PREVIEW_INPUT);
+  const [advancedPricingModeMap, setAdvancedPricingModeMap] = useState({});
+  const [advancedPricingMap, setAdvancedPricingMap] = useState({});
+  const dirtyModelNamesRef = useRef(new Set());
+
+  const sourceMaps = useMemo(() => buildSourceMaps(options), [options]);
+  const canonicalAdvancedPricingConfig = useMemo(
+    () => parseAdvancedPricingConfigOption(options?.AdvancedPricingConfig),
+    [options?.AdvancedPricingConfig],
+  );
+  const serverAdvancedPricingModeMap = useMemo(
+    () =>
+      buildBillingModeMap(
+        Object.keys(canonicalAdvancedPricingConfig.billing_mode).length > 0
+          ? canonicalAdvancedPricingConfig.billing_mode
+          : parseOptionJSON(options.AdvancedPricingMode),
+      ),
+    [canonicalAdvancedPricingConfig, options?.AdvancedPricingMode],
+  );
+  const serverAdvancedPricingMap = useMemo(
+    () =>
+      buildAdvancedPricingMap(
+        Object.keys(canonicalAdvancedPricingConfig.rules).length > 0
+          ? canonicalAdvancedPricingConfig.rules
+          : parseOptionJSON(options.AdvancedPricingRules),
+      ),
+    [canonicalAdvancedPricingConfig, options?.AdvancedPricingRules],
+  );
 
   useEffect(() => {
-    draftRulesRef.current = draftRules;
-  }, [draftRules]);
+    setAdvancedPricingModeMap((previous) =>
+      mergeAdvancedPricingModeDraftMap(
+        previous,
+        serverAdvancedPricingModeMap,
+        dirtyModelNamesRef.current,
+      ),
+    );
+    setAdvancedPricingMap((previous) =>
+      mergeAdvancedPricingDraftMap(
+        previous,
+        serverAdvancedPricingMap,
+        dirtyModelNamesRef.current,
+      ),
+    );
+  }, [
+    options?.AdvancedPricingConfig,
+    options?.AdvancedPricingMode,
+    options?.AdvancedPricingRules,
+    serverAdvancedPricingMap,
+    serverAdvancedPricingModeMap,
+  ]);
 
-  useEffect(() => {
-    draftBillingModesRef.current = draftBillingModes;
-  }, [draftBillingModes]);
+  const models = useMemo(() => {
+    const modelNames = new Set(candidateModelNames);
 
-  useEffect(() => {
-    selectedModelNameRef.current = selectedModelName;
-  }, [selectedModelName]);
-
-  useEffect(() => {
-    let active = true;
-
-    const loadEnabledModels = async () => {
-      try {
-        const res = await API.get('/api/channel/models_enabled');
-        const { success, message, data } = res?.data || {};
-        if (!active) {
-          return;
-        }
-        if (success) {
-          setEnabledModelNames(Array.isArray(data) ? data.filter(Boolean) : []);
-          return;
-        }
-        showError(message || 'Failed to load enabled models');
-        setEnabledModelNames([]);
-      } catch (error) {
-        if (!active) {
-          return;
-        }
-        console.error('Failed to load enabled models:', error);
-        showError('Failed to load enabled models');
-        setEnabledModelNames([]);
-      }
-    };
-
-    loadEnabledModels();
-
-    return () => {
-      active = false;
-    };
-  }, [t]);
-
-  useEffect(() => {
-    if (!initialModelSelectionKey) {
-      return;
-    }
-    setLaunchModelName(initialModelName || '');
-  }, [initialModelName, initialModelSelectionKey]);
-
-  useEffect(() => {
-    if (launchModelName && selectedModelName === launchModelName) {
-      setLaunchModelName('');
-    }
-  }, [launchModelName, selectedModelName]);
-
-  useEffect(() => {
-    const nextState = buildAdvancedPricingState({
-      options,
-      enabledModelNames,
-      launchModelName,
-      previousDraftRules: draftRulesRef.current,
-      previousDraftBillingModes: draftBillingModesRef.current,
-      previousSelectedModelName: selectedModelNameRef.current,
-      preserveDraftRuleModelNames: dirtyRuleModelNamesRef.current,
-      preserveDraftBillingModeModelNames: dirtyBillingModeModelNamesRef.current,
+    MODEL_OPTION_KEYS.forEach((key) => {
+      Object.keys(sourceMaps[key] || {}).forEach((modelName) => {
+        modelNames.add(modelName);
+      });
     });
 
-    draftRulesRef.current = nextState.draftRules;
-    draftBillingModesRef.current = nextState.draftBillingModes;
-    selectedModelNameRef.current = nextState.selectedModelName;
+    Object.keys(advancedPricingModeMap).forEach((modelName) => {
+      modelNames.add(modelName);
+    });
+    Object.keys(advancedPricingMap).forEach((modelName) => {
+      modelNames.add(modelName);
+    });
 
-    setModels(nextState.models);
-    setDraftRules(nextState.draftRules);
-    setDraftBillingModes(nextState.draftBillingModes);
-    setSelectedModelName(nextState.selectedModelName);
-  }, [enabledModelNames, launchModelName, options]);
+    return Array.from(modelNames)
+      .sort((leftName, rightName) => leftName.localeCompare(rightName))
+      .map((modelName) => {
+        const fixedBillingMode = getFixedBillingModeForModel(modelName, sourceMaps);
+        const advancedConfig = normalizeAdvancedPricingConfig(
+          advancedPricingMap[modelName],
+        );
+        const serverAdvancedConfig = normalizeAdvancedPricingConfig(
+          serverAdvancedPricingMap[modelName],
+        );
+
+        return {
+          name: modelName,
+          fixedBillingMode,
+          selectedMode: getEffectiveBillingModeForModel({
+            selectedMode: advancedPricingModeMap[modelName],
+            fixedBillingMode,
+            advancedConfig,
+          }),
+          effectiveMode: getEffectiveBillingModeForModel({
+            selectedMode: serverAdvancedPricingModeMap[modelName],
+            fixedBillingMode,
+            advancedConfig: serverAdvancedConfig,
+          }),
+          hasFixedPricing: hasFixedPricingConfig(modelName, sourceMaps),
+          hasAdvancedPricing: hasAdvancedPricingConfig(advancedConfig),
+          ruleType: getAdvancedRuleType(advancedConfig),
+          advancedConfig,
+        };
+      });
+  }, [
+    advancedPricingMap,
+    advancedPricingModeMap,
+    candidateModelNames,
+    serverAdvancedPricingMap,
+    serverAdvancedPricingModeMap,
+    sourceMaps,
+  ]);
 
   const filteredModels = useMemo(() => {
-    const keyword = searchText.trim().toLowerCase();
+    const keyword = modelSearchText.trim().toLowerCase();
+    if (!keyword) {
+      return models;
+    }
+    return models.filter((model) =>
+      model.name.toLowerCase().includes(keyword),
+    );
+  }, [modelSearchText, models]);
 
-    return models.filter((model) => {
-      if (!keyword) {
-        return true;
-      }
-      return model.name.toLowerCase().includes(keyword);
-    });
-  }, [models, searchText]);
+  const modelNames = useMemo(
+    () => models.map((model) => model.name),
+    [models],
+  );
 
   const selectedModel = useMemo(
     () => models.find((model) => model.name === selectedModelName) || null,
     [models, selectedModelName],
   );
 
-  const selectedRule = draftRules[selectedModelName] || buildRuleDraft(RULE_TYPE_TEXT_SEGMENT);
-  const currentRuleType = selectedRule.rule_type || RULE_TYPE_TEXT_SEGMENT;
-  const currentBillingMode = selectedModel?.billingMode || BILLING_MODE_PER_TOKEN;
-  const draftBillingMode = draftBillingModes[selectedModelName] || currentBillingMode;
-  const previewPayload = useMemo(() => {
+  const selectedAdvancedConfig = useMemo(
+    () =>
+      selectedModel
+        ? normalizeAdvancedPricingConfig(advancedPricingMap[selectedModel.name])
+        : normalizeAdvancedPricingConfig(null),
+    [advancedPricingMap, selectedModel],
+  );
+
+  const validationErrors = useMemo(
+    () => getAdvancedPricingValidationErrors(selectedAdvancedConfig),
+    [selectedAdvancedConfig],
+  );
+
+  const previewResult = useMemo(() => {
+    if (selectedAdvancedConfig.ruleType === MEDIA_TASK_RULE_TYPE) {
+      return buildMediaTaskPreview(selectedAdvancedConfig.rules, previewInput);
+    }
+    if (selectedAdvancedConfig.ruleType === TEXT_SEGMENT_RULE_TYPE) {
+      return buildTextSegmentPreview(selectedAdvancedConfig.rules, previewInput);
+    }
+    return null;
+  }, [previewInput, selectedAdvancedConfig]);
+
+  const savePreview = useMemo(() => {
     if (!selectedModel) {
       return null;
     }
 
-    try {
-      return buildAdvancedPricingSavePayload({
-        modelName: selectedModel.name,
-        billingMode: draftBillingMode,
-        draftRule: selectedRule,
-      }).previewPayload;
-    } catch (error) {
-      return null;
-    }
-  }, [draftBillingMode, selectedModel, selectedRule]);
+    const savePayload = buildAdvancedPricingSaveMaps({
+      latestModeMap:
+        Object.keys(canonicalAdvancedPricingConfig.billing_mode).length > 0
+          ? canonicalAdvancedPricingConfig.billing_mode
+          : parseOptionJSON(options.AdvancedPricingMode),
+      latestRulesMap:
+        Object.keys(canonicalAdvancedPricingConfig.rules).length > 0
+          ? canonicalAdvancedPricingConfig.rules
+          : parseOptionJSON(options.AdvancedPricingRules),
+      draftModeMap: advancedPricingModeMap,
+      draftConfigMap: advancedPricingMap,
+      dirtyModelNames: dirtyModelNamesRef.current,
+      fixedBillingModes: models.reduce((result, model) => {
+        result[model.name] = model.fixedBillingMode;
+        return result;
+      }, {}),
+    });
 
-  const updateSelectedRuleType = (ruleType) => {
-    if (!selectedModelName) {
-      return;
-    }
-
-    dirtyRuleModelNamesRef.current.add(selectedModelName);
-
-    const nextDraftRules = {
-      ...draftRulesRef.current,
-      [selectedModelName]: buildRuleDraft(ruleType, draftRulesRef.current[selectedModelName]),
+    return {
+      effectiveMode: selectedModel.selectedMode,
+      configOptionKey: 'AdvancedPricingConfig',
+      configEntry: buildAdvancedPricingConfigPayload({
+        modeMap: savePayload.modeMap,
+        rulesMap: savePayload.rulesMap,
+      }),
     };
+  }, [
+    advancedPricingMap,
+    advancedPricingModeMap,
+    models,
+    options.AdvancedPricingConfig,
+    options.AdvancedPricingMode,
+    options.AdvancedPricingRules,
+    canonicalAdvancedPricingConfig,
+    selectedModel,
+  ]);
 
-    draftRulesRef.current = nextDraftRules;
-    setDraftRules(nextDraftRules);
+  useEffect(() => {
+    const {
+      nextSelectedModelName,
+      nextAppliedInitialSelectionVersion,
+    } = resolveAdvancedPricingSelectedModelName({
+      currentSelectedModelName: selectedModelName,
+      modelNames,
+      isControlledSelection,
+      externalSelectedModelName,
+      initialSelectedModelName,
+      initialSelectionVersion,
+      lastAppliedInitialSelectionVersion:
+        lastAppliedInitialSelectionVersionRef.current,
+    });
+
+    if (
+      nextAppliedInitialSelectionVersion !==
+      lastAppliedInitialSelectionVersionRef.current
+    ) {
+      lastAppliedInitialSelectionVersionRef.current =
+        nextAppliedInitialSelectionVersion;
+    }
+
+    if (nextSelectedModelName !== selectedModelName) {
+      setSelectedModelNameState(nextSelectedModelName);
+    }
+  }, [
+    externalSelectedModelName,
+    initialSelectedModelName,
+    initialSelectionVersion,
+    isControlledSelection,
+    modelNames,
+    selectedModelName,
+  ]);
+
+  const handleSelectedModelNameChange = (nextSelectedModelName) => {
+    if (!isControlledSelection) {
+      setSelectedModelNameState(nextSelectedModelName);
+    }
+    if (typeof onSelectedModelChange === 'function') {
+      onSelectedModelChange(nextSelectedModelName);
+    }
   };
 
-  const updateSelectedRuleField = (field, value) => {
-    if (!selectedModelName) {
-      return;
-    }
-
-    dirtyRuleModelNamesRef.current.add(selectedModelName);
-
-    const nextDraftRules = {
-      ...draftRulesRef.current,
-      [selectedModelName]: {
-        ...buildRuleDraft(currentRuleType, draftRulesRef.current[selectedModelName]),
-        [field]: value,
-      },
-    };
-
-    draftRulesRef.current = nextDraftRules;
-    setDraftRules(nextDraftRules);
-  };
-
-  const updateSelectedBillingMode = (billingMode) => {
-    if (!selectedModelName) {
-      return;
-    }
-
-    dirtyBillingModeModelNamesRef.current.add(selectedModelName);
-
-    const nextDraftBillingModes = {
-      ...draftBillingModesRef.current,
-      [selectedModelName]: billingMode,
-    };
-
-    draftBillingModesRef.current = nextDraftBillingModes;
-    setDraftBillingModes(nextDraftBillingModes);
-  };
-
-  const saveSelectedRule = async () => {
+  const updateSelectedModelConfig = (updater) => {
     if (!selectedModel) {
-      showError(t('请先选择模型！'));
+      return;
+    }
+
+    dirtyModelNamesRef.current = new Set(dirtyModelNamesRef.current).add(
+      selectedModel.name,
+    );
+
+    setAdvancedPricingMap((previous) => ({
+      ...previous,
+      [selectedModel.name]:
+        typeof updater === 'function'
+          ? updater(
+              normalizeAdvancedPricingConfig(previous[selectedModel.name]),
+            )
+          : updater,
+    }));
+  };
+
+  const handleEffectiveModeChange = (nextMode) => {
+    if (!selectedModel) {
       return false;
     }
 
-    setSaving(true);
+    if (
+      nextMode === ADVANCED_PRICING_MODE_ADVANCED &&
+      !selectedModel.hasAdvancedPricing
+    ) {
+      showError(t('请至少先保存一条高级规则，再切换为高级规则生效'));
+      return false;
+    }
+
+    dirtyModelNamesRef.current = new Set(dirtyModelNamesRef.current).add(
+      selectedModel.name,
+    );
+
+    setAdvancedPricingModeMap((previous) => {
+      const normalizedMode =
+        nextMode === ADVANCED_PRICING_MODE_ADVANCED
+          ? ADVANCED_PRICING_MODE_ADVANCED
+          : normalizeFixedBillingMode(nextMode || selectedModel.fixedBillingMode);
+
+      return {
+        ...previous,
+        [selectedModel.name]: normalizedMode,
+      };
+    });
+    return true;
+  };
+
+  const handleRuleTypeChange = (nextRuleType) => {
+    updateSelectedModelConfig((config) =>
+      normalizeAdvancedPricingConfig(
+        nextRuleType === MEDIA_TASK_RULE_TYPE
+          ? {
+              ruleType: MEDIA_TASK_RULE_TYPE,
+              displayName:
+                config.ruleType === MEDIA_TASK_RULE_TYPE ? config.displayName : '',
+              taskType:
+                config.ruleType === MEDIA_TASK_RULE_TYPE ? config.taskType : '',
+              billingUnit:
+                config.ruleType === MEDIA_TASK_RULE_TYPE
+                  ? config.billingUnit
+                  : '',
+              note: config.ruleType === MEDIA_TASK_RULE_TYPE ? config.note : '',
+              rules: config.ruleType === MEDIA_TASK_RULE_TYPE ? config.rules : [],
+            }
+          : {
+              ruleType: TEXT_SEGMENT_RULE_TYPE,
+              rules:
+                config.ruleType === TEXT_SEGMENT_RULE_TYPE ? config.rules : [],
+            },
+      ),
+    );
+  };
+
+  const handleTextSegmentRulesChange = (nextRules) => {
+    updateSelectedModelConfig((config) => ({
+      ...config,
+      ruleType: TEXT_SEGMENT_RULE_TYPE,
+      rules: nextRules,
+    }));
+  };
+
+  const handleTextSegmentConfigChange = (nextConfig) => {
+    updateSelectedModelConfig(
+      normalizeAdvancedPricingConfig({
+        ...nextConfig,
+        ruleType: TEXT_SEGMENT_RULE_TYPE,
+      }),
+    );
+  };
+
+  const handleMediaTaskConfigChange = (nextConfig) => {
+    updateSelectedModelConfig(
+      normalizeAdvancedPricingConfig({
+        ...nextConfig,
+        ruleType: MEDIA_TASK_RULE_TYPE,
+      }),
+    );
+  };
+
+  const handlePreviewInputChange = (field, value) => {
+    if (PREVIEW_NUMERIC_FIELDS.has(field) && !NUMERIC_INPUT_REGEX.test(value)) {
+      return;
+    }
+
+    if (PREVIEW_BOOLEAN_FIELDS.has(field)) {
+      const normalizedValue =
+        value === true || value === 'true'
+          ? 'true'
+          : value === false || value === 'false'
+            ? 'false'
+            : '';
+      setPreviewInput((previous) => ({
+        ...previous,
+        [field]: normalizedValue,
+      }));
+      return;
+    }
+
+    setPreviewInput((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+  };
+
+  const handleSave = async () => {
+    if (!selectedModel) {
+      showError(t('请先选择模型'));
+      return false;
+    }
+
+    const allValidationErrors =
+      getAdvancedPricingMapValidationErrors(advancedPricingMap);
+    if (allValidationErrors.length > 0) {
+      showError(allValidationErrors[0]);
+      return false;
+    }
+
+    setLoading(true);
     try {
-      const latestOptionsRes = await API.get('/api/option/');
-      const {
-        success: latestOptionsSuccess,
-        message: latestOptionsMessage,
-        data: latestOptionsData,
-      } = latestOptionsRes?.data || {};
-
-      if (!latestOptionsSuccess) {
-        throw new Error(latestOptionsMessage || t('保存失败，请重试'));
-      }
-
-      const latestOptionsByKey = reduceOptionsByKey(latestOptionsData);
-      const savePayload = buildAdvancedPricingSavePayload({
-        modelName: selectedModel.name,
-        billingMode: draftBillingMode,
-        draftRule: selectedRule,
-        latestModeMap: parseOptionJSON(latestOptionsByKey.AdvancedPricingMode),
-        latestRulesMap: parseOptionJSON(latestOptionsByKey.AdvancedPricingRules),
+      const savePayload = buildAdvancedPricingSaveMaps({
+        latestModeMap:
+          Object.keys(canonicalAdvancedPricingConfig.billing_mode).length > 0
+            ? canonicalAdvancedPricingConfig.billing_mode
+            : parseOptionJSON(options.AdvancedPricingMode),
+        latestRulesMap:
+          Object.keys(canonicalAdvancedPricingConfig.rules).length > 0
+            ? canonicalAdvancedPricingConfig.rules
+            : parseOptionJSON(options.AdvancedPricingRules),
+        draftModeMap: advancedPricingModeMap,
+        draftConfigMap: advancedPricingMap,
+        dirtyModelNames: dirtyModelNamesRef.current,
+        fixedBillingModes: models.reduce((result, model) => {
+          result[model.name] = model.fixedBillingMode;
+          return result;
+        }, {}),
       });
 
-      const saveRes = await API.put('/api/option/', {
-        key: 'AdvancedPricingConfig',
-        value: savePayload.optionValue,
+      await saveAdvancedPricingOptions({
+        api: API,
+        savePayload,
+        saveFailureMessage: t('保存失败，请重试'),
       });
-
-      if (!saveRes?.data?.success) {
-        throw new Error(saveRes?.data?.message || t('保存失败，请重试'));
-      }
-
       showSuccess(t('保存成功'));
-      dirtyRuleModelNamesRef.current.delete(selectedModel.name);
-      dirtyBillingModeModelNamesRef.current.delete(selectedModel.name);
-      await refresh();
+      dirtyModelNamesRef.current = new Set();
+      if (typeof refresh === 'function') {
+        try {
+          await refresh();
+        } catch (refreshError) {
+          console.error('刷新高级定价规则失败:', refreshError);
+          showError(refreshError.message || t('刷新失败，请手动重试'));
+        }
+      }
       return true;
     } catch (error) {
       console.error('保存高级定价规则失败:', error);
       showError(error.message || t('保存失败，请重试'));
       return false;
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
   return {
+    loading,
+    modelSearchText,
+    setModelSearchText,
     models,
     filteredModels,
-    searchText,
-    setSearchText,
     selectedModel,
     selectedModelName,
-    setSelectedModelName,
-    selectedRule,
-    currentRuleType,
-    currentBillingMode,
-    draftBillingMode,
-    updateSelectedRuleType,
-    updateSelectedRuleField,
-    updateSelectedBillingMode,
-    previewPayload,
-    saveSelectedRule,
-    saving,
+    setSelectedModelName: handleSelectedModelNameChange,
+    selectedAdvancedConfig,
+    validationErrors,
+    previewInput,
+    previewResult,
+    savePreview,
+    handleEffectiveModeChange,
+    handleRuleTypeChange,
+    handleTextSegmentRulesChange,
+    handleTextSegmentConfigChange,
+    handleMediaTaskConfigChange,
+    handlePreviewInputChange,
+    handleSave,
+    fixedBillingModePerRequest: FIXED_BILLING_MODE_PER_REQUEST,
+    fixedBillingModePerToken: FIXED_BILLING_MODE_PER_TOKEN,
   };
 }
+
+export {
+  ADVANCED_PRICING_MODE_ADVANCED,
+  MEDIA_TASK_RULE_TYPE,
+  TEXT_SEGMENT_RULE_TYPE,
+};

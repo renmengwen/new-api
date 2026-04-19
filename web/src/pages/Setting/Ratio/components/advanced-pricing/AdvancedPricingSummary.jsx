@@ -18,105 +18,254 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Button, Card, Empty, Radio, RadioGroup, Space, Tag, Typography } from '@douyinfe/semi-ui';
-import { useTranslation } from 'react-i18next';
-
 import {
-  BILLING_MODE_ADVANCED,
-  BILLING_MODE_PER_REQUEST,
-  BILLING_MODE_PER_TOKEN,
-} from '../../hooks/modelPricingEditorHelpers';
+  Banner,
+  Button,
+  Card,
+  Empty,
+  Radio,
+  RadioGroup,
+  Space,
+  Tag,
+  Typography,
+} from '@douyinfe/semi-ui';
+import { useTranslation } from 'react-i18next';
+import {
+  ADVANCED_PRICING_MODE_ADVANCED,
+  FIXED_BILLING_MODE_PER_REQUEST,
+  FIXED_BILLING_MODE_PER_TOKEN,
+  MEDIA_TASK_RULE_TYPE,
+  TEXT_SEGMENT_RULE_TYPE,
+} from '../../hooks/advancedPricingRuleHelpers';
 
 const { Text } = Typography;
 
-const getBillingModeText = (billingMode, t) => {
-  if (billingMode === BILLING_MODE_ADVANCED) {
+const resolveMode = (mode, fixedBillingMode) => {
+  if (mode === ADVANCED_PRICING_MODE_ADVANCED) {
+    return ADVANCED_PRICING_MODE_ADVANCED;
+  }
+  if (mode === FIXED_BILLING_MODE_PER_REQUEST) {
+    return FIXED_BILLING_MODE_PER_REQUEST;
+  }
+  if (mode === FIXED_BILLING_MODE_PER_TOKEN) {
+    return FIXED_BILLING_MODE_PER_TOKEN;
+  }
+  return fixedBillingMode || FIXED_BILLING_MODE_PER_TOKEN;
+};
+
+const getModeLabel = (mode, fixedBillingMode, t) => {
+  if (resolveMode(mode, fixedBillingMode) === ADVANCED_PRICING_MODE_ADVANCED) {
     return t('高级规则');
   }
-  if (billingMode === BILLING_MODE_PER_REQUEST) {
-    return t('按次计费');
-  }
-  return t('按量计费');
+  return resolveMode(mode, fixedBillingMode) === FIXED_BILLING_MODE_PER_REQUEST
+    ? t('固定按次')
+    : t('固定按量');
 };
 
-const getBillingModeColor = (billingMode) => {
-  if (billingMode === BILLING_MODE_ADVANCED) {
+const getModeColor = (mode, fixedBillingMode) => {
+  const resolvedMode = resolveMode(mode, fixedBillingMode);
+  if (resolvedMode === ADVANCED_PRICING_MODE_ADVANCED) {
     return 'orange';
   }
-  if (billingMode === BILLING_MODE_PER_REQUEST) {
-    return 'teal';
-  }
-  return 'violet';
+  return resolvedMode === FIXED_BILLING_MODE_PER_REQUEST ? 'teal' : 'violet';
 };
 
-const getRuleTypeText = (ruleType, t) => {
-  if (ruleType === 'media_task') {
-    return t('媒体任务规则');
+const getRuleTypeLabel = (ruleType, t) => {
+  if (ruleType === MEDIA_TASK_RULE_TYPE) {
+    return t('媒体任务');
   }
-  return t('文本分段规则');
+  if (ruleType === TEXT_SEGMENT_RULE_TYPE) {
+    return t('文本分段');
+  }
+  return t('未设置');
 };
 
 export default function AdvancedPricingSummary({
   selectedModel,
-  currentBillingMode,
-  draftBillingMode,
-  currentRuleType,
-  onBillingModeChange,
+  loading,
+  onBackToPricing,
   onSave,
-  saving,
+  onEffectiveModeChange,
+  onRuleTypeChange,
 }) {
   const { t } = useTranslation();
+  const hasPendingModeChange =
+    selectedModel && selectedModel.effectiveMode !== selectedModel.selectedMode;
+  const effectiveModeLabel = selectedModel
+    ? getModeLabel(
+        selectedModel.effectiveMode,
+        selectedModel.fixedBillingMode,
+        t,
+      )
+    : t('未设置');
+  const selectedModeLabel = selectedModel
+    ? getModeLabel(
+        selectedModel.selectedMode,
+        selectedModel.fixedBillingMode,
+        t,
+      )
+    : t('未设置');
 
   return (
     <Card
       title={t('当前模型摘要')}
       headerExtraContent={
-        selectedModel ? (
-          <Tag color='blue'>{selectedModel.name}</Tag>
-        ) : null
+        <Space>
+          <Button type='tertiary' onClick={() => onBackToPricing(selectedModel?.name)}>
+            {t('返回价格设置')}
+          </Button>
+          <Button type='primary' loading={loading} onClick={onSave}>
+            {t('保存高级规则')}
+          </Button>
+        </Space>
       }
     >
       {!selectedModel ? (
         <Empty
-          title={t('尚未选择模型')}
+          title={t('暂无模型')}
           description={t('请先从左侧列表选择一个模型')}
         />
       ) : (
         <Space vertical align='start' style={{ width: '100%' }}>
-          <div>
-            <Text type='tertiary'>{t('当前生效计费模式')}</Text>
-            <div className='mt-2'>
-              <Tag color={getBillingModeColor(currentBillingMode)}>
-                {getBillingModeText(currentBillingMode, t)}
+          <Space wrap>
+            <Tag size='large' color='blue'>
+              {selectedModel.name}
+            </Tag>
+            <Tag color={getModeColor(selectedModel.effectiveMode, selectedModel.fixedBillingMode)}>
+              {t('当前生效')}: {effectiveModeLabel}
+            </Tag>
+            {hasPendingModeChange ? (
+              <Tag
+                color={getModeColor(selectedModel.selectedMode, selectedModel.fixedBillingMode)}
+              >
+                {t('本地草稿')}: {selectedModeLabel}
               </Tag>
+            ) : null}
+            <Tag color='cyan'>
+              {t('规则类型')}: {getRuleTypeLabel(selectedModel.ruleType, t)}
+            </Tag>
+          </Space>
+
+          <div
+            style={{
+              width: '100%',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 12,
+            }}
+          >
+            <div>
+              <Text type='tertiary'>{t('当前模型')}</Text>
+              <div>{selectedModel.name}</div>
+            </div>
+            <div>
+              <Text type='tertiary'>{t('当前生效模式')}</Text>
+              <div>{effectiveModeLabel}</div>
+            </div>
+            <div>
+              <Text type='tertiary'>{t('本地草稿模式')}</Text>
+              <div>
+                {selectedModeLabel}
+                {hasPendingModeChange ? (
+                  <Tag size='small' color='yellow' style={{ marginLeft: 8 }}>
+                    {t('本地未保存')}
+                  </Tag>
+                ) : null}
+              </div>
+            </div>
+            <div>
+              <Text type='tertiary'>{t('规则类型')}</Text>
+              <div>{getRuleTypeLabel(selectedModel.ruleType, t)}</div>
+            </div>
+            <div>
+              <Text type='tertiary'>{t('固定价格配置')}</Text>
+              <div>
+                {selectedModel.hasFixedPricing
+                  ? t('已配置')
+                  : t('未配置')}
+              </div>
+            </div>
+            <div>
+              <Text type='tertiary'>{t('高级规则配置')}</Text>
+              <div>
+                {selectedModel.hasAdvancedPricing
+                  ? t('已配置')
+                  : t('未配置')}
+              </div>
             </div>
           </div>
+
           <div>
-            <Text type='tertiary'>{t('当前规则类型')}</Text>
-            <div className='mt-2'>
-              <Tag color='blue'>{getRuleTypeText(currentRuleType, t)}</Tag>
+            <div className='mb-2 font-medium text-gray-700'>
+              {t('切换本地草稿模式')}
             </div>
-          </div>
-          <div style={{ width: '100%' }}>
-            <div className='mb-2 font-medium'>{t('保存后的计费模式')}</div>
             <RadioGroup
               type='button'
-              value={draftBillingMode}
-              onChange={(event) => onBillingModeChange(event.target.value)}
+              value={selectedModel.selectedMode}
+              onChange={(event) => onEffectiveModeChange(event.target.value)}
             >
-              <Radio value={BILLING_MODE_PER_TOKEN}>{t('按量计费')}</Radio>
-              <Radio value={BILLING_MODE_PER_REQUEST}>{t('按次计费')}</Radio>
-              <Radio value={BILLING_MODE_ADVANCED}>{t('高级规则')}</Radio>
+              <Radio value={selectedModel.fixedBillingMode || FIXED_BILLING_MODE_PER_TOKEN}>
+                {t('固定价格生效')}
+              </Radio>
+              <Radio
+                value={ADVANCED_PRICING_MODE_ADVANCED}
+                disabled={!selectedModel.hasAdvancedPricing}
+              >
+                {t('高级规则生效')}
+              </Radio>
             </RadioGroup>
+            <div className='mt-2 text-xs text-gray-500'>
+              {selectedModel.hasAdvancedPricing
+                ? t('切换不会删除另一套配置，保存后新请求才会按新模式结算。')
+                : t('当前还没有高级规则配置，需先保存至少一条规则后才能切到高级规则生效。')}
+            </div>
           </div>
-          <div className='text-xs text-gray-500'>
-            {t(
-              '这个页面先提供高级规则壳层：可查看当前状态、切换规则类型，并保存 AdvancedPricingMode 与 AdvancedPricingRules。',
-            )}
+
+          <div>
+            <div className='mb-2 font-medium text-gray-700'>
+              {t('规则类型')}
+            </div>
+            <RadioGroup
+              type='button'
+              value={selectedModel.ruleType || TEXT_SEGMENT_RULE_TYPE}
+              onChange={(event) => onRuleTypeChange(event.target.value)}
+            >
+              <Radio value={TEXT_SEGMENT_RULE_TYPE}>
+                {t('文本分段')}
+              </Radio>
+              <Radio value={MEDIA_TASK_RULE_TYPE}>{t('媒体任务')}</Radio>
+            </RadioGroup>
+            <div className='mt-2 text-xs text-gray-500'>
+              {t('规则类型会决定右侧加载哪种编辑器；当前已支持文本分段与媒体任务两种规则编辑。')}
+            </div>
           </div>
-          <Button type='primary' loading={saving} onClick={onSave}>
-            {t('保存高级规则')}
-          </Button>
+
+          {hasPendingModeChange ? (
+            <Banner
+              type='warning'
+              bordered
+              fullMode={false}
+              closeIcon={null}
+              title={t('本地未保存')}
+              description={t(
+                '当前生效仍为 {{effectiveMode}}，本地草稿已切换为 {{selectedMode}}。保存后新请求才会按新模式结算。',
+                {
+                  effectiveMode: effectiveModeLabel,
+                  selectedMode: selectedModeLabel,
+                },
+              )}
+            />
+          ) : selectedModel.hasAdvancedPricing &&
+            selectedModel.effectiveMode !== ADVANCED_PRICING_MODE_ADVANCED ? (
+            <Banner
+              type='warning'
+              bordered
+              fullMode={false}
+              closeIcon={null}
+              title={t('高级规则已配置但当前未生效')}
+              description={t('如需让新请求按规则结算，请先切换为“高级规则生效”并保存。')}
+            />
+          ) : null}
         </Space>
       )}
     </Card>

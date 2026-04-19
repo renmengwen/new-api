@@ -92,6 +92,11 @@ export default function AdvancedPricingModelList({
           <Space vertical align='start' style={{ width: '100%' }}>
             {models.map((model) => {
               const selected = model.name === selectedModelName;
+              const billingMode =
+                model.effectiveMode ?? model.selectedMode ?? model.billingMode;
+              const ruleType = model.ruleType ?? model.advancedRuleType;
+              const hasBasePricing =
+                model.hasFixedPricing ?? model.hasBasePricing;
 
               return (
                 <Button
@@ -117,17 +122,17 @@ export default function AdvancedPricingModelList({
                   <div style={{ width: '100%' }}>
                     <div className='flex items-center justify-between gap-2'>
                       <Text strong>{model.name}</Text>
-                      <Tag color={getBillingModeColor(model.billingMode)}>
-                        {getBillingModeText(model.billingMode, t)}
+                      <Tag color={getBillingModeColor(billingMode)}>
+                        {getBillingModeText(billingMode, t)}
                       </Tag>
                     </div>
                     <div className='mt-2 flex items-center gap-2 flex-wrap'>
-                      <Tag color={model.advancedRuleType ? 'blue' : 'grey'}>
-                        {model.advancedRuleType
-                          ? getRuleTypeText(model.advancedRuleType, t)
+                      <Tag color={ruleType ? 'blue' : 'grey'}>
+                        {ruleType
+                          ? getRuleTypeText(ruleType, t)
                           : t('未配置规则')}
                       </Tag>
-                      {model.hasBasePricing ? (
+                      {hasBasePricing ? (
                         <Tag color='cyan'>{t('已有基础定价')}</Tag>
                       ) : null}
                     </div>

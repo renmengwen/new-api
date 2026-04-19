@@ -22,11 +22,15 @@ import assert from 'node:assert/strict';
 
 import {
   BILLING_MODE_ADVANCED,
+  BILLING_MODE_CHANGE_CONFIRM_CONTENT,
+  BILLING_MODE_CHANGE_CONFIRM_TITLE,
   BILLING_MODE_PER_REQUEST,
   BILLING_MODE_PER_TOKEN,
   buildAdvancedPricingModePayload,
   canUseAdvancedBilling,
+  hasEditableFixedPricingConfig,
   isBasePricingUnset,
+  resolveBatchBillingModeConfirmation,
   resolveBillingMode,
 } from './modelPricingEditorHelpers.js';
 
@@ -273,5 +277,92 @@ test('advanced availability and unset state require a real advanced rule type', 
       advancedRuleType: 'tiered',
     }),
     false,
+  );
+});
+
+test('hasEditableFixedPricingConfig only reflects current editable pricing fields instead of raw ratio snapshots', () => {
+  assert.equal(
+    hasEditableFixedPricingConfig({
+      fixedPrice: '',
+      inputPrice: '',
+      completionPrice: '',
+      cachePrice: '',
+      createCachePrice: '',
+      imagePrice: '',
+      audioInputPrice: '',
+      audioOutputPrice: '',
+      rawRatios: {
+        modelRatio: '0.5',
+        completionRatio: '2',
+      },
+    }),
+    false,
+  );
+
+  assert.equal(
+    hasEditableFixedPricingConfig({
+      fixedPrice: '',
+      inputPrice: '',
+      completionPrice: '',
+      cachePrice: '0.3',
+      createCachePrice: '',
+      imagePrice: '',
+      audioInputPrice: '',
+      audioOutputPrice: '',
+      rawRatios: {
+        cacheRatio: '0.1',
+      },
+    }),
+    true,
+  );
+});
+
+test('resolveBatchBillingModeConfirmation only requires confirmation when batch apply changes target billing modes', () => {
+  assert.deepEqual(
+    resolveBatchBillingModeConfirmation({
+      selectedModel: {
+        name: 'template',
+        billingMode: BILLING_MODE_ADVANCED,
+      },
+      selectedModelNames: ['same-mode', 'different-mode', 'missing'],
+      models: [
+        {
+          name: 'same-mode',
+          billingMode: BILLING_MODE_ADVANCED,
+        },
+        {
+          name: 'different-mode',
+          billingMode: BILLING_MODE_PER_TOKEN,
+        },
+      ],
+    }),
+    {
+      requiresConfirmation: true,
+      changedModelNames: ['different-mode'],
+      title: BILLING_MODE_CHANGE_CONFIRM_TITLE,
+      content: BILLING_MODE_CHANGE_CONFIRM_CONTENT,
+    },
+  );
+
+  assert.deepEqual(
+    resolveBatchBillingModeConfirmation({
+      selectedModel: {
+        name: 'template',
+        billingMode: BILLING_MODE_PER_REQUEST,
+      },
+      selectedModelNames: ['same-mode'],
+      models: [
+        {
+          name: 'same-mode',
+          billingMode: BILLING_MODE_PER_REQUEST,
+        },
+      ],
+    }),
+    {
+      requiresConfirmation: false,
+      changedModelNames: [],
+      title: BILLING_MODE_CHANGE_CONFIRM_TITLE,
+      content: BILLING_MODE_CHANGE_CONFIRM_CONTENT,
+    },
   );
 });

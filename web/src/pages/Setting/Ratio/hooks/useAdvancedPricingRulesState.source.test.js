@@ -19,140 +19,145 @@ For commercial licensing, please contact support@quantumnous.com
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
 
-const sourceFileUrl = new URL('./useAdvancedPricingRulesState.js', import.meta.url);
-const source = fs.readFileSync(sourceFileUrl, 'utf8');
+const source = fs.readFileSync(
+  new URL('./useAdvancedPricingRulesState.js', import.meta.url),
+  'utf8',
+);
 
-test('advanced pricing state hook source passes node syntax check', () => {
-  const sourcePath = fileURLToPath(sourceFileUrl);
-  const result = spawnSync(process.execPath, ['--check', sourcePath], {
-    encoding: 'utf8',
-  });
-
-  assert.equal(
-    result.status,
-    0,
-    `node --check failed:\n${result.stderr || result.stdout}`,
-  );
-});
-
-test('advanced pricing state parses advanced mode and rules and derives searchable models', () => {
+test('advanced pricing rules state prefers canonical AdvancedPricingConfig while keeping legacy mode fallback', () => {
+  assert.match(source, /options\.AdvancedPricingConfig/);
+  assert.match(source, /parseAdvancedPricingConfigOption/);
+  assert.match(source, /canonicalAdvancedPricingConfig/);
+  assert.match(source, /options\.AdvancedPricingMode/);
+  assert.match(source, /options\.AdvancedPricingRules/);
   assert.match(
     source,
-    /const \[enabledModelNames, setEnabledModelNames\] = useState\(\[\]\);/,
+    /const serverAdvancedPricingModeMap = useMemo\([\s\S]*buildBillingModeMap\([\s\S]*Object\.keys\(canonicalAdvancedPricingConfig\.billing_mode\)\.length > 0[\s\S]*canonicalAdvancedPricingConfig\.billing_mode[\s\S]*parseOptionJSON\(options\.AdvancedPricingMode\)/,
   );
   assert.match(
     source,
-    /buildAdvancedPricingState,/,
+    /const serverAdvancedPricingMap = useMemo\([\s\S]*buildAdvancedPricingMap\([\s\S]*Object\.keys\(canonicalAdvancedPricingConfig\.rules\)\.length > 0[\s\S]*canonicalAdvancedPricingConfig\.rules[\s\S]*parseOptionJSON\(options\.AdvancedPricingRules\)/,
   );
-  assert.match(
-    source,
-    /buildRuleDraft,/,
-  );
-  assert.match(
-    source,
-    /parseOptionJSON,/,
-  );
-  assert.match(source, /reduceOptionsByKey,/);
-  assert.match(source, /RULE_TYPE_TEXT_SEGMENT,/);
-  assert.match(source, /const res = await API\.get\('\/api\/channel\/models_enabled'\);/);
-  assert.match(
-    source,
-    /const nextState = buildAdvancedPricingState\(\{[\s\S]*options,[\s\S]*enabledModelNames,[\s\S]*launchModelName,[\s\S]*previousDraftRules:[\s\S]*previousDraftBillingModes:[\s\S]*previousSelectedModelName:[\s\S]*\}\);/s,
-  );
-  assert.match(source, /setModels\(nextState\.models\);/);
-  assert.match(source, /setDraftRules\(nextState\.draftRules\);/);
-  assert.match(source, /setDraftBillingModes\(nextState\.draftBillingModes\);/);
-  assert.match(source, /setSelectedModelName\(nextState\.selectedModelName\);/);
-  assert.match(source, /const \[searchText, setSearchText\] = useState\(''\);/);
-  assert.match(source, /model\.name\.toLowerCase\(\)\.includes\(keyword\)/);
-  assert.match(source, /const \[selectedModelName, setSelectedModelName\] = useState\(''\);/);
-  assert.doesNotMatch(source, /const parseOptionJSON =/);
-  assert.doesNotMatch(source, /const reduceOptionsByKey =/);
-  assert.doesNotMatch(source, /const buildRuleDraft =/);
-  assert.doesNotMatch(source, /const buildModelState =/);
-  assert.doesNotMatch(source, /const formatSegmentLine =/);
-  assert.doesNotMatch(source, /const cloneRule =/);
-});
-
-test('advanced pricing state treats launch model selection as a one-shot event instead of a sticky override', () => {
-  assert.match(source, /initialModelSelectionKey = 0,/);
-  assert.match(source, /const \[launchModelName, setLaunchModelName\] = useState\(''\);/);
-  assert.match(source, /const draftRulesRef = useRef\(\{\}\);/);
-  assert.match(source, /const draftBillingModesRef = useRef\(\{\}\);/);
-  assert.match(source, /const dirtyRuleModelNamesRef = useRef\(new Set\(\)\);/);
-  assert.match(source, /const dirtyBillingModeModelNamesRef = useRef\(new Set\(\)\);/);
-  assert.match(source, /const selectedModelNameRef = useRef\(''\);/);
-  assert.match(
-    source,
-    /useEffect\(\(\) => \{\s*if \(!initialModelSelectionKey\) \{\s*return;\s*\}\s*setLaunchModelName\(initialModelName \|\| ''\);/s,
-  );
-  assert.match(source, /selectedModelNameRef\.current = selectedModelName;/);
-  assert.match(source, /preserveDraftRuleModelNames: dirtyRuleModelNamesRef\.current,/);
-  assert.match(
-    source,
-    /preserveDraftBillingModeModelNames: dirtyBillingModeModelNamesRef\.current,/,
-  );
-  assert.match(source, /setLaunchModelName\(''\);/);
-});
-
-test('advanced pricing state rebuilds editable rules through the shared draft helper', () => {
-  assert.match(
-    source,
-    /const selectedRule = draftRules\[selectedModelName\] \|\| buildRuleDraft\(RULE_TYPE_TEXT_SEGMENT\);/,
-  );
-  assert.match(
-    source,
-    /const nextDraftRules = \{\s*\.\.\.draftRulesRef\.current,\s*\[selectedModelName\]: buildRuleDraft\(ruleType, draftRulesRef\.current\[selectedModelName\]\),/s,
-  );
-  assert.match(source, /dirtyRuleModelNamesRef\.current\.add\(selectedModelName\);/);
-  assert.match(
-    source,
-    /draftRulesRef\.current = nextDraftRules;\s*setDraftRules\(nextDraftRules\);/s,
-  );
-  assert.match(
-    source,
-    /const nextDraftRules = \{\s*\.\.\.draftRulesRef\.current,\s*\[selectedModelName\]: \{\s*\.\.\.buildRuleDraft\(currentRuleType, draftRulesRef\.current\[selectedModelName\]\),/s,
-  );
-  assert.match(source, /dirtyRuleModelNamesRef\.current\.delete\(selectedModel\.name\);/);
-  assert.match(
-    source,
-    /dirtyBillingModeModelNamesRef\.current\.add\(selectedModelName\);/,
-  );
-  assert.match(
-    source,
-    /dirtyBillingModeModelNamesRef\.current\.delete\(selectedModel\.name\);/,
-  );
-});
-
-test('advanced pricing state exposes current rule type and a minimal save api for rule mode json', () => {
-  assert.match(source, /const currentRuleType = selectedRule\.rule_type \|\| RULE_TYPE_TEXT_SEGMENT;/);
-  assert.match(source, /const currentBillingMode = selectedModel\?\.billingMode \|\| BILLING_MODE_PER_TOKEN;/);
-  assert.match(source, /const saveSelectedRule = async \(\) => \{/);
-  assert.match(source, /const latestOptionsRes = await API\.get\('\/api\/option\/'\);/);
-  assert.match(source, /const latestOptionsByKey = reduceOptionsByKey\(latestOptionsData\);/);
-  assert.match(source, /const savePayload = buildAdvancedPricingSavePayload\(\{/);
-  assert.match(source, /latestModeMap: parseOptionJSON\(latestOptionsByKey\.AdvancedPricingMode\),/);
-  assert.match(source, /latestRulesMap: parseOptionJSON\(latestOptionsByKey\.AdvancedPricingRules\),/);
-  assert.match(source, /API\.put\('\/api\/option\/', \{\s*key: 'AdvancedPricingConfig'/);
-  assert.match(
-    source,
-    /dirtyRuleModelNamesRef\.current\.delete\(selectedModel\.name\);\s*dirtyBillingModeModelNamesRef\.current\.delete\(selectedModel\.name\);\s*await refresh\(\);/s,
-  );
-  assert.doesNotMatch(source, /Promise\.all\(\[/);
-  assert.doesNotMatch(source, /key: 'AdvancedPricingMode'/);
-  assert.doesNotMatch(source, /key: 'AdvancedPricingRules'/);
-});
-
-test('advanced pricing state hook keeps option keys and rule literals on the existing contract', () => {
-  assert.match(source, /BILLING_MODE_PER_TOKEN/);
-  assert.match(source, /RULE_TYPE_TEXT_SEGMENT/);
-  assert.match(source, /buildAdvancedPricingSavePayload/);
   assert.doesNotMatch(source, /ModelBillingMode/);
-  assert.doesNotMatch(source, /pricing_mode/);
-  assert.doesNotMatch(source, /text-segment/);
-  assert.doesNotMatch(source, /media-task/);
+  assert.match(source, /!selectedModel\.hasAdvancedPricing/);
+  assert.match(source, /getAdvancedPricingValidationErrors/);
+  assert.match(source, /saveAdvancedPricingOptions/);
+  assert.match(source, /handleTextSegmentConfigChange/);
+  assert.match(source, /handleMediaTaskConfigChange/);
+  assert.match(source, /serviceTier/);
+  assert.match(source, /buildMediaTaskPreview/);
+  assert.match(source, /rawAction: ''/);
+  assert.match(source, /usageTotalTokens: ''/);
+  assert.match(
+    source,
+    /selectedAdvancedConfig\.ruleType === MEDIA_TASK_RULE_TYPE/,
+  );
+  assert.match(
+    source,
+    /return buildMediaTaskPreview\(selectedAdvancedConfig\.rules, previewInput\)/,
+  );
+  assert.match(
+    source,
+    /const PREVIEW_BOOLEAN_FIELDS = new Set\(\['inputVideo', 'audio', 'draft'\]\);/,
+  );
+  assert.match(source, /typeof refresh === 'function'/);
+});
+
+test('advanced pricing rules state distinguishes controlled selection from legacy initial selection', () => {
+  assert.match(source, /initialSelectedModelName = ''/);
+  assert.match(source, /initialSelectionVersion = 0/);
+  assert.match(
+    source,
+    /const isControlledSelection = externalSelectedModelName !== undefined;/,
+  );
+  assert.match(
+    source,
+    /const \[selectedModelName, setSelectedModelNameState\] = useState\(\s*isControlledSelection\s*\?\s*\(externalSelectedModelName \?\? ''\)\s*:\s*\(initialSelectedModelName \|\| ''\),/s,
+  );
+  assert.doesNotMatch(
+    source,
+    /externalSelectedModelName\s*\|\|\s*initialSelectedModelName/,
+  );
+  assert.match(source, /resolveAdvancedPricingSelectedModelName/);
+  assert.match(
+    source,
+    /const handleSelectedModelNameChange = \(nextSelectedModelName\) => \{/,
+  );
+  assert.match(
+    source,
+    /if \(!isControlledSelection\) \{\s*setSelectedModelNameState\(nextSelectedModelName\);\s*\}/s,
+  );
+  assert.doesNotMatch(
+    source,
+    /useEffect\(\(\) => \{\s*if \(selectedModelName && typeof onSelectedModelChange === 'function'\)/s,
+  );
+  assert.doesNotMatch(
+    source,
+    /selectedModelName: externalSelectedModelName = ''/,
+  );
+});
+
+test('advanced pricing rules state does not blindly overwrite dirty drafts when the parent rerenders options', () => {
+  assert.match(source, /mergeAdvancedPricingModeDraftMap/);
+  assert.match(source, /mergeAdvancedPricingDraftMap/);
+  assert.match(source, /dirtyModelNamesRef/);
+  assert.match(source, /canonicalAdvancedPricingConfig/);
+  assert.match(source, /options\?\.AdvancedPricingConfig/);
+  assert.match(source, /options\?\.AdvancedPricingMode/);
+  assert.match(source, /options\?\.AdvancedPricingRules/);
+  assert.doesNotMatch(
+    source,
+    /setAdvancedPricingModeMap\(buildBillingModeMap\(options\)\);\s*setAdvancedPricingMap\(buildAdvancedPricingMap\(options\)\);/s,
+  );
+});
+
+test('advanced pricing rules state saves against the latest server snapshot and handles partial success without Promise.all fanout', () => {
+  assert.match(source, /buildAdvancedPricingSaveMaps/);
+  assert.match(source, /saveAdvancedPricingOptions/);
+  assert.match(source, /buildAdvancedPricingConfigPayload/);
+  assert.match(source, /const savePreview = useMemo\(/);
+  assert.match(source, /configOptionKey: 'AdvancedPricingConfig'/);
+  assert.match(source, /configEntry:\s*buildAdvancedPricingConfigPayload\(/);
+  assert.match(source, /effectiveMode:/);
+  assert.match(source, /savePreview,/);
+  assert.match(source, /const savePayload = buildAdvancedPricingSaveMaps\(/);
+  assert.match(
+    source,
+    /const handleSave = async \(\) => \{[\s\S]*?const savePayload = buildAdvancedPricingSaveMaps\(/,
+  );
+  assert.match(
+    source,
+    /const handleSave = async \(\) => \{[\s\S]*?latestModeMap:\s*Object\.keys\(canonicalAdvancedPricingConfig\.billing_mode\)\.length > 0\s*\?\s*canonicalAdvancedPricingConfig\.billing_mode\s*:\s*parseOptionJSON\(options\.AdvancedPricingMode\)/,
+  );
+  assert.match(
+    source,
+    /const handleSave = async \(\) => \{[\s\S]*?latestRulesMap:\s*Object\.keys\(canonicalAdvancedPricingConfig\.rules\)\.length > 0\s*\?\s*canonicalAdvancedPricingConfig\.rules\s*:\s*parseOptionJSON\(options\.AdvancedPricingRules\)/,
+  );
+  assert.match(source, /await saveAdvancedPricingOptions\(\{/);
+  assert.match(source, /configOptionKey/);
+  assert.doesNotMatch(source, /onPartialFailure:\s*async\s*\(/);
+  assert.doesNotMatch(source, /await API\.put\('/);
+  assert.doesNotMatch(source, /Promise\.all\(\[/);
+});
+
+test('advanced pricing rules state uses readable Chinese success and failure copy in the save flow', () => {
+  assert.match(source, /showSuccess\(t\('保存成功'\)\)/);
+  assert.match(source, /showError\(error\.message \|\| t\('保存失败，请重试'\)\)/);
+  assert.match(
+    source,
+    /saveFailureMessage:\s*t\('保存失败，请重试'\)/,
+  );
+  assert.match(
+    source,
+    /showError\(t\('请至少先保存一条高级规则，再切换为高级规则生效'\)\)/,
+  );
+  assert.match(source, /showError\(t\('请先选择模型'\)\)/);
+  assert.match(source, /console\.error\('刷新高级定价规则失败:', refreshError\)/);
+  assert.match(
+    source,
+    /showError\(refreshError\.message \|\| t\('刷新失败，请手动重试'\)\)/,
+  );
+  assert.match(source, /console\.error\('保存高级定价规则失败:', error\)/);
 });

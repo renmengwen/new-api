@@ -35,6 +35,8 @@ const RatioSetting = () => {
   const [activeTab, setActiveTab] = useState('visual');
   const [pendingAdvancedPricingModelName, setPendingAdvancedPricingModelName] = useState('');
   const [advancedPricingInitialModelSelectionKey, setAdvancedPricingInitialModelSelectionKey] = useState(0);
+  const [pendingPricingModelName, setPendingPricingModelName] = useState('');
+  const [pricingInitialModelSelectionKey, setPricingInitialModelSelectionKey] = useState(0);
 
   let [inputs, setInputs] = useState({
     ModelPrice: '',
@@ -107,6 +109,12 @@ const RatioSetting = () => {
     setActiveTab('advanced_pricing');
   };
 
+  const handleBackToPricing = (modelName) => {
+    setPendingPricingModelName(modelName || '');
+    setPricingInitialModelSelectionKey((previous) => previous + 1);
+    setActiveTab('visual');
+  };
+
   return (
     <Spin spinning={loading} size='large'>
       {/* 模型倍率设置以及价格编辑器 */}
@@ -122,6 +130,8 @@ const RatioSetting = () => {
             <ModelSettingsVisualEditor
               options={inputs}
               refresh={onRefresh}
+              initialModelName={pendingPricingModelName}
+              initialModelSelectionKey={pricingInitialModelSelectionKey}
               onOpenAdvancedPricingRules={handleOpenAdvancedPricingRules}
             />
           </Tabs.TabPane>
@@ -131,6 +141,7 @@ const RatioSetting = () => {
               refresh={onRefresh}
               initialModelName={pendingAdvancedPricingModelName}
               initialModelSelectionKey={advancedPricingInitialModelSelectionKey}
+              onBackToPricing={handleBackToPricing}
             />
           </Tabs.TabPane>
           <Tabs.TabPane tab={t('未设置价格模型')} itemKey='unset_models'>

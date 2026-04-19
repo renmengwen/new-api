@@ -25,26 +25,126 @@ const source = fs.readFileSync(
   new URL('./AdvancedPricingRulesPage.jsx', import.meta.url),
   'utf8',
 );
+const mediaTaskRuleEditorSource = fs.readFileSync(
+  new URL('./components/advanced-pricing/MediaTaskRuleEditor.jsx', import.meta.url),
+  'utf8',
+);
+const textSegmentRuleEditorSource = fs.readFileSync(
+  new URL('./components/advanced-pricing/TextSegmentRuleEditor.jsx', import.meta.url),
+  'utf8',
+);
 
-test('advanced pricing page uses the A layout and wires all shell components', () => {
-  assert.match(source, /import AdvancedPricingModelList from '.\/components\/advanced-pricing\/AdvancedPricingModelList'/);
-  assert.match(source, /import AdvancedPricingSummary from '.\/components\/advanced-pricing\/AdvancedPricingSummary'/);
-  assert.match(source, /import AdvancedPricingPreview from '.\/components\/advanced-pricing\/AdvancedPricingPreview'/);
-  assert.match(source, /import TextSegmentRuleEditor from '.\/components\/advanced-pricing\/TextSegmentRuleEditor'/);
-  assert.match(source, /import MediaTaskRuleEditor from '.\/components\/advanced-pricing\/MediaTaskRuleEditor'/);
-  assert.match(source, /gridTemplateColumns:\s*isMobile\s*\?\s*'minmax\(0,\s*1fr\)'\s*:\s*'minmax\(280px,\s*320px\)\s+minmax\(0,\s*1fr\)'/);
-  assert.match(source, /<AdvancedPricingModelList[\s\S]*<AdvancedPricingSummary[\s\S]*<AdvancedPricingPreview/);
-});
-
-test('advanced pricing page supports both text segment and media task rule shells', () => {
-  assert.match(source, /const RULE_TYPE_TEXT_SEGMENT = 'text_segment';/);
-  assert.match(source, /const RULE_TYPE_MEDIA_TASK = 'media_task';/);
-  assert.match(source, /initialModelSelectionKey = 0,/);
+test('advanced pricing page wires model list, summary, editor, preview, and save flow', () => {
+  assert.match(source, /useAdvancedPricingRulesState/);
+  assert.match(source, /<AdvancedPricingModelList/);
+  assert.match(source, /<AdvancedPricingSummary/);
+  assert.match(source, /<TextSegmentRuleEditor/);
+  assert.match(source, /<MediaTaskRuleEditor/);
+  assert.match(source, /selectedAdvancedConfig\.ruleType === MEDIA_TASK_RULE_TYPE[\s\S]*<MediaTaskRuleEditor[\s\S]*<AdvancedPricingPreview/s);
+  assert.match(source, /ruleType === TEXT_SEGMENT_RULE_TYPE/);
+  assert.match(source, /ruleType === MEDIA_TASK_RULE_TYPE/);
+  assert.match(source, /API\.get\('\/api\/channel\/models_enabled'\)/);
+  assert.match(source, /const buildFallbackEnabledModelNames = \(\{ options, initialModelName = '' \}\) => \{/);
+  assert.match(source, /options\?\.AdvancedPricingConfig/);
+  assert.match(source, /'AdvancedPricingMode'/);
+  assert.match(source, /'AdvancedPricingRules'/);
+  assert.match(source, /'ModelPrice'/);
+  assert.match(source, /if \(initialModelName\) \{\s*names\.add\(initialModelName\);\s*\}/s);
   assert.match(
     source,
-    /useAdvancedPricingRulesState\(\{[\s\S]*initialModelName,[\s\S]*initialModelSelectionKey,[\s\S]*\}\)/,
+    /const fallbackEnabledModels = buildFallbackEnabledModelNames\(\{\s*options: props\.options,\s*initialModelName: props\.initialModelName,\s*\}\);/s,
   );
-  assert.match(source, /currentRuleType === RULE_TYPE_MEDIA_TASK \?/);
-  assert.match(source, /<MediaTaskRuleEditor/);
-  assert.match(source, /<TextSegmentRuleEditor/);
+  assert.match(source, /const resolvedEnabledModels = shouldUseFallbackEnabledModels/);
+  assert.match(source, /candidateModelNames:\s*resolvedEnabledModels,/);
+  assert.match(source, /setEnabledModels\(fallbackEnabledModels\);\s*showError\(message\);/s);
+  assert.match(source, /setEnabledModels\(fallbackEnabledModels\);\s*console\.error\(/s);
+  assert.doesNotMatch(
+    source,
+    /setEnabledModels\(\[\]\);\s*showError\(message\);/s,
+  );
+  assert.doesNotMatch(
+    source,
+    /setEnabledModels\(\[\]\);\s*showError\(t\('获取启用模型失败'\)\);/s,
+  );
+});
+
+test('advanced pricing page keeps controlled selection and legacy initial selection on separate props', () => {
+  assert.match(
+    source,
+    /selectedModelName:\s*props\.selectedModelName,/,
+  );
+  assert.match(
+    source,
+    /onSelectedModelChange:\s*props\.onSelectedModelChange,/,
+  );
+  assert.match(
+    source,
+    /initialSelectedModelName:\s*props\.initialModelName,/,
+  );
+  assert.match(
+    source,
+    /initialSelectionVersion:\s*props\.initialModelSelectionKey,/,
+  );
+  assert.doesNotMatch(
+    source,
+    /selectedModelName:\s*props\.selectedModelName \?\? legacySelectedModelName,/,
+  );
+  assert.doesNotMatch(
+    source,
+    /onSelectedModelChange:\s*props\.onSelectedModelChange \?\? setLegacySelectedModelName,/,
+  );
+});
+
+test('media task rule editor constrains duration fields to integer input only', () => {
+  assert.match(
+    mediaTaskRuleEditorSource,
+    /field: 'outputDurationMin',[\s\S]*?regex: INTEGER_INPUT_REGEX,[\s\S]*?\},/,
+  );
+  assert.match(
+    mediaTaskRuleEditorSource,
+    /field: 'outputDurationMax',[\s\S]*?regex: INTEGER_INPUT_REGEX,[\s\S]*?\},/,
+  );
+  assert.match(
+    mediaTaskRuleEditorSource,
+    /field: 'inputVideoDurationMin',[\s\S]*?regex: INTEGER_INPUT_REGEX,[\s\S]*?\},/,
+  );
+  assert.match(
+    mediaTaskRuleEditorSource,
+    /field: 'inputVideoDurationMax',[\s\S]*?regex: INTEGER_INPUT_REGEX,[\s\S]*?\},/,
+  );
+});
+
+test('media task rule editor exposes rawAction input and keeps the side sheet billing preview wired to media segments', () => {
+  assert.match(
+    mediaTaskRuleEditorSource,
+    /field: 'rawAction',[\s\S]*?label: t\('任务动作'\),[\s\S]*?placeholder: t\('如 generate \/ firstTailGenerate'\),/,
+  );
+  assert.match(mediaTaskRuleEditorSource, /serializeMediaTaskRule\(draftRule\)/);
+  assert.match(
+    mediaTaskRuleEditorSource,
+    /visible={sideSheetVisible}/,
+  );
+  assert.match(mediaTaskRuleEditorSource, /sheetPreviewResult\?\.matchedRule/);
+  assert.match(
+    mediaTaskRuleEditorSource,
+    /serializeMediaTaskRule\(previewResult\.matchedRule\)/,
+  );
+  assert.doesNotMatch(mediaTaskRuleEditorSource, /modalVisible/);
+  assert.doesNotMatch(mediaTaskRuleEditorSource, /<Modal/);
+});
+
+test('text segment rule editor is wired through the modern config contract only', () => {
+  assert.match(textSegmentRuleEditorSource, /function TextSegmentRulesEditor/);
+  assert.match(textSegmentRuleEditorSource, /SideSheet/);
+  assert.match(textSegmentRuleEditorSource, /getTextSegmentRuleEditorMeta/);
+  assert.match(textSegmentRuleEditorSource, /validationErrors/);
+  assert.match(textSegmentRuleEditorSource, /onChange/);
+  assert.match(textSegmentRuleEditorSource, /onConfigChange/);
+  assert.doesNotMatch(textSegmentRuleEditorSource, /LegacyTextSegmentRuleEditor/);
+  assert.doesNotMatch(textSegmentRuleEditorSource, /onRuleTypeChange/);
+  assert.doesNotMatch(textSegmentRuleEditorSource, /onRuleFieldChange/);
+  assert.match(
+    source,
+    /<TextSegmentRuleEditor[\s\S]*config={selectedAdvancedConfig}[\s\S]*rules={selectedAdvancedConfig\.rules}[\s\S]*validationErrors={validationErrors}[\s\S]*onChange={handleTextSegmentRulesChange}[\s\S]*onConfigChange={handleTextSegmentConfigChange}[\s\S]*\/>/,
+  );
 });

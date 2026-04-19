@@ -17,12 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { API, showError, showSuccess } from '../../../../helpers';
 import {
   resolveInitialVisibleModelNames,
   resolveVisibleModels,
 } from './modelPricingVisibility';
+import {
+  resolveModelPricingBridgeSelection,
+  resolveModelPricingSelectedModelName,
+} from './modelPricingSelection';
 import {
   BILLING_MODE_ADVANCED,
   BILLING_MODE_PER_REQUEST,
@@ -112,6 +116,25 @@ const parseOptionJSON = (rawValue) => {
     console.error('JSON解析错误:', error);
     return {};
   }
+};
+
+const parseAdvancedPricingConfigOption = (rawValue) => {
+  const parsedValue = parseOptionJSON(rawValue);
+
+  return {
+    billing_mode:
+      parsedValue?.billing_mode &&
+      typeof parsedValue.billing_mode === 'object' &&
+      !Array.isArray(parsedValue.billing_mode)
+        ? parsedValue.billing_mode
+        : {},
+    rules:
+      parsedValue?.rules &&
+      typeof parsedValue.rules === 'object' &&
+      !Array.isArray(parsedValue.rules)
+        ? parsedValue.rules
+        : {},
+  };
 };
 
 const reduceOptionsByKey = (items) =>
@@ -611,10 +634,16 @@ export function useModelPricingEditorState({
   t,
   candidateModelNames = EMPTY_CANDIDATE_MODEL_NAMES,
   filterMode = 'all',
+  initialSelectedModelName = '',
+  initialSelectionVersion = 0,
 }) {
   const [models, setModels] = useState([]);
   const [initialVisibleModelNames, setInitialVisibleModelNames] = useState([]);
-  const [selectedModelName, setSelectedModelName] = useState('');
+  const [selectedModelName, setSelectedModelName] = useState(
+    initialSelectedModelName || '',
+  );
+  const lastAppliedInitialSelectionVersionRef = useRef(null);
+  const pendingSelectionPageRef = useRef(null);
   const [selectedModelNames, setSelectedModelNames] = useState([]);
   const [searchText, setSearchText] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -624,9 +653,18 @@ export function useModelPricingEditorState({
   const [billingModeDirtyNames, setBillingModeDirtyNames] = useState(new Set());
 
   useEffect(() => {
+    const canonicalAdvancedPricingConfig = parseAdvancedPricingConfigOption(
+      options.AdvancedPricingConfig,
+    );
     const sourceMaps = {
-      AdvancedPricingMode: parseOptionJSON(options.AdvancedPricingMode),
-      AdvancedPricingRules: parseOptionJSON(options.AdvancedPricingRules),
+      AdvancedPricingMode:
+        Object.keys(canonicalAdvancedPricingConfig.billing_mode).length > 0
+          ? canonicalAdvancedPricingConfig.billing_mode
+          : parseOptionJSON(options.AdvancedPricingMode),
+      AdvancedPricingRules:
+        Object.keys(canonicalAdvancedPricingConfig.rules).length > 0
+          ? canonicalAdvancedPricingConfig.rules
+          : parseOptionJSON(options.AdvancedPricingRules),
       ModelPrice: parseOptionJSON(options.ModelPrice),
       ModelRatio: parseOptionJSON(options.ModelRatio),
       CompletionRatio: parseOptionJSON(options.CompletionRatio),
@@ -696,6 +734,10 @@ export function useModelPricingEditorState({
       }),
     [candidateModelNames, filterMode, initialVisibleModelNames, models],
   );
+  const visibleModelNames = useMemo(
+    () => visibleModels.map((model) => model.name),
+    [visibleModels],
+  );
 
   const filteredModels = useMemo(() => {
     return visibleModels.filter((model) => {
@@ -738,6 +780,74 @@ export function useModelPricingEditorState({
   );
 
   useEffect(() => {
+    const {
+      nextSelectedModelName,
+      nextAppliedInitialSelectionVersion,
+      shouldSyncSelection,
+    } = resolveModelPricingSelectedModelName({
+      currentSelectedModelName: selectedModelName,
+      modelNames: visibleModelNames,
+      initialSelectedModelName,
+      initialSelectionVersion,
+      lastAppliedInitialSelectionVersion:
+        lastAppliedInitialSelectionVersionRef.current,
+    });
+
+    if (
+      nextAppliedInitialSelectionVersion !==
+      lastAppliedInitialSelectionVersionRef.current
+    ) {
+      lastAppliedInitialSelectionVersionRef.current =
+        nextAppliedInitialSelectionVersion;
+    }
+
+    if (nextSelectedModelName !== selectedModelName) {
+      setSelectedModelName(nextSelectedModelName);
+    }
+
+    if (!shouldSyncSelection) {
+      return;
+    }
+
+    const bridgeSelectionState = resolveModelPricingBridgeSelection({
+      shouldSyncSelection,
+      modelNames: visibleModelNames,
+      selectedModelName: nextSelectedModelName,
+      pageSize: PAGE_SIZE,
+      searchText,
+      conflictOnly,
+    });
+
+    if (bridgeSelectionState.pendingSelectionPage !== null) {
+      pendingSelectionPageRef.current = bridgeSelectionState.pendingSelectionPage;
+      if (bridgeSelectionState.shouldResetSearchText) {
+        setSearchText('');
+      }
+      if (bridgeSelectionState.shouldResetConflictOnly) {
+        setConflictOnly(false);
+      }
+      return;
+    }
+
+    if (bridgeSelectionState.nextCurrentPage !== null) {
+      setCurrentPage(bridgeSelectionState.nextCurrentPage);
+    }
+  }, [
+    conflictOnly,
+    initialSelectedModelName,
+    initialSelectionVersion,
+    searchText,
+    selectedModelName,
+    visibleModelNames,
+  ]);
+
+  useEffect(() => {
+    if (pendingSelectionPageRef.current !== null) {
+      setCurrentPage(pendingSelectionPageRef.current);
+      pendingSelectionPageRef.current = null;
+      return;
+    }
+
     setCurrentPage(1);
   }, [searchText, conflictOnly, filterMode, candidateModelNames]);
 
@@ -1052,10 +1162,14 @@ export function useModelPricingEditorState({
         data: latestOptionsData,
       } = latestOptionsRes?.data || {};
       if (!latestOptionsSuccess) {
-        throw new Error(latestOptionsMessage || t('淇濆瓨澶辫触锛岃閲嶈瘯'));
+        throw new Error(latestOptionsMessage || t('保存失败，请重试'));
       }
 
       const latestOptionsByKey = reduceOptionsByKey(latestOptionsData);
+      const latestCanonicalAdvancedPricingConfig =
+        parseAdvancedPricingConfigOption(
+          latestOptionsByKey.AdvancedPricingConfig,
+        );
       const output = {
         ModelPrice: {},
         ModelRatio: {},
@@ -1077,8 +1191,15 @@ export function useModelPricingEditorState({
       }
 
       output.AdvancedPricingMode = buildAdvancedPricingModePayload({
-        latestModeMap: parseOptionJSON(latestOptionsByKey.AdvancedPricingMode),
-        latestRulesMap: parseOptionJSON(latestOptionsByKey.AdvancedPricingRules),
+        latestModeMap:
+          Object.keys(latestCanonicalAdvancedPricingConfig.billing_mode).length >
+          0
+            ? latestCanonicalAdvancedPricingConfig.billing_mode
+            : parseOptionJSON(latestOptionsByKey.AdvancedPricingMode),
+        latestRulesMap:
+          Object.keys(latestCanonicalAdvancedPricingConfig.rules).length > 0
+            ? latestCanonicalAdvancedPricingConfig.rules
+            : parseOptionJSON(latestOptionsByKey.AdvancedPricingRules),
         models,
         dirtyModeNames: billingModeDirtyNames,
       });

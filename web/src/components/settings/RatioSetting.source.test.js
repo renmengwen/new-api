@@ -39,15 +39,30 @@ test('ratio setting keeps tab state so price settings can open the advanced pric
     source,
     /const \[advancedPricingInitialModelSelectionKey, setAdvancedPricingInitialModelSelectionKey\] = useState\(0\);/,
   );
+  assert.match(source, /const \[pendingPricingModelName, setPendingPricingModelName\] = useState\(''\);/);
+  assert.match(
+    source,
+    /const \[pricingInitialModelSelectionKey, setPricingInitialModelSelectionKey\] = useState\(0\);/,
+  );
   assert.match(source, /<Tabs type='card' activeKey=\{activeTab\} onChange=\{handleTabChange\}>/);
   assert.match(source, /onOpenAdvancedPricingRules=\{handleOpenAdvancedPricingRules\}/);
   assert.match(
     source,
     /setAdvancedPricingInitialModelSelectionKey\(\(previous\) => previous \+ 1\);/,
   );
+  assert.match(
+    source,
+    /const handleBackToPricing = \(modelName\) => \{[\s\S]*setPendingPricingModelName\(modelName \|\| ''\);[\s\S]*setPricingInitialModelSelectionKey\(\(previous\) => previous \+ 1\);[\s\S]*setActiveTab\('visual'\);[\s\S]*\};/,
+  );
+  assert.match(source, /initialModelName=\{pendingPricingModelName\}/);
+  assert.match(
+    source,
+    /initialModelSelectionKey=\{pricingInitialModelSelectionKey\}/,
+  );
   assert.match(source, /initialModelName=\{pendingAdvancedPricingModelName\}/);
   assert.match(
     source,
     /initialModelSelectionKey=\{advancedPricingInitialModelSelectionKey\}/,
   );
+  assert.match(source, /onBackToPricing=\{handleBackToPricing\}/);
 });
