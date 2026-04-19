@@ -136,6 +136,35 @@ export const buildTextSegmentConditionSummary = (rule) => {
   return summaries.length > 0 ? summaries.join(' / ') : '未设置条件';
 };
 
+const buildTextSegmentPreviewConditionSummary = (rule) => {
+  const inputSummary = buildRangeSummary('输入', rule?.inputMin, rule?.inputMax);
+  const outputSummary = buildRangeSummary(
+    '输出',
+    rule?.outputMin,
+    rule?.outputMax,
+  );
+  const summaries = [inputSummary, outputSummary].filter(Boolean);
+  const serviceTier = normalizeRuleServiceTier(rule);
+  const inputModality = normalizeStringField(
+    rule?.inputModality ?? rule?.input_modality,
+  ).trim();
+  const outputModality = normalizeStringField(
+    rule?.outputModality ?? rule?.output_modality,
+  ).trim();
+
+  if (inputModality) {
+    summaries.push(`input_modality=${inputModality}`);
+  }
+  if (outputModality) {
+    summaries.push(`output_modality=${outputModality}`);
+  }
+  if (serviceTier) {
+    summaries.push(`服务层=${serviceTier}`);
+  }
+
+  return summaries.length > 0 ? summaries.join(' / ') : '未设置条件';
+};
+
 const hasTextSegmentCondition = (rule) =>
   hasExplicitValue(rule?.inputMin) ||
   hasExplicitValue(rule?.inputMax) ||
@@ -1171,7 +1200,7 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
   const inputPrice = toNullableNumber(matchedRule?.inputPrice) ?? 0;
   const outputPrice = toNullableNumber(matchedRule?.outputPrice) ?? 0;
   const matchedSegmentPreview = serializeTextSegmentRule(matchedRule);
-  const conditionSummary = buildTextSegmentConditionSummary(matchedRule);
+  const conditionSummary = buildTextSegmentPreviewConditionSummary(matchedRule);
   const formulaSummary = `(${formatNumber(inputTokens)} tokens × ${formatNumber(inputPrice)} + ${formatNumber(outputTokens)} tokens × ${formatNumber(outputPrice)}) / 1,000,000`;
   const serviceTierSummary = serviceTier ? `，服务层 ${serviceTier}` : '';
 

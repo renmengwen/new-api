@@ -570,6 +570,12 @@ test('buildTextSegmentPreview ignores schema-only text selectors that backend ma
   );
 
   assert.equal(preview.matchedRule?.id, 'segment-audio');
+  assert.doesNotMatch(preview.conditionSummary, /image_size_tier=/);
+  assert.doesNotMatch(preview.conditionSummary, /tool_usage_type=/);
+  assert.doesNotMatch(preview.conditionSummary, /tool_usage_count>=/);
+  assert.doesNotMatch(preview.logPreview.detailSummary, /image_size_tier=/);
+  assert.doesNotMatch(preview.logPreview.detailSummary, /tool_usage_type=/);
+  assert.doesNotMatch(preview.logPreview.detailSummary, /tool_usage_count>=/);
 });
 
 test('getTextSegmentRuleEditorMeta counts enabled rules and treats explicit zero default price as configured', () => {

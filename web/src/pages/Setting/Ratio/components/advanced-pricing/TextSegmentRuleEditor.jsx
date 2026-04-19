@@ -140,8 +140,8 @@ const TEXT_SEGMENT_FIELDS = [
   },
   {
     field: 'imageSizeTier',
-    label: '鍥惧儚妗ｄ綅',
-    placeholder: '渚嬪 hd / 2k',
+    label: '图像档位',
+    placeholder: '例如 hd / 2k / 4k',
   },
   {
     field: 'toolUsageType',
@@ -150,8 +150,8 @@ const TEXT_SEGMENT_FIELDS = [
   },
   {
     field: 'toolUsageCount',
-    label: 'Tool Usage Count',
-    placeholder: 'optional',
+    label: '工具调用次数',
+    placeholder: '选填，填写整数值',
     regex: INTEGER_INPUT_REGEX,
   },
   {
@@ -650,7 +650,7 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
                   </div>
                   <Input
                     value={previewInput?.imageSizeTier || ''}
-                    placeholder={t('例如 hd / 2k')}
+                    placeholder={t('例如 hd / 2k / 4k')}
                     onChange={(value) =>
                       handlePreviewInputChange('imageSizeTier', value)
                     }
@@ -662,7 +662,7 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
                   </div>
                   <Input
                     value={previewInput?.toolUsageCount || ''}
-                    placeholder={t('例如 3')}
+                    placeholder={t('例如 3（整数）')}
                     onChange={(value) =>
                       handlePreviewInputChange('toolUsageCount', value)
                     }
