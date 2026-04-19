@@ -894,7 +894,7 @@ func TestCalculateAdvancedNonTokenQuotaUsesFreeQuotaAndThresholdForPer1000Calls(
 	require.True(t, quota.Equal(decimal.NewFromInt(14).Mul(decimal.NewFromFloat(common.QuotaPerUnit))))
 }
 
-func TestCalculateTextQuotaSummarySettlementSkipsLegacyWebSearchQuotaWhenAdvancedPer1000CallsMatches(t *testing.T) {
+func TestCalculateTextQuotaSummarySettlementSkipsLegacyWebSearchQuotaWhenAdvancedPer1000CallsMatchesGroundingAlias(t *testing.T) {
 	restoreTextQuotaRatioSettings(t)
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
@@ -913,7 +913,7 @@ func TestCalculateTextQuotaSummarySettlementSkipsLegacyWebSearchQuotaWhenAdvance
 				},
 				{
 					"priority": 20,
-					"tool_usage_type": "web_search",
+					"tool_usage_type": "grounding",
 					"tool_usage_count": 1,
 					"overage_threshold": 1,
 					"input_price": 14
@@ -949,10 +949,46 @@ func TestCalculateTextQuotaSummarySettlementSkipsLegacyWebSearchQuotaWhenAdvance
 	require.Equal(t, types.BillingModeAdvanced, relayInfo.PriceData.BillingMode)
 	require.NotNil(t, relayInfo.PriceData.AdvancedRuleSnapshot)
 	require.Equal(t, types.AdvancedBillingUnitPer1000Calls, relayInfo.PriceData.AdvancedRuleSnapshot.BillingUnit)
+	require.Equal(t, "google_search", relayInfo.PriceData.AdvancedRuleSnapshot.ToolUsageType)
 	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext)
-	require.Equal(t, "web_search", relayInfo.PriceData.AdvancedPricingContext.ToolUsageType)
+	require.Equal(t, "google_search", relayInfo.PriceData.AdvancedPricingContext.ToolUsageType)
 	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext.ToolUsageCount)
 	require.Equal(t, 1, *relayInfo.PriceData.AdvancedPricingContext.ToolUsageCount)
+}
+
+func TestShouldSkipLegacyWebSearchQuotaForAdvancedBillingTreatsSearchAliasesAsEquivalent(t *testing.T) {
+	aliases := []string{"grounding", "web_search", "google_search"}
+
+	for _, alias := range aliases {
+		priceData := types.PriceData{
+			BillingMode:      types.BillingModeAdvanced,
+			AdvancedRuleType: types.AdvancedRuleTypeTextSegment,
+			AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{
+				RuleType:    types.AdvancedRuleTypeTextSegment,
+				BillingUnit: types.AdvancedBillingUnitPer1000Calls,
+			},
+			AdvancedPricingContext: &types.AdvancedPricingContextSnapshot{
+				BillingUnit:   types.AdvancedBillingUnitPer1000Calls,
+				ToolUsageType: alias,
+			},
+		}
+
+		require.True(t, shouldSkipLegacyWebSearchQuotaForAdvancedBilling(priceData), alias)
+	}
+}
+
+func TestShouldSkipLegacyWebSearchQuotaForAdvancedBillingUsesSnapshotWhenContextMissing(t *testing.T) {
+	priceData := types.PriceData{
+		BillingMode:      types.BillingModeAdvanced,
+		AdvancedRuleType: types.AdvancedRuleTypeTextSegment,
+		AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{
+			RuleType:      types.AdvancedRuleTypeTextSegment,
+			BillingUnit:   types.AdvancedBillingUnitPer1000Calls,
+			ToolUsageType: "google_search",
+		},
+	}
+
+	require.True(t, shouldSkipLegacyWebSearchQuotaForAdvancedBilling(priceData))
 }
 
 func restoreTextQuotaRatioSettings(t *testing.T) {

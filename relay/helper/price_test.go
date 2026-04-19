@@ -334,7 +334,7 @@ func TestModelPriceHelperMatchesAdvancedTextSegmentByModalityAndCapturesRuntimeC
 	require.Equal(t, []string{"audio"}, priceData.AdvancedPricingContext.OutputModalities)
 }
 
-func TestModelPriceHelperMatchesAdvancedTextSegmentByResponsesWebSearchUsage(t *testing.T) {
+func TestModelPriceHelperMatchesAdvancedTextSegmentByResponsesGoogleSearchUsageWithGroundingRule(t *testing.T) {
 	restoreRatioSettings(t)
 
 	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"responses-grounding-model":"advanced"}`))
@@ -349,7 +349,7 @@ func TestModelPriceHelperMatchesAdvancedTextSegmentByResponsesWebSearchUsage(t *
 				},
 				{
 					"priority": 20,
-					"tool_usage_type": "web_search",
+					"tool_usage_type": "grounding",
 					"tool_usage_count": 2,
 					"input_price": 14
 				}
@@ -381,16 +381,116 @@ func TestModelPriceHelperMatchesAdvancedTextSegmentByResponsesWebSearchUsage(t *
 	require.Equal(t, 7.0, priceData.ModelRatio)
 	require.NotNil(t, priceData.AdvancedRuleSnapshot)
 	require.Equal(t, types.AdvancedBillingUnitPer1000Calls, priceData.AdvancedRuleSnapshot.BillingUnit)
-	require.Equal(t, "web_search", priceData.AdvancedRuleSnapshot.ToolUsageType)
+	require.Equal(t, "google_search", priceData.AdvancedRuleSnapshot.ToolUsageType)
 	require.NotNil(t, priceData.AdvancedRuleSnapshot.ThresholdSnapshot.ToolUsageCount)
 	require.Equal(t, 2, *priceData.AdvancedRuleSnapshot.ThresholdSnapshot.ToolUsageCount)
-	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_type=web_search")
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_type=google_search")
 	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_count=3")
 	require.NotNil(t, priceData.AdvancedPricingContext)
 	require.Equal(t, types.AdvancedBillingUnitPer1000Calls, priceData.AdvancedPricingContext.BillingUnit)
-	require.Equal(t, "web_search", priceData.AdvancedPricingContext.ToolUsageType)
+	require.Equal(t, "google_search", priceData.AdvancedPricingContext.ToolUsageType)
 	require.NotNil(t, priceData.AdvancedPricingContext.ToolUsageCount)
 	require.Equal(t, 3, *priceData.AdvancedPricingContext.ToolUsageCount)
+}
+
+func TestModelPriceHelperMatchesAdvancedTextSegmentByResponsesGoogleSearchUsageWithWebSearchRule(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"responses-web-search-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"responses-web-search-model": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_1000_calls",
+			"segments": [
+				{
+					"priority": 10,
+					"input_price": 2
+				},
+				{
+					"priority": 20,
+					"tool_usage_type": "web_search",
+					"tool_usage_count": 2,
+					"input_price": 14
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "responses-web-search-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         &dto.OpenAIResponsesRequest{},
+		ResponsesUsageInfo: &relaycommon.ResponsesUsageInfo{
+			BuiltInTools: map[string]*relaycommon.BuildInToolInfo{
+				dto.BuildInToolWebSearchPreview: {
+					ToolName:          dto.BuildInToolWebSearchPreview,
+					CallCount:         3,
+					SearchContextSize: "medium",
+				},
+			},
+		},
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{})
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, 7.0, priceData.ModelRatio)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "google_search", priceData.AdvancedRuleSnapshot.ToolUsageType)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_type=google_search")
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, "google_search", priceData.AdvancedPricingContext.ToolUsageType)
+}
+
+func TestModelPriceHelperMatchesAdvancedTextSegmentByClaudeGoogleSearchUsageWithGroundingRule(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"claude-grounding-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"claude-grounding-model": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_1000_calls",
+			"segments": [
+				{
+					"priority": 10,
+					"input_price": 2
+				},
+				{
+					"priority": 20,
+					"tool_usage_type": "grounding",
+					"tool_usage_count": 2,
+					"input_price": 14
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	c.Set("claude_web_search_requests", 2)
+	info := &relaycommon.RelayInfo{
+		RelayFormat:             types.RelayFormatClaude,
+		FinalRequestRelayFormat: types.RelayFormatClaude,
+		OriginModelName:         "claude-grounding-model",
+		UsingGroup:              "default",
+		UserGroup:               "default",
+		Request:                 &dto.ClaudeRequest{},
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{})
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, 7.0, priceData.ModelRatio)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "google_search", priceData.AdvancedRuleSnapshot.ToolUsageType)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_type=google_search")
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, "google_search", priceData.AdvancedPricingContext.ToolUsageType)
+	require.NotNil(t, priceData.AdvancedPricingContext.ToolUsageCount)
+	require.Equal(t, 2, *priceData.AdvancedPricingContext.ToolUsageCount)
 }
 
 func TestModelPriceHelperMatchesAdvancedTextSegmentPerSecondForGeminiLiveAudio(t *testing.T) {

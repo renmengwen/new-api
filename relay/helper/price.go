@@ -356,15 +356,15 @@ func buildAdvancedPricingRuntimeContext(c *gin.Context, info *relaycommon.RelayI
 func resolveAdvancedTextToolUsage(c *gin.Context, info *relaycommon.RelayInfo) (string, int) {
 	if info != nil && info.ResponsesUsageInfo != nil && info.ResponsesUsageInfo.BuiltInTools != nil {
 		if webSearchTool, exists := info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview]; exists && webSearchTool != nil && webSearchTool.CallCount > 0 {
-			return "web_search", webSearchTool.CallCount
+			return ratio_setting.NormalizeAdvancedPricingTextToolUsageType("web_search"), webSearchTool.CallCount
 		}
 	}
 	if info != nil && strings.HasSuffix(strings.TrimSpace(info.OriginModelName), "search-preview") {
-		return "web_search", 1
+		return ratio_setting.NormalizeAdvancedPricingTextToolUsageType("grounding"), 1
 	}
 	if c != nil {
 		if count := c.GetInt("claude_web_search_requests"); count > 0 {
-			return "web_search", count
+			return ratio_setting.NormalizeAdvancedPricingTextToolUsageType("web_search"), count
 		}
 	}
 	return "", 0

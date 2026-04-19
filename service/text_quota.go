@@ -13,6 +13,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayhelper "github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -456,10 +457,10 @@ func shouldSkipLegacyWebSearchQuotaForAdvancedBilling(priceData types.PriceData)
 	if strings.TrimSpace(priceData.AdvancedRuleSnapshot.BillingUnit) != types.AdvancedBillingUnitPer1000Calls {
 		return false
 	}
-	if priceData.AdvancedPricingContext != nil && strings.EqualFold(priceData.AdvancedPricingContext.ToolUsageType, "web_search") {
+	if priceData.AdvancedPricingContext != nil && ratio_setting.NormalizeAdvancedPricingTextToolUsageType(priceData.AdvancedPricingContext.ToolUsageType) == "google_search" {
 		return true
 	}
-	return strings.EqualFold(priceData.AdvancedRuleSnapshot.ToolUsageType, "web_search")
+	return ratio_setting.NormalizeAdvancedPricingTextToolUsageType(priceData.AdvancedRuleSnapshot.ToolUsageType) == "google_search"
 }
 
 func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) string {

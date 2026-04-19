@@ -180,6 +180,7 @@ func (ruleSet *AdvancedPricingRuleSet) UnmarshalJSON(data []byte) error {
 		ruleSet.TaskType = payload.TaskType
 		ruleSet.Note = payload.Note
 		ruleSet.Segments = payload.Segments
+		normalizeAdvancedPricingRuleSetSegments(ruleSet)
 		return nil
 	}
 
@@ -189,6 +190,7 @@ func (ruleSet *AdvancedPricingRuleSet) UnmarshalJSON(data []byte) error {
 	}
 	if ok {
 		*ruleSet = normalizedRuleSet
+		normalizeAdvancedPricingRuleSetSegments(ruleSet)
 		return nil
 	}
 
@@ -200,6 +202,7 @@ func (ruleSet *AdvancedPricingRuleSet) UnmarshalJSON(data []byte) error {
 	ruleSet.TaskType = payload.TaskType
 	ruleSet.Note = payload.Note
 	ruleSet.Segments = payload.Segments
+	normalizeAdvancedPricingRuleSetSegments(ruleSet)
 	return nil
 }
 
@@ -349,7 +352,7 @@ func buildAdvancedTextRuntimeContext(ctx AdvancedPricingRuntimeContext) advanced
 		outputModalities: collectAdvancedTextOutputModalities(ctx),
 		imageSizeTier:    extractAdvancedTextImageSizeTier(ctx),
 		imageCount:       extractAdvancedTextImageCount(ctx),
-		toolUsageType:    normalizeAdvancedPricingComparableString(ctx.ToolUsageType),
+		toolUsageType:    NormalizeAdvancedPricingTextToolUsageType(ctx.ToolUsageType),
 		toolUsageCount:   ctx.ToolUsageCount,
 	}
 }
@@ -376,6 +379,16 @@ func extractAdvancedPricingServiceTier(request dto.Request) string {
 
 func normalizeAdvancedPricingServiceTier(value string) string {
 	return normalizeAdvancedPricingComparableString(value)
+}
+
+func NormalizeAdvancedPricingTextToolUsageType(value string) string {
+	normalized := normalizeAdvancedPricingComparableString(value)
+	switch normalized {
+	case "web_search", "google_search", "grounding":
+		return "google_search"
+	default:
+		return normalized
+	}
 }
 
 func resolveAdvancedPricingBillingUnit(value string) string {
@@ -977,7 +990,7 @@ func matchAdvancedTextSegment(segment AdvancedPriceRule, runtimeCtx advancedText
 	if imageSizeTier := normalizeAdvancedPricingImageSizeTier(segment.ImageSizeTier); imageSizeTier != "" && imageSizeTier != runtimeCtx.imageSizeTier {
 		return false
 	}
-	if toolUsageType := normalizeAdvancedPricingComparableString(segment.ToolUsageType); toolUsageType != "" && toolUsageType != runtimeCtx.toolUsageType {
+	if toolUsageType := NormalizeAdvancedPricingTextToolUsageType(segment.ToolUsageType); toolUsageType != "" && toolUsageType != runtimeCtx.toolUsageType {
 		return false
 	}
 	if segment.ToolUsageCount != nil && runtimeCtx.toolUsageCount < *segment.ToolUsageCount {
@@ -1451,21 +1464,25 @@ func ParseAdvancedPricingConfig(jsonStr string) (*AdvancedPricingConfig, error) 
 
 func normalizeAdvancedPricingRuleServiceTiers(rules map[string]AdvancedPricingRuleSet) {
 	for modelName, ruleSet := range rules {
-		if len(ruleSet.Segments) == 0 {
-			continue
-		}
-		normalizedSegments := make([]AdvancedPriceRule, len(ruleSet.Segments))
-		for index, segment := range ruleSet.Segments {
-			segment.ServiceTier = normalizeAdvancedPricingServiceTier(segment.ServiceTier)
-			segment.InputModality = normalizeAdvancedPricingComparableString(segment.InputModality)
-			segment.OutputModality = normalizeAdvancedPricingComparableString(segment.OutputModality)
-			segment.ImageSizeTier = normalizeAdvancedPricingComparableString(segment.ImageSizeTier)
-			segment.ToolUsageType = normalizeAdvancedPricingComparableString(segment.ToolUsageType)
-			normalizedSegments[index] = segment
-		}
-		ruleSet.Segments = normalizedSegments
+		normalizeAdvancedPricingRuleSetSegments(&ruleSet)
 		rules[modelName] = ruleSet
 	}
+}
+
+func normalizeAdvancedPricingRuleSetSegments(ruleSet *AdvancedPricingRuleSet) {
+	if ruleSet == nil || len(ruleSet.Segments) == 0 {
+		return
+	}
+	normalizedSegments := make([]AdvancedPriceRule, len(ruleSet.Segments))
+	for index, segment := range ruleSet.Segments {
+		segment.ServiceTier = normalizeAdvancedPricingServiceTier(segment.ServiceTier)
+		segment.InputModality = normalizeAdvancedPricingComparableString(segment.InputModality)
+		segment.OutputModality = normalizeAdvancedPricingComparableString(segment.OutputModality)
+		segment.ImageSizeTier = normalizeAdvancedPricingComparableString(segment.ImageSizeTier)
+		segment.ToolUsageType = NormalizeAdvancedPricingTextToolUsageType(segment.ToolUsageType)
+		normalizedSegments[index] = segment
+	}
+	ruleSet.Segments = normalizedSegments
 }
 
 func normalizeAdvancedPricingJSON(jsonStr string) string {
@@ -1623,7 +1640,7 @@ func hasTextCondition(segment AdvancedPriceRule) bool {
 		normalizeAdvancedPricingComparableString(segment.InputModality) != "" ||
 		normalizeAdvancedPricingComparableString(segment.OutputModality) != "" ||
 		normalizeAdvancedPricingImageSizeTier(segment.ImageSizeTier) != "" ||
-		normalizeAdvancedPricingComparableString(segment.ToolUsageType) != "" ||
+		NormalizeAdvancedPricingTextToolUsageType(segment.ToolUsageType) != "" ||
 		segment.ToolUsageCount != nil
 }
 
@@ -1680,7 +1697,7 @@ func textSegmentsOverlap(left, right AdvancedPriceRule) bool {
 	if normalizeAdvancedPricingImageSizeTier(left.ImageSizeTier) != normalizeAdvancedPricingImageSizeTier(right.ImageSizeTier) {
 		return false
 	}
-	if normalizeAdvancedPricingComparableString(left.ToolUsageType) != normalizeAdvancedPricingComparableString(right.ToolUsageType) {
+	if NormalizeAdvancedPricingTextToolUsageType(left.ToolUsageType) != NormalizeAdvancedPricingTextToolUsageType(right.ToolUsageType) {
 		return false
 	}
 	if !boolPointerEqual(left.CacheRead, right.CacheRead) {
