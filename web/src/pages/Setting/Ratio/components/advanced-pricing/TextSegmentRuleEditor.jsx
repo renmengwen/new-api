@@ -53,6 +53,7 @@ const DECIMAL_INPUT_REGEX = /^(\d+(\.\d*)?|\.\d*)?$/;
 const TEXT_SEGMENT_PREVIEW_NUMERIC_FIELDS = new Set([
   'inputTokens',
   'outputTokens',
+  'toolUsageCount',
 ]);
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -180,6 +181,8 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
     serviceTier: '',
     inputModality: '',
     outputModality: '',
+    imageSizeTier: '',
+    toolUsageCount: '',
   });
 
   const sortedRules = useMemo(() => sortTextSegmentRules(rules || []), [rules]);
@@ -195,6 +198,8 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
       serviceTier: '',
       inputModality: '',
       outputModality: '',
+      imageSizeTier: '',
+      toolUsageCount: '',
     });
   };
 
@@ -636,6 +641,30 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
                     placeholder={t('例如 text / image')}
                     onChange={(value) =>
                       handlePreviewInputChange('outputModality', value)
+                    }
+                  />
+                </div>
+                <div>
+                  <div className='mb-1 font-medium text-gray-700'>
+                    {t('图像档位')}
+                  </div>
+                  <Input
+                    value={previewInput?.imageSizeTier || ''}
+                    placeholder={t('例如 hd / 2k')}
+                    onChange={(value) =>
+                      handlePreviewInputChange('imageSizeTier', value)
+                    }
+                  />
+                </div>
+                <div>
+                  <div className='mb-1 font-medium text-gray-700'>
+                    {t('工具调用次数')}
+                  </div>
+                  <Input
+                    value={previewInput?.toolUsageCount || ''}
+                    placeholder={t('例如 3')}
+                    onChange={(value) =>
+                      handlePreviewInputChange('toolUsageCount', value)
                     }
                   />
                 </div>

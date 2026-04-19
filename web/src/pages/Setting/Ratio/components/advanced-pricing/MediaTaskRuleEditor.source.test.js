@@ -66,6 +66,7 @@ test('media task rule editor keeps the advanced rule workflow in a SideSheet wit
 });
 
 test('media task rule editor renders modality, image tier, billing unit, and tool scaffolding fields', () => {
+  assert.match(source, /field: 'inferenceMode'/);
   assert.match(source, /field: 'inputModality'/);
   assert.match(source, /field: 'outputModality'/);
   assert.match(source, /field: 'billingUnit'/);

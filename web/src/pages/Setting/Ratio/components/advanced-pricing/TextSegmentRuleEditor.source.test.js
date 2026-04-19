@@ -56,6 +56,8 @@ test('text segment rule editor keeps the modern config contract, summary metadat
   assert.match(source, /previewInput\?\.serviceTier/);
   assert.match(source, /previewInput\?\.inputModality/);
   assert.match(source, /previewInput\?\.outputModality/);
+  assert.match(source, /previewInput\?\.imageSizeTier/);
+  assert.match(source, /previewInput\?\.toolUsageCount/);
   assert.match(source, /error\.includes\(candidateRule\.id\)/);
   assert.doesNotMatch(source, /error\.includes\(String\(candidateRule\.priority\)\)/);
   assert.doesNotMatch(source, /LegacyTextSegmentRuleEditor/);

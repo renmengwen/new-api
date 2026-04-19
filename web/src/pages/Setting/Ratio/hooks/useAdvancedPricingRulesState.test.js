@@ -240,6 +240,39 @@ test('validateTextSegmentRules allows overlapping ranges when text modalities di
   assert.equal(errors.length, 0);
 });
 
+test('validateTextSegmentRules allows overlapping ranges when only one text modality selector differs', () => {
+  const errors = validateTextSegmentRules([
+    {
+      id: 'rule-image-output',
+      enabled: true,
+      priority: 1,
+      inputMin: 0,
+      inputMax: 32000,
+      outputMin: 0,
+      outputMax: 16000,
+      inputModality: 'text',
+      outputModality: 'image',
+      inputPrice: '0.2',
+      outputPrice: '0.4',
+    },
+    {
+      id: 'rule-video-output',
+      enabled: true,
+      priority: 2,
+      inputMin: 0,
+      inputMax: 32000,
+      outputMin: 0,
+      outputMax: 16000,
+      inputModality: 'text',
+      outputModality: 'video',
+      inputPrice: '0.25',
+      outputPrice: '0.5',
+    },
+  ]);
+
+  assert.equal(errors.length, 0);
+});
+
 test('validateTextSegmentRules allows a single default text rule without conditions', () => {
   const errors = validateTextSegmentRules([
     {
