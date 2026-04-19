@@ -263,6 +263,77 @@ func TestModelPriceHelperMatchesAdvancedTextSegmentWithOpenEndedRanges(t *testin
 	require.Equal(t, 2, *priceData.AdvancedRuleSnapshot.Priority)
 }
 
+func TestModelPriceHelperMatchesAdvancedTextSegmentByModalityAndCapturesRuntimeContext(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gpt-4o-realtime-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gpt-4o-realtime-preview": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"input_modality": "audio",
+					"output_modality": "audio",
+					"input_price": 12,
+					"output_price": 24
+				},
+				{
+					"priority": 99,
+					"input_price": 3,
+					"output_price": 9
+				}
+			]
+		}
+	}`))
+
+	message := dto.Message{Role: "user"}
+	message.SetMediaContent([]dto.MediaContent{
+		{
+			Type: dto.ContentTypeText,
+			Text: "Summarize the meeting",
+		},
+		{
+			Type: dto.ContentTypeInputAudio,
+			InputAudio: &dto.MessageInputAudio{
+				Data:   "UklGRg==",
+				Format: "wav",
+			},
+		},
+	})
+
+	request := &dto.GeneralOpenAIRequest{
+		Model:      "gpt-4o-realtime-preview",
+		Messages:   []dto.Message{message},
+		Modalities: []byte(`["audio"]`),
+	}
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-4o-realtime-preview",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         request,
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, request.GetTokenCountMeta())
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, 6.0, priceData.ModelRatio)
+	require.Equal(t, 2.0, priceData.CompletionRatio)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "audio", priceData.AdvancedRuleSnapshot.InputModality)
+	require.Equal(t, "audio", priceData.AdvancedRuleSnapshot.OutputModality)
+	require.Equal(t, "per_million_tokens", priceData.AdvancedRuleSnapshot.BillingUnit)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "input_modalities=audio,text")
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "output_modalities=audio")
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, "per_million_tokens", priceData.AdvancedPricingContext.BillingUnit)
+	require.Equal(t, []string{"audio", "text"}, priceData.AdvancedPricingContext.InputModalities)
+	require.Equal(t, []string{"audio"}, priceData.AdvancedPricingContext.OutputModalities)
+}
+
 func TestModelPriceHelperHonorsExplicitPerTokenModeWhenPriceAndRatioBothExist(t *testing.T) {
 	restoreRatioSettings(t)
 

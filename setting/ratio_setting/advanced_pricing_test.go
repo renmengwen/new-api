@@ -224,6 +224,85 @@ func TestParseAdvancedPricingConfigMatchesTextServiceTierCaseInsensitively(t *te
 	require.Equal(t, "default", cfg.ModelRules["gpt-5"].Segments[0].ServiceTier)
 }
 
+func TestParseAdvancedPricingConfigSupportsP1ModalityFields(t *testing.T) {
+	cfg, err := ParseAdvancedPricingConfig(`{
+      "rules": {
+        "gpt-4o-audio-preview": {
+          "rule_type": "text_segment",
+          "billing_unit": "per_second",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 32000,
+              "output_min": 0,
+              "output_max": 16000,
+              "input_modality": "Audio",
+              "output_modality": "TEXT",
+              "image_size_tier": "hd",
+              "input_price": 32,
+              "output_price": 64,
+              "cache_storage_price": 1.5,
+              "tool_usage_type": "web_search",
+              "tool_usage_count": 1000,
+              "free_quota": 100,
+              "overage_threshold": 900
+            }
+          ]
+        }
+      }
+    }`)
+	require.NoError(t, err)
+
+	ruleSet := cfg.ModelRules["gpt-4o-audio-preview"]
+	segment := ruleSet.Segments[0]
+	require.Equal(t, "per_second", ruleSet.BillingUnit)
+	require.Equal(t, "audio", segment.InputModality)
+	require.Equal(t, "text", segment.OutputModality)
+	require.Equal(t, "hd", segment.ImageSizeTier)
+	require.NotNil(t, segment.CacheStoragePrice)
+	require.Equal(t, 1.5, *segment.CacheStoragePrice)
+	require.Equal(t, "web_search", segment.ToolUsageType)
+	require.NotNil(t, segment.ToolUsageCount)
+	require.Equal(t, 1000, *segment.ToolUsageCount)
+	require.NotNil(t, segment.FreeQuota)
+	require.Equal(t, 100, *segment.FreeQuota)
+	require.NotNil(t, segment.OverageThreshold)
+	require.Equal(t, 900, *segment.OverageThreshold)
+}
+
+func TestParseAdvancedPricingConfigAllowsOverlappingTextSegmentsWithDifferentModalityConditions(t *testing.T) {
+	cfg, err := ParseAdvancedPricingConfig(`{
+      "rules": {
+        "gpt-4o-realtime-preview": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "input_min": 0,
+              "input_max": 32000,
+              "input_modality": "text",
+              "output_modality": "text",
+              "input_price": 3,
+              "output_price": 9
+            },
+            {
+              "priority": 20,
+              "input_min": 0,
+              "input_max": 32000,
+              "input_modality": "audio",
+              "output_modality": "audio",
+              "input_price": 12,
+              "output_price": 24
+            }
+          ]
+        }
+      }
+    }`)
+	require.NoError(t, err)
+	require.Len(t, cfg.ModelRules["gpt-4o-realtime-preview"].Segments, 2)
+}
+
 func TestParseAdvancedPricingConfigRejectsDuplicatePriority(t *testing.T) {
 	_, err := ParseAdvancedPricingConfig(`{
       "rules": {

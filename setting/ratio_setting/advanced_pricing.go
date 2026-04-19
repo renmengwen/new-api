@@ -65,14 +65,23 @@ type AdvancedPriceRule struct {
 	OutputMin *int `json:"output_min,omitempty"`
 	OutputMax *int `json:"output_max,omitempty"`
 
-	ServiceTier string `json:"service_tier,omitempty"`
-	CacheRead   *bool  `json:"cache_read,omitempty"`
-	CacheCreate *bool  `json:"cache_create,omitempty"`
+	ServiceTier    string `json:"service_tier,omitempty"`
+	InputModality  string `json:"input_modality,omitempty"`
+	OutputModality string `json:"output_modality,omitempty"`
+	CacheRead      *bool  `json:"cache_read,omitempty"`
+	CacheCreate    *bool  `json:"cache_create,omitempty"`
 
-	InputPrice       *float64 `json:"input_price,omitempty"`
-	OutputPrice      *float64 `json:"output_price,omitempty"`
-	CacheReadPrice   *float64 `json:"cache_read_price,omitempty"`
-	CacheCreatePrice *float64 `json:"cache_create_price,omitempty"`
+	InputPrice        *float64 `json:"input_price,omitempty"`
+	OutputPrice       *float64 `json:"output_price,omitempty"`
+	CacheReadPrice    *float64 `json:"cache_read_price,omitempty"`
+	CacheCreatePrice  *float64 `json:"cache_create_price,omitempty"`
+	CacheStoragePrice *float64 `json:"cache_storage_price,omitempty"`
+
+	ImageSizeTier    string `json:"image_size_tier,omitempty"`
+	ToolUsageType    string `json:"tool_usage_type,omitempty"`
+	ToolUsageCount   *int   `json:"tool_usage_count,omitempty"`
+	FreeQuota        *int   `json:"free_quota,omitempty"`
+	OverageThreshold *int   `json:"overage_threshold,omitempty"`
 
 	InferenceMode string `json:"inference_mode,omitempty"`
 	Audio         *bool  `json:"audio,omitempty"`
@@ -99,18 +108,22 @@ var advancedPricingModeMap = types.NewRWMap[string, BillingMode]()
 var advancedPricingRulesMap = types.NewRWMap[string, AdvancedPricingRuleSet]()
 
 type AdvancedPricingRuntimeContext struct {
-	PromptTokens int
-	Meta         *types.TokenCountMeta
-	Request      dto.Request
-	Task         *AdvancedPricingTaskContext
+	PromptTokens     int
+	Meta             *types.TokenCountMeta
+	Request          dto.Request
+	Task             *AdvancedPricingTaskContext
+	InputModalities  []string
+	OutputModalities []string
 }
 
 type advancedTextRuntimeContext struct {
-	inputTokens  int
-	outputTokens int
-	serviceTier  string
-	cacheRead    *bool
-	cacheCreate  *bool
+	inputTokens      int
+	outputTokens     int
+	serviceTier      string
+	inputModalities  []string
+	outputModalities []string
+	cacheRead        *bool
+	cacheCreate      *bool
 }
 
 type AdvancedPricingTaskContext struct {
@@ -224,16 +237,14 @@ func ResolveAdvancedPriceData(modelName string, ctx AdvancedPricingRuntimeContex
 }
 
 func resolveAdvancedTextPriceData(modelName string, ctx AdvancedPricingRuntimeContext, ruleSet AdvancedPricingRuleSet) (types.PriceData, bool, error) {
-	runtimeCtx := advancedTextRuntimeContext{
-		inputTokens:  ctx.PromptTokens,
-		outputTokens: getRuntimeOutputTokens(ctx.Meta),
-		serviceTier:  extractAdvancedPricingServiceTier(ctx.Request),
-	}
+	runtimeCtx := buildAdvancedTextRuntimeContext(ctx)
 
 	segment, ok := findMatchedTextSegment(ruleSet.Segments, runtimeCtx)
 	if !ok {
 		return types.PriceData{}, false, nil
 	}
+
+	effectiveBillingUnit := resolveAdvancedPricingBillingUnit(ruleSet.BillingUnit)
 
 	modelRatio := 0.0
 	if segment.InputPrice != nil {
@@ -268,13 +279,14 @@ func resolveAdvancedTextPriceData(modelName string, ctx AdvancedPricingRuntimeCo
 	}
 
 	return types.PriceData{
-		ModelRatio:           modelRatio,
-		CompletionRatio:      completionRatio,
-		CacheRatio:           cacheRatio,
-		CacheCreationRatio:   cacheCreationRatio,
-		BillingMode:          types.BillingModeAdvanced,
-		AdvancedRuleType:     ruleSet.RuleType,
-		AdvancedRuleSnapshot: buildAdvancedRuleSnapshot(ruleSet.RuleType, segment, runtimeCtx),
+		ModelRatio:             modelRatio,
+		CompletionRatio:        completionRatio,
+		CacheRatio:             cacheRatio,
+		CacheCreationRatio:     cacheCreationRatio,
+		BillingMode:            types.BillingModeAdvanced,
+		AdvancedRuleType:       ruleSet.RuleType,
+		AdvancedRuleSnapshot:   buildAdvancedRuleSnapshot(ruleSet.RuleType, effectiveBillingUnit, segment, runtimeCtx),
+		AdvancedPricingContext: buildAdvancedPricingContextSnapshot(effectiveBillingUnit, segment, runtimeCtx),
 	}, true, nil
 }
 
@@ -292,11 +304,12 @@ func resolveAdvancedMediaTaskPriceData(ctx AdvancedPricingRuntimeContext, ruleSe
 	}
 
 	return types.PriceData{
-		ModelPrice:           *segment.UnitPrice,
-		BillingMode:          types.BillingModeAdvanced,
-		AdvancedRuleType:     ruleSet.RuleType,
-		AdvancedRuleSnapshot: buildAdvancedMediaRuleSnapshot(ruleSet.RuleType, ruleSet.TaskType, segment, runtimeCtx, ctx.PromptTokens),
-		UsePrice:             true,
+		ModelPrice:             *segment.UnitPrice,
+		BillingMode:            types.BillingModeAdvanced,
+		AdvancedRuleType:       ruleSet.RuleType,
+		AdvancedRuleSnapshot:   buildAdvancedMediaRuleSnapshot(ruleSet.RuleType, ruleSet.TaskType, resolveAdvancedPricingBillingUnit(ruleSet.BillingUnit), segment, runtimeCtx, ctx.PromptTokens),
+		AdvancedPricingContext: buildAdvancedMediaPricingContextSnapshot(resolveAdvancedPricingBillingUnit(ruleSet.BillingUnit), segment),
+		UsePrice:               true,
 	}, true, nil
 }
 
@@ -317,6 +330,16 @@ func buildAdvancedMediaRuntimeContext(ctx AdvancedPricingRuntimeContext) advance
 	runtimeCtx.inputVideoDuration = ctx.Task.InputVideoDuration
 	runtimeCtx.draft = cloneAdvancedBoolPtr(ctx.Task.Draft)
 	return runtimeCtx
+}
+
+func buildAdvancedTextRuntimeContext(ctx AdvancedPricingRuntimeContext) advancedTextRuntimeContext {
+	return advancedTextRuntimeContext{
+		inputTokens:      ctx.PromptTokens,
+		outputTokens:     getRuntimeOutputTokens(ctx.Meta),
+		serviceTier:      extractAdvancedPricingServiceTier(ctx.Request),
+		inputModalities:  collectAdvancedTextInputModalities(ctx),
+		outputModalities: collectAdvancedTextOutputModalities(ctx),
+	}
 }
 
 func getRuntimeOutputTokens(meta *types.TokenCountMeta) int {
@@ -343,6 +366,14 @@ func normalizeAdvancedPricingServiceTier(value string) string {
 	return normalizeAdvancedPricingComparableString(value)
 }
 
+func resolveAdvancedPricingBillingUnit(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return types.AdvancedBillingUnitPerMillionTokens
+	}
+	return trimmed
+}
+
 func normalizeAdvancedPricingComparableString(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
@@ -357,6 +388,211 @@ func normalizeAdvancedPricingRawString(data []byte) string {
 		return strings.TrimSpace(value)
 	}
 	return strings.Trim(strings.TrimSpace(string(data)), `"`)
+}
+
+func collectAdvancedTextInputModalities(ctx AdvancedPricingRuntimeContext) []string {
+	if len(ctx.InputModalities) > 0 {
+		return normalizeAdvancedPricingModalities(ctx.InputModalities)
+	}
+
+	modalities := make([]string, 0, 6)
+	modalities = append(modalities, extractAdvancedPricingRequestInputModalities(ctx.Request)...)
+	if ctx.Meta != nil {
+		for _, file := range ctx.Meta.Files {
+			if file == nil {
+				continue
+			}
+			switch file.FileType {
+			case types.FileTypeImage:
+				modalities = append(modalities, "image")
+			case types.FileTypeAudio:
+				modalities = append(modalities, "audio")
+			case types.FileTypeVideo:
+				modalities = append(modalities, "video")
+			case types.FileTypeFile:
+				modalities = append(modalities, "file")
+			}
+		}
+	}
+
+	switch req := ctx.Request.(type) {
+	case *dto.OpenAIResponsesRequest:
+		modalities = append(modalities, extractResponsesRequestInputModalities(req.Input)...)
+	}
+
+	if len(modalities) == 0 {
+		modalities = append(modalities, "text")
+	}
+	return normalizeAdvancedPricingModalities(modalities)
+}
+
+func extractAdvancedPricingRequestInputModalities(request dto.Request) []string {
+	switch req := request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		return extractGeneralOpenAIRequestInputModalities(req)
+	case *dto.OpenAIResponsesRequest:
+		return extractResponsesRequestDeclaredInputModalities(req)
+	default:
+		return nil
+	}
+}
+
+func extractGeneralOpenAIRequestInputModalities(req *dto.GeneralOpenAIRequest) []string {
+	if req == nil {
+		return nil
+	}
+
+	modalities := make([]string, 0, 6)
+	if req.Prompt != nil || req.Input != nil {
+		modalities = append(modalities, "text")
+	}
+	for _, message := range req.Messages {
+		if content := strings.TrimSpace(message.StringContent()); content != "" {
+			modalities = append(modalities, "text")
+		}
+		for _, content := range message.ParseContent() {
+			switch content.Type {
+			case dto.ContentTypeText:
+				if strings.TrimSpace(content.Text) != "" {
+					modalities = append(modalities, "text")
+				}
+			case dto.ContentTypeImageURL:
+				modalities = append(modalities, "image")
+			case dto.ContentTypeInputAudio:
+				modalities = append(modalities, "audio")
+			case dto.ContentTypeFile:
+				modalities = append(modalities, "file")
+			case dto.ContentTypeVideoUrl:
+				modalities = append(modalities, "video")
+			}
+		}
+	}
+	return modalities
+}
+
+func extractResponsesRequestDeclaredInputModalities(req *dto.OpenAIResponsesRequest) []string {
+	if req == nil {
+		return nil
+	}
+
+	modalities := make([]string, 0, 6)
+	for _, input := range req.ParseInput() {
+		switch input.Type {
+		case "input_text":
+			if strings.TrimSpace(input.Text) != "" {
+				modalities = append(modalities, "text")
+			}
+		case "input_image":
+			modalities = append(modalities, "image")
+		case "input_file":
+			modalities = append(modalities, "file")
+		}
+	}
+	if len(req.Instructions) > 0 || len(req.Text) > 0 || len(req.Prompt) > 0 {
+		modalities = append(modalities, "text")
+	}
+	return modalities
+}
+
+func collectAdvancedTextOutputModalities(ctx AdvancedPricingRuntimeContext) []string {
+	if len(ctx.OutputModalities) > 0 {
+		return normalizeAdvancedPricingModalities(ctx.OutputModalities)
+	}
+
+	modalities := make([]string, 0, 2)
+	switch req := ctx.Request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		modalities = append(modalities, extractAdvancedPricingRawStringSlice(req.Modalities)...)
+		if len(req.Audio) > 0 {
+			modalities = append(modalities, "audio")
+		}
+	}
+
+	if len(modalities) == 0 {
+		modalities = append(modalities, "text")
+	}
+	return normalizeAdvancedPricingModalities(modalities)
+}
+
+func normalizeAdvancedPricingModalities(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	unique := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		normalized := normalizeAdvancedPricingComparableString(value)
+		if normalized == "" {
+			continue
+		}
+		unique[normalized] = struct{}{}
+	}
+	if len(unique) == 0 {
+		return nil
+	}
+
+	normalizedValues := make([]string, 0, len(unique))
+	for value := range unique {
+		normalizedValues = append(normalizedValues, value)
+	}
+	sort.Strings(normalizedValues)
+	return normalizedValues
+}
+
+func extractAdvancedPricingRawStringSlice(data []byte) []string {
+	if len(data) == 0 {
+		return nil
+	}
+
+	switch common.GetJsonType(data) {
+	case "string":
+		value := normalizeAdvancedPricingRawString(data)
+		if value == "" {
+			return nil
+		}
+		return []string{value}
+	case "array":
+		var values []string
+		if err := common.Unmarshal(data, &values); err == nil {
+			return values
+		}
+	}
+	return nil
+}
+
+func extractResponsesRequestInputModalities(data []byte) []string {
+	if len(data) == 0 || common.GetJsonType(data) != "array" {
+		return nil
+	}
+
+	var inputs []map[string]any
+	if err := common.Unmarshal(data, &inputs); err != nil {
+		return nil
+	}
+
+	modalities := make([]string, 0, 4)
+	for _, input := range inputs {
+		content, ok := input["content"].([]any)
+		if !ok {
+			continue
+		}
+		for _, contentItem := range content {
+			item, ok := contentItem.(map[string]any)
+			if !ok {
+				continue
+			}
+			modality := normalizeAdvancedPricingComparableString(common.Interface2String(item["type"]))
+			switch modality {
+			case "input_audio":
+				modalities = append(modalities, "audio")
+			case "input_image":
+				modalities = append(modalities, "image")
+			case "input_file":
+				modalities = append(modalities, "file")
+			}
+		}
+	}
+	return modalities
 }
 
 func normalizeLegacyAdvancedPricingRuleSet(payload advancedPricingRuleSetPayload, defaultPrice *float64) (AdvancedPricingRuleSet, bool, error) {
@@ -570,6 +806,12 @@ func matchAdvancedTextSegment(segment AdvancedPriceRule, runtimeCtx advancedText
 	if serviceTier := normalizeAdvancedPricingServiceTier(segment.ServiceTier); serviceTier != "" && serviceTier != runtimeCtx.serviceTier {
 		return false
 	}
+	if inputModality := normalizeAdvancedPricingComparableString(segment.InputModality); inputModality != "" && !advancedPricingModalityMatch(runtimeCtx.inputModalities, inputModality) {
+		return false
+	}
+	if outputModality := normalizeAdvancedPricingComparableString(segment.OutputModality); outputModality != "" && !advancedPricingModalityMatch(runtimeCtx.outputModalities, outputModality) {
+		return false
+	}
 	if segment.CacheRead != nil {
 		if runtimeCtx.cacheRead == nil || *segment.CacheRead != *runtimeCtx.cacheRead {
 			return false
@@ -581,6 +823,15 @@ func matchAdvancedTextSegment(segment AdvancedPriceRule, runtimeCtx advancedText
 		}
 	}
 	return true
+}
+
+func advancedPricingModalityMatch(runtimeModalities []string, ruleModality string) bool {
+	for _, modality := range runtimeModalities {
+		if modality == ruleModality {
+			return true
+		}
+	}
+	return false
 }
 
 func matchAdvancedMediaTaskType(ruleTaskType string, runtimeCtx advancedMediaRuntimeContext) bool {
@@ -648,40 +899,79 @@ func deriveAdvancedRelativeRatio(inputPrice *float64, targetPrice *float64) (flo
 	return *targetPrice / *inputPrice, nil
 }
 
-func buildAdvancedRuleSnapshot(ruleType AdvancedRuleType, segment AdvancedPriceRule, runtimeCtx advancedTextRuntimeContext) *types.AdvancedRuleSnapshot {
+func buildAdvancedRuleSnapshot(ruleType AdvancedRuleType, billingUnit string, segment AdvancedPriceRule, runtimeCtx advancedTextRuntimeContext) *types.AdvancedRuleSnapshot {
 	return &types.AdvancedRuleSnapshot{
-		RuleType:      ruleType,
-		MatchSummary:  buildAdvancedMatchSummary(segment, runtimeCtx),
-		ConditionTags: buildAdvancedConditionTags(segment),
-		Priority:      cloneAdvancedIntPtr(segment.Priority),
-		ServiceTier:   normalizeAdvancedPricingServiceTier(segment.ServiceTier),
-		CacheRead:     cloneAdvancedBoolPtr(segment.CacheRead),
-		CacheCreate:   cloneAdvancedBoolPtr(segment.CacheCreate),
+		RuleType:       ruleType,
+		MatchSummary:   buildAdvancedMatchSummary(segment, runtimeCtx),
+		ConditionTags:  buildAdvancedConditionTags(segment),
+		Priority:       cloneAdvancedIntPtr(segment.Priority),
+		BillingUnit:    billingUnit,
+		ServiceTier:    normalizeAdvancedPricingServiceTier(segment.ServiceTier),
+		InputModality:  normalizeAdvancedPricingComparableString(segment.InputModality),
+		OutputModality: normalizeAdvancedPricingComparableString(segment.OutputModality),
+		ImageSizeTier:  normalizeAdvancedPricingComparableString(segment.ImageSizeTier),
+		ToolUsageType:  normalizeAdvancedPricingComparableString(segment.ToolUsageType),
+		CacheRead:      cloneAdvancedBoolPtr(segment.CacheRead),
+		CacheCreate:    cloneAdvancedBoolPtr(segment.CacheCreate),
 		PriceSnapshot: types.AdvancedRulePriceSnapshot{
-			InputPrice:       cloneAdvancedFloatPtr(segment.InputPrice),
-			OutputPrice:      cloneAdvancedFloatPtr(segment.OutputPrice),
-			CacheReadPrice:   cloneAdvancedFloatPtr(segment.CacheReadPrice),
-			CacheCreatePrice: cloneAdvancedFloatPtr(segment.CacheCreatePrice),
+			InputPrice:        cloneAdvancedFloatPtr(segment.InputPrice),
+			OutputPrice:       cloneAdvancedFloatPtr(segment.OutputPrice),
+			CacheReadPrice:    cloneAdvancedFloatPtr(segment.CacheReadPrice),
+			CacheCreatePrice:  cloneAdvancedFloatPtr(segment.CacheCreatePrice),
+			CacheStoragePrice: cloneAdvancedFloatPtr(segment.CacheStoragePrice),
 		},
 		ThresholdSnapshot: types.AdvancedRuleThresholdSnapshot{
-			InputMin:  cloneAdvancedIntPtr(segment.InputMin),
-			InputMax:  cloneAdvancedIntPtr(segment.InputMax),
-			OutputMin: cloneAdvancedIntPtr(segment.OutputMin),
-			OutputMax: cloneAdvancedIntPtr(segment.OutputMax),
+			InputMin:         cloneAdvancedIntPtr(segment.InputMin),
+			InputMax:         cloneAdvancedIntPtr(segment.InputMax),
+			OutputMin:        cloneAdvancedIntPtr(segment.OutputMin),
+			OutputMax:        cloneAdvancedIntPtr(segment.OutputMax),
+			ToolUsageCount:   cloneAdvancedIntPtr(segment.ToolUsageCount),
+			FreeQuota:        cloneAdvancedIntPtr(segment.FreeQuota),
+			OverageThreshold: cloneAdvancedIntPtr(segment.OverageThreshold),
 		},
 	}
 }
 
-func buildAdvancedMediaRuleSnapshot(ruleType AdvancedRuleType, taskType string, segment AdvancedPriceRule, runtimeCtx advancedMediaRuntimeContext, promptTokens int) *types.AdvancedRuleSnapshot {
+func buildAdvancedMediaRuleSnapshot(ruleType AdvancedRuleType, taskType string, billingUnit string, segment AdvancedPriceRule, runtimeCtx advancedMediaRuntimeContext, promptTokens int) *types.AdvancedRuleSnapshot {
 	return &types.AdvancedRuleSnapshot{
 		RuleType:      ruleType,
 		MatchSummary:  buildAdvancedMediaMatchSummary(segment, runtimeCtx, promptTokens),
 		ConditionTags: buildAdvancedMediaConditionTags(segment),
 		Priority:      cloneAdvancedIntPtr(segment.Priority),
 		TaskType:      strings.TrimSpace(taskType),
+		BillingUnit:   billingUnit,
+		ImageSizeTier: normalizeAdvancedPricingComparableString(segment.ImageSizeTier),
+		ToolUsageType: normalizeAdvancedPricingComparableString(segment.ToolUsageType),
 		ThresholdSnapshot: types.AdvancedRuleThresholdSnapshot{
-			MinTokens: cloneAdvancedIntPtr(segment.MinTokens),
+			MinTokens:        cloneAdvancedIntPtr(segment.MinTokens),
+			ToolUsageCount:   cloneAdvancedIntPtr(segment.ToolUsageCount),
+			FreeQuota:        cloneAdvancedIntPtr(segment.FreeQuota),
+			OverageThreshold: cloneAdvancedIntPtr(segment.OverageThreshold),
 		},
+	}
+}
+
+func buildAdvancedPricingContextSnapshot(billingUnit string, segment AdvancedPriceRule, runtimeCtx advancedTextRuntimeContext) *types.AdvancedPricingContextSnapshot {
+	return &types.AdvancedPricingContextSnapshot{
+		BillingUnit:      billingUnit,
+		InputModalities:  cloneAdvancedStringSlice(runtimeCtx.inputModalities),
+		OutputModalities: cloneAdvancedStringSlice(runtimeCtx.outputModalities),
+		ImageSizeTier:    normalizeAdvancedPricingComparableString(segment.ImageSizeTier),
+		ToolUsageType:    normalizeAdvancedPricingComparableString(segment.ToolUsageType),
+		ToolUsageCount:   cloneAdvancedIntPtr(segment.ToolUsageCount),
+		FreeQuota:        cloneAdvancedIntPtr(segment.FreeQuota),
+		OverageThreshold: cloneAdvancedIntPtr(segment.OverageThreshold),
+	}
+}
+
+func buildAdvancedMediaPricingContextSnapshot(billingUnit string, segment AdvancedPriceRule) *types.AdvancedPricingContextSnapshot {
+	return &types.AdvancedPricingContextSnapshot{
+		BillingUnit:      billingUnit,
+		ImageSizeTier:    normalizeAdvancedPricingComparableString(segment.ImageSizeTier),
+		ToolUsageType:    normalizeAdvancedPricingComparableString(segment.ToolUsageType),
+		ToolUsageCount:   cloneAdvancedIntPtr(segment.ToolUsageCount),
+		FreeQuota:        cloneAdvancedIntPtr(segment.FreeQuota),
+		OverageThreshold: cloneAdvancedIntPtr(segment.OverageThreshold),
 	}
 }
 
@@ -693,6 +983,12 @@ func buildAdvancedMatchSummary(segment AdvancedPriceRule, runtimeCtx advancedTex
 	}
 	if runtimeCtx.serviceTier != "" {
 		parts = append(parts, fmt.Sprintf("service_tier=%s", runtimeCtx.serviceTier))
+	}
+	if len(runtimeCtx.inputModalities) > 0 {
+		parts = append(parts, fmt.Sprintf("input_modalities=%s", strings.Join(runtimeCtx.inputModalities, ",")))
+	}
+	if len(runtimeCtx.outputModalities) > 0 {
+		parts = append(parts, fmt.Sprintf("output_modalities=%s", strings.Join(runtimeCtx.outputModalities, ",")))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -737,7 +1033,7 @@ func buildAdvancedMediaMatchSummary(segment AdvancedPriceRule, runtimeCtx advanc
 }
 
 func buildAdvancedConditionTags(segment AdvancedPriceRule) []string {
-	tags := make([]string, 0, 5)
+	tags := make([]string, 0, 10)
 	if hasIntRange(segment.InputMin, segment.InputMax) {
 		tags = append(tags, formatAdvancedRangeTag("input", segment.InputMin, segment.InputMax))
 	}
@@ -746,6 +1042,18 @@ func buildAdvancedConditionTags(segment AdvancedPriceRule) []string {
 	}
 	if serviceTier := normalizeAdvancedPricingServiceTier(segment.ServiceTier); serviceTier != "" {
 		tags = append(tags, fmt.Sprintf("service_tier:%s", serviceTier))
+	}
+	if inputModality := normalizeAdvancedPricingComparableString(segment.InputModality); inputModality != "" {
+		tags = append(tags, fmt.Sprintf("input_modality:%s", inputModality))
+	}
+	if outputModality := normalizeAdvancedPricingComparableString(segment.OutputModality); outputModality != "" {
+		tags = append(tags, fmt.Sprintf("output_modality:%s", outputModality))
+	}
+	if imageSizeTier := normalizeAdvancedPricingComparableString(segment.ImageSizeTier); imageSizeTier != "" {
+		tags = append(tags, fmt.Sprintf("image_size_tier:%s", imageSizeTier))
+	}
+	if toolUsageType := normalizeAdvancedPricingComparableString(segment.ToolUsageType); toolUsageType != "" {
+		tags = append(tags, fmt.Sprintf("tool_usage_type:%s", toolUsageType))
 	}
 	if segment.CacheRead != nil {
 		tags = append(tags, fmt.Sprintf("cache_read:%t", *segment.CacheRead))
@@ -814,6 +1122,14 @@ func cloneAdvancedFloatPtr(v *float64) *float64 {
 	}
 	cloned := *v
 	return &cloned
+}
+
+func cloneAdvancedStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := append([]string(nil), values...)
+	return cloned
 }
 
 func valueFromAdvancedFloatPtr(v *float64) float64 {
@@ -956,6 +1272,10 @@ func normalizeAdvancedPricingRuleServiceTiers(rules map[string]AdvancedPricingRu
 		normalizedSegments := make([]AdvancedPriceRule, len(ruleSet.Segments))
 		for index, segment := range ruleSet.Segments {
 			segment.ServiceTier = normalizeAdvancedPricingServiceTier(segment.ServiceTier)
+			segment.InputModality = normalizeAdvancedPricingComparableString(segment.InputModality)
+			segment.OutputModality = normalizeAdvancedPricingComparableString(segment.OutputModality)
+			segment.ImageSizeTier = normalizeAdvancedPricingComparableString(segment.ImageSizeTier)
+			segment.ToolUsageType = normalizeAdvancedPricingComparableString(segment.ToolUsageType)
 			normalizedSegments[index] = segment
 		}
 		ruleSet.Segments = normalizedSegments
@@ -1114,12 +1434,26 @@ func validateTextRange(modelName, rangeName string, minVal, maxVal *int) error {
 func hasTextCondition(segment AdvancedPriceRule) bool {
 	return hasIntRange(segment.InputMin, segment.InputMax) ||
 		hasIntRange(segment.OutputMin, segment.OutputMax) ||
-		normalizeAdvancedPricingServiceTier(segment.ServiceTier) != ""
+		normalizeAdvancedPricingServiceTier(segment.ServiceTier) != "" ||
+		normalizeAdvancedPricingComparableString(segment.InputModality) != "" ||
+		normalizeAdvancedPricingComparableString(segment.OutputModality) != ""
 }
 
 func validateUnsupportedTextRuntimeFields(modelName string, segment AdvancedPriceRule) error {
 	if segment.CacheRead != nil || segment.CacheCreate != nil {
 		return fmt.Errorf("model %s text segment cache_read/cache_create conditions are not supported in advanced runtime", modelName)
+	}
+	if segment.CacheStoragePrice != nil && *segment.CacheStoragePrice < 0 {
+		return fmt.Errorf("model %s text segment cache_storage_price cannot be negative", modelName)
+	}
+	if segment.ToolUsageCount != nil && *segment.ToolUsageCount < 0 {
+		return fmt.Errorf("model %s text segment tool_usage_count cannot be negative", modelName)
+	}
+	if segment.FreeQuota != nil && *segment.FreeQuota < 0 {
+		return fmt.Errorf("model %s text segment free_quota cannot be negative", modelName)
+	}
+	if segment.OverageThreshold != nil && *segment.OverageThreshold < 0 {
+		return fmt.Errorf("model %s text segment overage_threshold cannot be negative", modelName)
 	}
 	return nil
 }
@@ -1147,6 +1481,12 @@ func hasIntRange(minVal, maxVal *int) bool {
 
 func textSegmentsOverlap(left, right AdvancedPriceRule) bool {
 	if normalizeAdvancedPricingServiceTier(left.ServiceTier) != normalizeAdvancedPricingServiceTier(right.ServiceTier) {
+		return false
+	}
+	if normalizeAdvancedPricingComparableString(left.InputModality) != normalizeAdvancedPricingComparableString(right.InputModality) {
+		return false
+	}
+	if normalizeAdvancedPricingComparableString(left.OutputModality) != normalizeAdvancedPricingComparableString(right.OutputModality) {
 		return false
 	}
 	if !boolPointerEqual(left.CacheRead, right.CacheRead) {
