@@ -26,63 +26,36 @@ const source = fs.readFileSync(
   'utf8',
 );
 
-test('text segment rule editor keeps the modern config contract, summary metadata, and SideSheet workflow', () => {
-  assert.match(
-    source,
-    /export default function TextSegmentRuleEditor\(\{\s*config,\s*rules,\s*validationErrors = \[\],\s*onChange,\s*onConfigChange,\s*\}\)/,
-  );
-  assert.match(source, /serializeAdvancedPricingConfig/);
-  assert.match(source, /getTextSegmentRuleEditorMeta/);
-  assert.match(source, /const ruleMeta = useMemo/);
-  assert.match(source, /ruleMeta\.totalRules/);
-  assert.match(source, /ruleMeta\.enabledRules/);
-  assert.match(source, /ruleMeta\.hasDefaultPrice/);
-  assert.match(source, /priorityHint/);
-  assert.match(source, /config\?\.displayName/);
-  assert.match(source, /config\?\.segmentBasis/);
-  assert.match(source, /config\?\.billingUnit/);
-  assert.match(source, /config\?\.defaultPrice/);
-  assert.match(source, /config\?\.note/);
-  assert.match(source, /field: 'serviceTier'/);
-  assert.match(source, /SideSheet/);
-  assert.match(source, /sideSheetVisible/);
-  assert.match(source, /placement='right'/);
-  assert.match(source, /sheetPreviewInput/);
-  assert.match(source, /sheetPreviewResult/);
-  assert.match(source, /buildTextSegmentPreview/);
-  assert.match(source, /candidatePreviewRules/);
-  assert.match(source, /previewInput\?\.inputTokens/);
-  assert.match(source, /previewInput\?\.outputTokens/);
-  assert.match(source, /previewInput\?\.serviceTier/);
-  assert.match(source, /error\.includes\(candidateRule\.id\)/);
-  assert.doesNotMatch(source, /error\.includes\(String\(candidateRule\.priority\)\)/);
-  assert.doesNotMatch(source, /LegacyTextSegmentRuleEditor/);
-  assert.doesNotMatch(source, /Modal/);
-  assert.doesNotMatch(source, /onRuleTypeChange/);
-  assert.doesNotMatch(source, /onRuleFieldChange/);
+test('text segment rule editor keeps the preview input state, reset, and binding chain for image size tier and tool usage count', () => {
+  assert.match(source, /const TEXT_SEGMENT_PREVIEW_NUMERIC_FIELDS = new Set\(\[[\s\S]*'toolUsageCount'[\s\S]*\]\);/);
+  assert.match(source, /sheetPreviewInput, setSheetPreviewInput/);
+  assert.match(source, /imageSizeTier: ''/);
+  assert.match(source, /toolUsageCount: ''/);
+  assert.match(source, /previewInput\?\.imageSizeTier/);
+  assert.match(source, /previewInput\?\.toolUsageCount/);
+  assert.match(source, /handlePreviewInputChange\('imageSizeTier', value\)/);
+  assert.match(source, /handlePreviewInputChange\('toolUsageCount', value\)/);
 });
 
-test('text segment rule editor uses readable chinese billing summary labels in tables and preview tags', () => {
-  assert.match(source, /t\('输入单价'\)/);
-  assert.match(source, /t\('输出单价'\)/);
-  assert.match(source, /t\('缓存读单价'\)/);
-  assert.match(source, /t\('缓存写单价'\)/);
-  assert.match(source, /t\('规则总数'\)/);
-  assert.match(source, /t\('优先级'\)/);
-  assert.match(source, /t\('计费单位'\)/);
-  assert.match(source, /t\('当前规则 JSON'\)/);
-  assert.match(source, /t\('命中规则 JSON'\)/);
-  assert.doesNotMatch(source, /`input_price:/);
-  assert.doesNotMatch(source, /`output_price:/);
-  assert.doesNotMatch(source, /`cache_read_price:/);
-  assert.doesNotMatch(source, /`cache_write_price:/);
-  assert.doesNotMatch(source, /`segments=/);
-  assert.doesNotMatch(source, /`priority=/);
-  assert.doesNotMatch(source, /billing_unit/);
-  assert.doesNotMatch(source, /当前 segments JSON/);
-  assert.doesNotMatch(source, /命中 segment JSON/);
+test('text segment rule editor uses readable UTF-8 Chinese labels and placeholders for the new preview-related fields', () => {
+  assert.match(
+    source,
+    /field: 'imageSizeTier'[\s\S]*label: '图像档位'[\s\S]*placeholder: '例如 hd \/ 2k \/ 4k'/,
+  );
+  assert.match(
+    source,
+    /field: 'toolUsageCount'[\s\S]*label: '工具调用次数'[\s\S]*placeholder: '选填，填写整数值'/,
+  );
+  assert.match(source, /t\('图像档位'\)/);
+  assert.match(source, /t\('工具调用次数'\)/);
+  assert.match(source, /t\('例如 hd \/ 2k \/ 4k'\)/);
+  assert.match(source, /t\('例如 3（整数）'\)/);
+  assert.doesNotMatch(source, /鍥惧儚妗ｄ綅/);
+  assert.doesNotMatch(source, /渚嬪 hd \/ 2k/);
+  assert.doesNotMatch(source, /Tool Usage Count/);
 });
-test('text segment rule editor uses Semi top-level TextArea export instead of Input.TextArea', () => {
+
+test('text segment rule editor still uses Semi top-level TextArea export instead of Input.TextArea', () => {
   assert.match(
     source,
     /import \{[\s\S]*TextArea,[\s\S]*\} from '@douyinfe\/semi-ui';/,

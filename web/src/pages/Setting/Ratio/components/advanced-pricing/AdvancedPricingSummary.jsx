@@ -106,6 +106,35 @@ export default function AdvancedPricingSummary({
       )
     : t('未设置');
 
+  const advancedCapabilityTags = Array.from(
+    selectedModel?.advancedConfig?.rules?.reduce((result, rule) => {
+      [
+        ['inputModality', rule?.inputModality ?? rule?.input_modality],
+        ['outputModality', rule?.outputModality ?? rule?.output_modality],
+        ['billingUnit', rule?.billingUnit ?? rule?.billing_unit],
+        ['imageSizeTier', rule?.imageSizeTier ?? rule?.image_size_tier],
+        ['toolUsageType', rule?.toolUsageType ?? rule?.tool_usage_type],
+      ].forEach(([key, value]) => {
+        const normalizedValue = String(value || '').trim();
+        if (normalizedValue) {
+          result.add(`${key}: ${normalizedValue}`);
+        }
+      });
+
+      const cacheStoragePrice =
+        rule?.cacheStoragePrice ?? rule?.cache_storage_price;
+      if (
+        cacheStoragePrice !== '' &&
+        cacheStoragePrice !== null &&
+        cacheStoragePrice !== undefined
+      ) {
+        result.add(`cacheStoragePrice: ${cacheStoragePrice}`);
+      }
+
+      return result;
+    }, new Set()) || [],
+  );
+
   return (
     <Card
       title={t('当前模型摘要')}
@@ -239,6 +268,21 @@ export default function AdvancedPricingSummary({
               {t('规则类型会决定右侧加载哪种编辑器；当前已支持文本分段与媒体任务两种规则编辑。')}
             </div>
           </div>
+
+          {advancedCapabilityTags.length > 0 ? (
+            <div>
+              <div className='mb-2 font-medium text-gray-700'>
+                {t('规则能力')}
+              </div>
+              <Space wrap>
+                {advancedCapabilityTags.map((tag) => (
+                  <Tag key={tag} color='cyan'>
+                    {tag}
+                  </Tag>
+                ))}
+              </Space>
+            </div>
+          ) : null}
 
           {hasPendingModeChange ? (
             <Banner

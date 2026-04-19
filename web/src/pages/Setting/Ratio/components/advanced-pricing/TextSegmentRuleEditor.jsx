@@ -50,6 +50,11 @@ import { useIsMobile } from '../../../../../hooks/common/useIsMobile';
 const { Text } = Typography;
 const INTEGER_INPUT_REGEX = /^\d*$/;
 const DECIMAL_INPUT_REGEX = /^(\d+(\.\d*)?|\.\d*)?$/;
+const TEXT_SEGMENT_PREVIEW_NUMERIC_FIELDS = new Set([
+  'inputTokens',
+  'outputTokens',
+  'toolUsageCount',
+]);
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const TEXT_SEGMENT_FIELDS = [
@@ -84,6 +89,21 @@ const TEXT_SEGMENT_FIELDS = [
     regex: INTEGER_INPUT_REGEX,
   },
   {
+    field: 'inputModality',
+    label: '输入模态',
+    placeholder: '例如 text / audio',
+  },
+  {
+    field: 'outputModality',
+    label: '输出模态',
+    placeholder: '例如 text / image',
+  },
+  {
+    field: 'billingUnit',
+    label: '计费单位',
+    placeholder: '例如 per_million_tokens',
+  },
+  {
     field: 'serviceTier',
     label: '服务层级',
     placeholder: '例如：standard / premium',
@@ -112,6 +132,40 @@ const TEXT_SEGMENT_FIELDS = [
     placeholder: '可选',
     regex: DECIMAL_INPUT_REGEX,
   },
+  {
+    field: 'cacheStoragePrice',
+    label: '缓存存储单价',
+    placeholder: '可选',
+    regex: DECIMAL_INPUT_REGEX,
+  },
+  {
+    field: 'imageSizeTier',
+    label: '图像档位',
+    placeholder: '例如 hd / 2k / 4k',
+  },
+  {
+    field: 'toolUsageType',
+    label: 'Tool Usage',
+    placeholder: '例如 google_search',
+  },
+  {
+    field: 'toolUsageCount',
+    label: '工具调用次数',
+    placeholder: '选填，填写整数值',
+    regex: INTEGER_INPUT_REGEX,
+  },
+  {
+    field: 'freeQuota',
+    label: 'Free Quota',
+    placeholder: '可选',
+    regex: INTEGER_INPUT_REGEX,
+  },
+  {
+    field: 'overageThreshold',
+    label: 'Overage Threshold',
+    placeholder: '可选',
+    regex: INTEGER_INPUT_REGEX,
+  },
 ];
 
 function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
@@ -125,6 +179,10 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
     inputTokens: '',
     outputTokens: '',
     serviceTier: '',
+    inputModality: '',
+    outputModality: '',
+    imageSizeTier: '',
+    toolUsageCount: '',
   });
 
   const sortedRules = useMemo(() => sortTextSegmentRules(rules || []), [rules]);
@@ -138,6 +196,10 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
       inputTokens: '',
       outputTokens: '',
       serviceTier: '',
+      inputModality: '',
+      outputModality: '',
+      imageSizeTier: '',
+      toolUsageCount: '',
     });
   };
 
@@ -212,7 +274,10 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
   };
 
   const handlePreviewInputChange = (field, value) => {
-    if (field !== 'serviceTier' && !INTEGER_INPUT_REGEX.test(value)) {
+    if (
+      TEXT_SEGMENT_PREVIEW_NUMERIC_FIELDS.has(field) &&
+      !INTEGER_INPUT_REGEX.test(value)
+    ) {
       return;
     }
 
@@ -552,6 +617,54 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
                     placeholder={t('例如 standard / priority')}
                     onChange={(value) =>
                       handlePreviewInputChange('serviceTier', value)
+                    }
+                  />
+                </div>
+                <div>
+                  <div className='mb-1 font-medium text-gray-700'>
+                    {t('输入模态')}
+                  </div>
+                  <Input
+                    value={previewInput?.inputModality || ''}
+                    placeholder={t('例如 text / audio')}
+                    onChange={(value) =>
+                      handlePreviewInputChange('inputModality', value)
+                    }
+                  />
+                </div>
+                <div>
+                  <div className='mb-1 font-medium text-gray-700'>
+                    {t('输出模态')}
+                  </div>
+                  <Input
+                    value={previewInput?.outputModality || ''}
+                    placeholder={t('例如 text / image')}
+                    onChange={(value) =>
+                      handlePreviewInputChange('outputModality', value)
+                    }
+                  />
+                </div>
+                <div>
+                  <div className='mb-1 font-medium text-gray-700'>
+                    {t('图像档位')}
+                  </div>
+                  <Input
+                    value={previewInput?.imageSizeTier || ''}
+                    placeholder={t('例如 hd / 2k / 4k')}
+                    onChange={(value) =>
+                      handlePreviewInputChange('imageSizeTier', value)
+                    }
+                  />
+                </div>
+                <div>
+                  <div className='mb-1 font-medium text-gray-700'>
+                    {t('工具调用次数')}
+                  </div>
+                  <Input
+                    value={previewInput?.toolUsageCount || ''}
+                    placeholder={t('例如 3（整数）')}
+                    onChange={(value) =>
+                      handlePreviewInputChange('toolUsageCount', value)
                     }
                   />
                 </div>

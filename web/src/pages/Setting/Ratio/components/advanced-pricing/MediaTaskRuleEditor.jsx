@@ -52,6 +52,7 @@ const INTEGER_INPUT_REGEX = /^\d*$/;
 const DECIMAL_INPUT_REGEX = /^(\d+(\.\d*)?|\.\d*)?$/;
 const EMPTY_MEDIA_TASK_PREVIEW_INPUT = {
   rawAction: '',
+  inferenceMode: '',
   usageTotalTokens: '',
   inputVideo: '',
   audio: '',
@@ -122,6 +123,21 @@ export default function MediaTaskRuleEditor({
         placeholder: t('如 fast / quality'),
       },
       {
+        field: 'inputModality',
+        label: t('输入模态'),
+        placeholder: t('例如 image / audio'),
+      },
+      {
+        field: 'outputModality',
+        label: t('输出模态'),
+        placeholder: t('例如 image / video'),
+      },
+      {
+        field: 'billingUnit',
+        label: t('计费单位'),
+        placeholder: t('例如 per_image'),
+      },
+      {
         field: 'resolution',
         label: t('分辨率'),
         placeholder: t('如 720p / 1080p'),
@@ -172,6 +188,34 @@ export default function MediaTaskRuleEditor({
         label: t('草稿系数'),
         placeholder: t('如 0.5'),
         regex: DECIMAL_INPUT_REGEX,
+      },
+      {
+        field: 'imageSizeTier',
+        label: t('图像档位'),
+        placeholder: t('例如 1k / 2k / 4k'),
+      },
+      {
+        field: 'toolUsageType',
+        label: t('工具调用类型'),
+        placeholder: t('例如 google_search'),
+      },
+      {
+        field: 'toolUsageCount',
+        label: t('工具调用次数'),
+        placeholder: t('可选'),
+        regex: INTEGER_INPUT_REGEX,
+      },
+      {
+        field: 'freeQuota',
+        label: t('免费额度'),
+        placeholder: t('可选'),
+        regex: INTEGER_INPUT_REGEX,
+      },
+      {
+        field: 'overageThreshold',
+        label: t('超额阈值'),
+        placeholder: t('可选'),
+        regex: INTEGER_INPUT_REGEX,
       },
     ],
     [t],
@@ -803,6 +847,19 @@ export default function MediaTaskRuleEditor({
                     }
                   />
                 </div>
+              </div>
+
+              <div style={{ width: '100%' }}>
+                <div className='mb-1 font-medium text-gray-700'>
+                  {t('推理模式')}
+                </div>
+                <Input
+                  value={previewInput?.inferenceMode || ''}
+                  placeholder={t('如 fast / quality')}
+                  onChange={(value) =>
+                    handlePreviewInputChange('inferenceMode', value)
+                  }
+                />
               </div>
 
               <div style={{ width: '100%' }}>

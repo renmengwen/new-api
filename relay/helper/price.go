@@ -50,11 +50,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	}
 
 	if mode == ratio_setting.BillingModeAdvanced {
-		advancedPriceData, ok, err := ratio_setting.ResolveAdvancedPriceData(info.OriginModelName, ratio_setting.AdvancedPricingRuntimeContext{
-			PromptTokens: promptTokens,
-			Meta:         meta,
-			Request:      info.Request,
-		})
+		advancedPriceData, ok, err := ratio_setting.ResolveAdvancedPriceData(info.OriginModelName, buildAdvancedPricingRuntimeContext(info, promptTokens, meta))
 		if err != nil {
 			return types.PriceData{}, err
 		}
@@ -287,10 +283,9 @@ func resolveExplicitPerCallPriceData(c *gin.Context, info *relaycommon.RelayInfo
 		}
 		return finalizePerCallPriceData(priceData), true, nil
 	case ratio_setting.BillingModeAdvanced:
-		priceData, ok, err := ratio_setting.ResolveAdvancedPriceData(info.OriginModelName, ratio_setting.AdvancedPricingRuntimeContext{
-			Request: info.Request,
-			Task:    buildAdvancedPricingTaskContext(c, info),
-		})
+		runtimeCtx := buildAdvancedPricingRuntimeContext(info, 0, nil)
+		runtimeCtx.Task = buildAdvancedPricingTaskContext(c, info)
+		priceData, ok, err := ratio_setting.ResolveAdvancedPriceData(info.OriginModelName, runtimeCtx)
 		if err != nil {
 			return types.PriceData{}, true, err
 		}
@@ -331,6 +326,25 @@ func resolveLegacyPerCallPriceData(info *relaycommon.RelayInfo, groupRatioInfo t
 func finalizePerCallPriceData(priceData types.PriceData) types.PriceData {
 	priceData.Quota = priceData.QuotaToPreConsume
 	return priceData
+}
+
+func buildAdvancedPricingRuntimeContext(info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) ratio_setting.AdvancedPricingRuntimeContext {
+	runtimeCtx := ratio_setting.AdvancedPricingRuntimeContext{
+		PromptTokens: promptTokens,
+		Meta:         meta,
+	}
+	if info == nil {
+		return runtimeCtx
+	}
+
+	runtimeCtx.Request = info.Request
+	if strings.TrimSpace(info.InputAudioFormat) != "" {
+		runtimeCtx.InputModalities = append(runtimeCtx.InputModalities, "audio")
+	}
+	if strings.TrimSpace(info.OutputAudioFormat) != "" {
+		runtimeCtx.OutputModalities = append(runtimeCtx.OutputModalities, "audio")
+	}
+	return runtimeCtx
 }
 
 func buildAdvancedPricingTaskContext(c *gin.Context, info *relaycommon.RelayInfo) *ratio_setting.AdvancedPricingTaskContext {

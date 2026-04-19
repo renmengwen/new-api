@@ -35,3 +35,13 @@ test('advanced pricing summary distinguishes persisted effective mode from unsav
   assert.match(source, /selectedModel\.effectiveMode !== selectedModel\.selectedMode/);
   assert.match(source, /本地未保存/);
 });
+
+test('advanced pricing summary surfaces capability scaffolding from the selected advanced config', () => {
+  assert.match(source, /selectedModel\?\.advancedConfig/);
+  assert.match(source, /inputModality/);
+  assert.match(source, /outputModality/);
+  assert.match(source, /billingUnit/);
+  assert.match(source, /imageSizeTier/);
+  assert.match(source, /cacheStoragePrice/);
+  assert.match(source, /toolUsageType/);
+});

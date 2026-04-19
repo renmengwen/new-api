@@ -207,6 +207,72 @@ test('validateTextSegmentRules allows overlapping ranges when service tiers diff
   assert.equal(errors.length, 0);
 });
 
+test('validateTextSegmentRules allows overlapping ranges when text modalities differ', () => {
+  const errors = validateTextSegmentRules([
+    {
+      id: 'rule-text',
+      enabled: true,
+      priority: 1,
+      inputMin: 0,
+      inputMax: 32000,
+      outputMin: 0,
+      outputMax: 16000,
+      inputModality: 'text',
+      outputModality: 'text',
+      inputPrice: '0.2',
+      outputPrice: '0.4',
+    },
+    {
+      id: 'rule-audio',
+      enabled: true,
+      priority: 2,
+      inputMin: 0,
+      inputMax: 32000,
+      outputMin: 0,
+      outputMax: 16000,
+      inputModality: 'audio',
+      outputModality: 'audio',
+      inputPrice: '0.25',
+      outputPrice: '0.5',
+    },
+  ]);
+
+  assert.equal(errors.length, 0);
+});
+
+test('validateTextSegmentRules allows overlapping ranges when only one text modality selector differs', () => {
+  const errors = validateTextSegmentRules([
+    {
+      id: 'rule-image-output',
+      enabled: true,
+      priority: 1,
+      inputMin: 0,
+      inputMax: 32000,
+      outputMin: 0,
+      outputMax: 16000,
+      inputModality: 'text',
+      outputModality: 'image',
+      inputPrice: '0.2',
+      outputPrice: '0.4',
+    },
+    {
+      id: 'rule-video-output',
+      enabled: true,
+      priority: 2,
+      inputMin: 0,
+      inputMax: 32000,
+      outputMin: 0,
+      outputMax: 16000,
+      inputModality: 'text',
+      outputModality: 'video',
+      inputPrice: '0.25',
+      outputPrice: '0.5',
+    },
+  ]);
+
+  assert.equal(errors.length, 0);
+});
+
 test('validateTextSegmentRules allows a single default text rule without conditions', () => {
   const errors = validateTextSegmentRules([
     {
@@ -421,6 +487,153 @@ test('buildTextSegmentPreview matches service tier case-insensitively', () => {
   assert.match(preview.conditionSummary, /default/i);
 });
 
+test('buildTextSegmentPreview detailSummary does not show preview service tier when matched rule has no tier', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-no-tier',
+        enabled: true,
+        priority: 10,
+        inputMin: 0,
+        inputMax: 16000,
+        outputMin: 0,
+        outputMax: 8000,
+        inputPrice: '0.3',
+        outputPrice: '0.6',
+      },
+    ],
+    {
+      inputTokens: 1024,
+      outputTokens: 512,
+      serviceTier: 'priority',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-no-tier');
+  assert.doesNotMatch(preview.logPreview.detailSummary, /priority/i);
+});
+
+test('buildTextSegmentPreview detailSummary does not duplicate matched rule service tier', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-priority',
+        enabled: true,
+        priority: 10,
+        inputMin: 0,
+        inputMax: 16000,
+        outputMin: 0,
+        outputMax: 8000,
+        serviceTier: 'priority',
+        inputPrice: '0.3',
+        outputPrice: '0.6',
+      },
+    ],
+    {
+      inputTokens: 1024,
+      outputTokens: 512,
+      serviceTier: 'priority',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-priority');
+  assert.equal(
+    preview.logPreview.detailSummary.match(/priority/gi)?.length ?? 0,
+    1,
+  );
+});
+
+test('buildTextSegmentConditionSummary includes modality and schema-supported extension fields', () => {
+  const summary = buildTextSegmentConditionSummary({
+    inputModality: 'audio',
+    outputModality: 'text',
+    imageSizeTier: 'hd',
+    toolUsageType: 'web_search',
+    toolUsageCount: '1000',
+  });
+
+  assert.match(summary, /input_modality=audio/);
+  assert.match(summary, /output_modality=text/);
+  assert.match(summary, /image_size_tier=hd/);
+  assert.match(summary, /tool_usage_type=web_search/);
+  assert.match(summary, /tool_usage_count>=1000/);
+});
+
+test('buildTextSegmentPreview matches modality-aware rules and exposes cache/tool scaffolding fields', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-audio',
+        enabled: true,
+        priority: 1,
+        inputModality: 'audio',
+        outputModality: 'text',
+        billingUnit: 'per_million_tokens',
+        cacheStoragePrice: '1',
+        toolUsageType: 'google_search',
+        freeQuota: '500',
+        overageThreshold: '1000',
+        inputPrice: '1',
+        outputPrice: '2.5',
+      },
+    ],
+    {
+      inputModality: 'audio',
+      outputModality: 'text',
+      toolUsageType: 'google_search',
+      toolUsageCount: '750',
+      inputTokens: '128',
+      outputTokens: '64',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-audio');
+  assert.equal(preview.priceSummary.cacheStoragePrice, '1');
+  assert.equal(preview.priceSummary.toolUsageCount, '750');
+  assert.equal(preview.priceSummary.freeQuota, '500');
+  assert.equal(preview.priceSummary.overageThreshold, '1000');
+  assert.equal(preview.priceSummary.billingUnit, 'per_million_tokens');
+  assert.equal(preview.matchedSegmentPreview.input_modality, 'audio');
+  assert.equal(preview.matchedSegmentPreview.output_modality, 'text');
+  assert.equal(preview.matchedSegmentPreview.tool_usage_type, 'google_search');
+});
+
+test('buildTextSegmentPreview ignores schema-only text selectors that backend matching does not implement', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-audio',
+        enabled: true,
+        priority: 1,
+        inputModality: 'audio',
+        outputModality: 'text',
+        imageSizeTier: 'hd',
+        toolUsageType: 'google_search',
+        toolUsageCount: '1000',
+        inputPrice: '1',
+        outputPrice: '2',
+      },
+    ],
+    {
+      inputModality: 'audio',
+      outputModality: 'text',
+      imageSizeTier: 'sd',
+      toolUsageType: 'code_interpreter',
+      toolUsageCount: '1',
+      inputTokens: '64',
+      outputTokens: '32',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-audio');
+  assert.doesNotMatch(preview.conditionSummary, /image_size_tier=/);
+  assert.doesNotMatch(preview.conditionSummary, /tool_usage_type=/);
+  assert.doesNotMatch(preview.conditionSummary, /tool_usage_count>=/);
+  assert.doesNotMatch(preview.logPreview.detailSummary, /image_size_tier=/);
+  assert.doesNotMatch(preview.logPreview.detailSummary, /tool_usage_type=/);
+  assert.doesNotMatch(preview.logPreview.detailSummary, /tool_usage_count>=/);
+});
+
 test('getTextSegmentRuleEditorMeta counts enabled rules and treats explicit zero default price as configured', () => {
   assert.deepEqual(
     getTextSegmentRuleEditorMeta(
@@ -535,6 +748,80 @@ test('buildMediaTaskPreview returns an unmatched preview when task conditions mi
   assert.equal(preview.matchedSegmentPreview, null);
   assert.equal(preview.formulaSummary, '');
   assert.equal(preview.priceSummary.estimatedCost, '');
+});
+
+test('buildMediaTaskPreview matches output modality, image tier, and tool usage scaffolding fields', () => {
+  const preview = buildMediaTaskPreview(
+    [
+      {
+        id: 'media-image',
+        priority: 1,
+        outputModality: 'image',
+        billingUnit: 'per_image',
+        imageSizeTier: '2k',
+        toolUsageType: 'google_search',
+        freeQuota: '100',
+        overageThreshold: '250',
+        unitPrice: '0.4',
+      },
+    ],
+    {
+      outputModality: 'image',
+      imageSizeTier: '2k',
+      toolUsageType: 'google_search',
+      toolUsageCount: '120',
+      usageTotalTokens: '1',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'media-image');
+  assert.equal(preview.priceSummary.toolUsageCount, '120');
+  assert.equal(preview.priceSummary.freeQuota, '100');
+  assert.equal(preview.priceSummary.overageThreshold, '250');
+  assert.equal(preview.priceSummary.billingUnit, 'per_image');
+  assert.equal(preview.matchedSegmentPreview.output_modality, 'image');
+  assert.equal(preview.matchedSegmentPreview.image_size_tier, '2k');
+  assert.equal(preview.matchedSegmentPreview.tool_usage_type, 'google_search');
+});
+
+test('buildMediaTaskPreview ignores media selectors that backend P1 matching does not implement', () => {
+  const preview = buildMediaTaskPreview(
+    [
+      {
+        id: 'media-backend-aligned',
+        priority: 1,
+        rawAction: 'generate',
+        inputModality: 'image',
+        outputModality: 'video',
+        imageSizeTier: '4k',
+        toolUsageType: 'web_search',
+        toolUsageCount: '3',
+        inferenceMode: 'quality',
+        resolution: '1080p',
+        aspectRatio: '16:9',
+        outputDurationMin: '0',
+        outputDurationMax: '8',
+        draft: 'true',
+        unitPrice: '0.4',
+      },
+    ],
+    {
+      rawAction: 'different-action',
+      inputModality: 'audio',
+      outputModality: 'image',
+      imageSizeTier: '1k',
+      toolUsageType: 'code_interpreter',
+      toolUsageCount: '99',
+      inferenceMode: 'quality',
+      resolution: '1080p',
+      aspectRatio: '16:9',
+      outputDuration: '6',
+      draft: 'true',
+      usageTotalTokens: '100',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'media-backend-aligned');
 });
 
 test('advanced pricing helper constants stay aligned with persisted runtime enums', () => {
@@ -668,6 +955,63 @@ test('normalizeAdvancedPricingConfig round-trips canonical text_segment configs 
   assert.deepEqual(serializeAdvancedPricingConfig(normalizedConfig), canonicalConfig);
 });
 
+test('normalizeAdvancedPricingConfig round-trips canonical text_segment configs with modality-aware extension fields', () => {
+  const canonicalConfig = {
+    rule_type: 'text_segment',
+    display_name: 'Gemini 2.5 Flash',
+    billing_unit: 'per_million_tokens',
+    segments: [
+      {
+        priority: 1,
+        input_modality: 'audio',
+        output_modality: 'text',
+        billing_unit: 'per_million_tokens',
+        cache_storage_price: 1,
+        tool_usage_type: 'google_search',
+        free_quota: 500,
+        overage_threshold: 1000,
+        input_price: 1,
+        output_price: 2.5,
+      },
+    ],
+  };
+
+  const normalizedConfig = normalizeAdvancedPricingConfig(canonicalConfig);
+
+  assert.equal(normalizedConfig.rules[0].inputModality, 'audio');
+  assert.equal(normalizedConfig.rules[0].outputModality, 'text');
+  assert.equal(normalizedConfig.rules[0].billingUnit, 'per_million_tokens');
+  assert.equal(normalizedConfig.rules[0].cacheStoragePrice, '1');
+  assert.equal(normalizedConfig.rules[0].toolUsageType, 'google_search');
+  assert.equal(normalizedConfig.rules[0].freeQuota, '500');
+  assert.equal(normalizedConfig.rules[0].overageThreshold, '1000');
+  assert.deepEqual(serializeAdvancedPricingConfig(normalizedConfig), canonicalConfig);
+});
+
+test('normalizeAdvancedPricingConfig round-trips text image tier and tool usage count scaffolding fields', () => {
+  const canonicalConfig = {
+    rule_type: 'text_segment',
+    display_name: 'Gemini Audio',
+    billing_unit: 'per_second',
+    segments: [
+      {
+        priority: 1,
+        input_modality: 'audio',
+        output_modality: 'text',
+        image_size_tier: 'hd',
+        tool_usage_count: 1000,
+        input_price: 1.2,
+      },
+    ],
+  };
+
+  const normalizedConfig = normalizeAdvancedPricingConfig(canonicalConfig);
+
+  assert.equal(normalizedConfig.rules[0].imageSizeTier, 'hd');
+  assert.equal(normalizedConfig.rules[0].toolUsageCount, '1000');
+  assert.deepEqual(serializeAdvancedPricingConfig(normalizedConfig), canonicalConfig);
+});
+
 test('serializeAdvancedPricingConfig emits canonical media_task json and preserves explicit zero and false values', () => {
   const serializedConfig = serializeAdvancedPricingConfig({
     ruleType: 'media_task',
@@ -719,6 +1063,51 @@ test('serializeAdvancedPricingConfig emits canonical media_task json and preserv
         remark: '草稿模式',
         unit_price: 0.18,
         min_tokens: 0,
+      },
+    ],
+  });
+});
+
+test('serializeAdvancedPricingConfig emits media task extension fields for modality, tier, and tool scaffolding', () => {
+  const serializedConfig = serializeAdvancedPricingConfig({
+    ruleType: 'media_task',
+    displayName: 'Gemini Image',
+    taskType: 'image_generation',
+    billingUnit: 'per_image',
+    rules: [
+      {
+        id: 'media_task-1',
+        priority: '1',
+        inputModality: 'image',
+        outputModality: 'image',
+        billingUnit: 'per_image',
+        imageSizeTier: '2k',
+        toolUsageType: 'google_search',
+        toolUsageCount: '3',
+        freeQuota: '100',
+        overageThreshold: '250',
+        unitPrice: '0.4',
+      },
+    ],
+  });
+
+  assert.deepEqual(serializedConfig, {
+    rule_type: 'media_task',
+    display_name: 'Gemini Image',
+    task_type: 'image_generation',
+    billing_unit: 'per_image',
+    segments: [
+      {
+        priority: 1,
+        input_modality: 'image',
+        output_modality: 'image',
+        billing_unit: 'per_image',
+        image_size_tier: '2k',
+        tool_usage_type: 'google_search',
+        tool_usage_count: 3,
+        free_quota: 100,
+        overage_threshold: 250,
+        unit_price: 0.4,
       },
     ],
   });
@@ -1194,6 +1583,7 @@ test('buildMediaTaskConditionSummary summarizes key media task filters for opera
     outputDurationMin: '0',
     outputDurationMax: '5',
     draft: 'true',
+    toolUsageCount: '100',
     minTokens: '1200',
   });
 
@@ -1203,6 +1593,7 @@ test('buildMediaTaskConditionSummary summarizes key media task filters for opera
   assert.match(summary, /16:9/);
   assert.match(summary, /0/);
   assert.match(summary, /5/);
+  assert.match(summary, /100/);
   assert.match(summary, /1200/);
 });
 

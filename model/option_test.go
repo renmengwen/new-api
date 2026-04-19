@@ -355,6 +355,62 @@ func TestUpdateOptionAdvancedPricingRulesSyncsConfig(t *testing.T) {
 	require.JSONEq(t, rulesValue, mustGetOptionValue(t, "AdvancedPricingRules"))
 }
 
+func TestUpdateOptionAdvancedPricingRulesPersistsSegmentBillingUnit(t *testing.T) {
+	setupAdvancedPricingOptionTest(t)
+
+	require.NoError(t, UpdateOption("AdvancedPricingConfig", `{
+      "billing_mode": {
+        "gpt-5": "advanced"
+      },
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "input_price": 0.5
+            }
+          ]
+        }
+      }
+    }`))
+
+	rulesValue := `{
+      "gpt-5": {
+        "rule_type": "text_segment",
+        "segments": [
+          {
+            "priority": 10,
+            "billing_unit": "per_input_token",
+            "input_price": 1.2
+          }
+        ]
+      }
+    }`
+
+	err := UpdateOption("AdvancedPricingRules", rulesValue)
+	require.NoError(t, err)
+	require.JSONEq(t, rulesValue, mustGetOptionValue(t, "AdvancedPricingRules"))
+	require.JSONEq(t, `{
+      "billing_mode": {
+        "gpt-5": "advanced"
+      },
+      "rules": {
+        "gpt-5": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 10,
+              "billing_unit": "per_input_token",
+              "input_price": 1.2
+            }
+          ]
+        }
+      }
+    }`, mustGetOptionValue(t, "AdvancedPricingConfig"))
+	require.JSONEq(t, rulesValue, ratio_setting.AdvancedPricingRules2JSONString())
+}
+
 func TestLoadOptionsFromDatabaseKeepsAdvancedPricingViewsConsistentAfterLegacyUpdates(t *testing.T) {
 	setupAdvancedPricingOptionTest(t)
 

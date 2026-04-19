@@ -98,7 +98,66 @@ export const buildTextSegmentConditionSummary = (rule) => {
   );
   const summaries = [inputSummary, outputSummary].filter(Boolean);
   const serviceTier = normalizeRuleServiceTier(rule);
+  const inputModality = normalizeStringField(
+    rule?.inputModality ?? rule?.input_modality,
+  ).trim();
+  const outputModality = normalizeStringField(
+    rule?.outputModality ?? rule?.output_modality,
+  ).trim();
+  const imageSizeTier = normalizeStringField(
+    rule?.imageSizeTier ?? rule?.image_size_tier,
+  ).trim();
+  const toolUsageType = normalizeStringField(
+    rule?.toolUsageType ?? rule?.tool_usage_type,
+  ).trim();
+  const toolUsageCount = normalizeNumericField(
+    rule?.toolUsageCount ?? rule?.tool_usage_count,
+  );
+  if (inputModality) {
+    summaries.push(`input_modality=${inputModality}`);
+  }
+  if (outputModality) {
+    summaries.push(`output_modality=${outputModality}`);
+  }
+  if (imageSizeTier) {
+    summaries.push(`image_size_tier=${imageSizeTier}`);
+  }
+  if (toolUsageType) {
+    summaries.push(`tool_usage_type=${toolUsageType}`);
+  }
+  if (toolUsageCount !== '') {
+    summaries.push(`tool_usage_count>=${toolUsageCount}`);
+  }
 
+  if (serviceTier) {
+    summaries.push(`服务层=${serviceTier}`);
+  }
+
+  return summaries.length > 0 ? summaries.join(' / ') : '未设置条件';
+};
+
+const buildTextSegmentPreviewConditionSummary = (rule) => {
+  const inputSummary = buildRangeSummary('输入', rule?.inputMin, rule?.inputMax);
+  const outputSummary = buildRangeSummary(
+    '输出',
+    rule?.outputMin,
+    rule?.outputMax,
+  );
+  const summaries = [inputSummary, outputSummary].filter(Boolean);
+  const serviceTier = normalizeRuleServiceTier(rule);
+  const inputModality = normalizeStringField(
+    rule?.inputModality ?? rule?.input_modality,
+  ).trim();
+  const outputModality = normalizeStringField(
+    rule?.outputModality ?? rule?.output_modality,
+  ).trim();
+
+  if (inputModality) {
+    summaries.push(`input_modality=${inputModality}`);
+  }
+  if (outputModality) {
+    summaries.push(`output_modality=${outputModality}`);
+  }
   if (serviceTier) {
     summaries.push(`服务层=${serviceTier}`);
   }
@@ -111,7 +170,11 @@ const hasTextSegmentCondition = (rule) =>
   hasExplicitValue(rule?.inputMax) ||
   hasExplicitValue(rule?.outputMin) ||
   hasExplicitValue(rule?.outputMax) ||
-  normalizeRuleServiceTier(rule) !== '';
+  normalizeRuleServiceTier(rule) !== '' ||
+  normalizeStringField(rule?.inputModality ?? rule?.input_modality).trim() !==
+    '' ||
+  normalizeStringField(rule?.outputModality ?? rule?.output_modality).trim() !==
+    '';
 
 const isRangeMatch = (value, minValue, maxValue) => {
   const num = toNullableNumber(value) ?? 0;
@@ -146,6 +209,18 @@ const normalizeRuleServiceTier = (rule) =>
     .trim()
     .toLowerCase();
 
+const normalizeComparableString = (value) =>
+  normalizeStringField(value).trim().toLowerCase();
+
+const isOptionalStringMatch = (previewValue, ruleValue) => {
+  const normalizedRuleValue = normalizeComparableString(ruleValue);
+  if (!normalizedRuleValue) {
+    return true;
+  }
+
+  return normalizeComparableString(previewValue) === normalizedRuleValue;
+};
+
 const isServiceTierOverlap = (leftValue, rightValue) => {
   const normalizedLeftValue = normalizeStringField(leftValue).trim();
   const normalizedRightValue = normalizeStringField(rightValue).trim();
@@ -165,11 +240,20 @@ export const createEmptyTextSegmentRule = (seed = Date.now()) => ({
   inputMax: '',
   outputMin: '',
   outputMax: '',
+  inputModality: '',
+  outputModality: '',
+  billingUnit: '',
   serviceTier: '',
   inputPrice: '',
   outputPrice: '',
   cacheReadPrice: '',
   cacheWritePrice: '',
+  cacheStoragePrice: '',
+  imageSizeTier: '',
+  toolUsageType: '',
+  toolUsageCount: '',
+  freeQuota: '',
+  overageThreshold: '',
 });
 
 const omitObjectKeys = (value, keysToOmit) => {
@@ -192,11 +276,20 @@ const TEXT_SEGMENT_RULE_EDITOR_ONLY_KEYS = new Set([
   'inputMax',
   'outputMin',
   'outputMax',
+  'inputModality',
+  'outputModality',
+  'billingUnit',
   'serviceTier',
   'inputPrice',
   'outputPrice',
   'cacheReadPrice',
   'cacheWritePrice',
+  'cacheStoragePrice',
+  'imageSizeTier',
+  'toolUsageType',
+  'toolUsageCount',
+  'freeQuota',
+  'overageThreshold',
 ]);
 
 const TEXT_SEGMENT_CONFIG_EDITOR_ONLY_KEYS = new Set([
@@ -241,6 +334,13 @@ export const normalizeTextSegmentRule = (rule, index = 0) => ({
   inputMax: normalizeNumericField(rule?.inputMax ?? rule?.input_max),
   outputMin: normalizeNumericField(rule?.outputMin ?? rule?.output_min),
   outputMax: normalizeNumericField(rule?.outputMax ?? rule?.output_max),
+  inputModality: normalizeStringField(
+    rule?.inputModality ?? rule?.input_modality,
+  ),
+  outputModality: normalizeStringField(
+    rule?.outputModality ?? rule?.output_modality,
+  ),
+  billingUnit: normalizeStringField(rule?.billingUnit ?? rule?.billing_unit),
   serviceTier: normalizeStringField(rule?.serviceTier ?? rule?.service_tier),
   inputPrice: normalizeNumericField(rule?.inputPrice ?? rule?.input_price),
   outputPrice: normalizeNumericField(rule?.outputPrice ?? rule?.output_price),
@@ -249,6 +349,22 @@ export const normalizeTextSegmentRule = (rule, index = 0) => ({
   ),
   cacheWritePrice: normalizeNumericField(
     rule?.cacheWritePrice ?? rule?.cache_write_price,
+  ),
+  cacheStoragePrice: normalizeNumericField(
+    rule?.cacheStoragePrice ?? rule?.cache_storage_price,
+  ),
+  imageSizeTier: normalizeStringField(
+    rule?.imageSizeTier ?? rule?.image_size_tier,
+  ),
+  toolUsageType: normalizeStringField(
+    rule?.toolUsageType ?? rule?.tool_usage_type,
+  ),
+  toolUsageCount: normalizeNumericField(
+    rule?.toolUsageCount ?? rule?.tool_usage_count,
+  ),
+  freeQuota: normalizeNumericField(rule?.freeQuota ?? rule?.free_quota),
+  overageThreshold: normalizeNumericField(
+    rule?.overageThreshold ?? rule?.overage_threshold,
   ),
 });
 
@@ -285,16 +401,24 @@ export const createEmptyMediaTaskRule = (seed = Date.now()) => ({
   priority: '',
   rawAction: '',
   inferenceMode: '',
+  inputModality: '',
+  outputModality: '',
+  billingUnit: '',
   audio: '',
   inputVideo: '',
   resolution: '',
   aspectRatio: '',
+  imageSizeTier: '',
   outputDurationMin: '',
   outputDurationMax: '',
   inputVideoDurationMin: '',
   inputVideoDurationMax: '',
   draft: '',
   draftCoefficient: '',
+  toolUsageType: '',
+  toolUsageCount: '',
+  freeQuota: '',
+  overageThreshold: '',
   remark: '',
   unitPrice: '',
   minTokens: '',
@@ -302,18 +426,29 @@ export const createEmptyMediaTaskRule = (seed = Date.now()) => ({
 
 export const normalizeMediaTaskRule = (rule, index = 0) => ({
   ...createEmptyMediaTaskRule(index),
+  ...rule,
   id: rule?.id || `media_task-${index + 1}`,
   priority: normalizeNumericField(rule?.priority),
   rawAction: normalizeStringField(rule?.rawAction ?? rule?.raw_action),
   inferenceMode: normalizeStringField(
     rule?.inferenceMode ?? rule?.inference_mode,
   ),
+  inputModality: normalizeStringField(
+    rule?.inputModality ?? rule?.input_modality,
+  ),
+  outputModality: normalizeStringField(
+    rule?.outputModality ?? rule?.output_modality,
+  ),
+  billingUnit: normalizeStringField(rule?.billingUnit ?? rule?.billing_unit),
   audio: normalizeBooleanRuleValue(rule?.audio),
   inputVideo: normalizeBooleanRuleValue(
     rule?.inputVideo ?? rule?.input_video,
   ),
   resolution: normalizeStringField(rule?.resolution),
   aspectRatio: normalizeStringField(rule?.aspectRatio ?? rule?.aspect_ratio),
+  imageSizeTier: normalizeStringField(
+    rule?.imageSizeTier ?? rule?.image_size_tier,
+  ),
   outputDurationMin: normalizeNumericField(
     rule?.outputDurationMin ?? rule?.output_duration_min,
   ),
@@ -329,6 +464,16 @@ export const normalizeMediaTaskRule = (rule, index = 0) => ({
   draft: normalizeBooleanRuleValue(rule?.draft),
   draftCoefficient: normalizeNumericField(
     rule?.draftCoefficient ?? rule?.draft_coefficient,
+  ),
+  toolUsageType: normalizeStringField(
+    rule?.toolUsageType ?? rule?.tool_usage_type,
+  ),
+  toolUsageCount: normalizeNumericField(
+    rule?.toolUsageCount ?? rule?.tool_usage_count,
+  ),
+  freeQuota: normalizeNumericField(rule?.freeQuota ?? rule?.free_quota),
+  overageThreshold: normalizeNumericField(
+    rule?.overageThreshold ?? rule?.overage_threshold,
   ),
   remark: normalizeStringField(rule?.remark),
   unitPrice: normalizeNumericField(rule?.unitPrice ?? rule?.unit_price),
@@ -367,6 +512,22 @@ export const buildMediaTaskConditionSummary = (rule) => {
   if (rule?.inferenceMode) {
     summaries.push(`inference_mode=${rule.inferenceMode}`);
   }
+  if (normalizeStringField(rule?.inputModality ?? rule?.input_modality).trim()) {
+    summaries.push(
+      `input_modality=${normalizeStringField(
+        rule?.inputModality ?? rule?.input_modality,
+      ).trim()}`,
+    );
+  }
+  if (
+    normalizeStringField(rule?.outputModality ?? rule?.output_modality).trim()
+  ) {
+    summaries.push(
+      `output_modality=${normalizeStringField(
+        rule?.outputModality ?? rule?.output_modality,
+      ).trim()}`,
+    );
+  }
 
   const audioValue = toBooleanRuleValue(rule?.audio);
   if (audioValue !== null) {
@@ -383,6 +544,27 @@ export const buildMediaTaskConditionSummary = (rule) => {
   }
   if (rule?.aspectRatio) {
     summaries.push(`aspect_ratio=${rule.aspectRatio}`);
+  }
+  if (normalizeStringField(rule?.imageSizeTier ?? rule?.image_size_tier).trim()) {
+    summaries.push(
+      `image_size_tier=${normalizeStringField(
+        rule?.imageSizeTier ?? rule?.image_size_tier,
+      ).trim()}`,
+    );
+  }
+  if (normalizeStringField(rule?.toolUsageType ?? rule?.tool_usage_type).trim()) {
+    summaries.push(
+      `tool_usage_type=${normalizeStringField(
+        rule?.toolUsageType ?? rule?.tool_usage_type,
+      ).trim()}`,
+    );
+  }
+  if (hasValue(rule?.toolUsageCount) || rule?.toolUsageCount === 0) {
+    summaries.push(
+      `tool_usage_count>=${normalizeNumericField(
+        rule?.toolUsageCount ?? rule?.tool_usage_count,
+      )}`,
+    );
   }
 
   const outputDurationSummary = buildRangeSummary(
@@ -526,6 +708,7 @@ export const serializeMediaTaskRule = (rule) => {
   const draftCoefficient = toNullableNumber(normalizedRule.draftCoefficient);
   const unitPrice = toNullableNumber(normalizedRule.unitPrice);
   const minTokens = toNullableNumber(normalizedRule.minTokens);
+  const toolUsageCount = toNullableNumber(normalizedRule.toolUsageCount);
   const audio = toBooleanRuleValue(normalizedRule.audio);
   const inputVideo = toBooleanRuleValue(normalizedRule.inputVideo);
   const draft = toBooleanRuleValue(normalizedRule.draft);
@@ -539,6 +722,15 @@ export const serializeMediaTaskRule = (rule) => {
   if (normalizedRule.inferenceMode.trim()) {
     serializedRule.inference_mode = normalizedRule.inferenceMode.trim();
   }
+  if (normalizedRule.inputModality.trim()) {
+    serializedRule.input_modality = normalizedRule.inputModality.trim();
+  }
+  if (normalizedRule.outputModality.trim()) {
+    serializedRule.output_modality = normalizedRule.outputModality.trim();
+  }
+  if (normalizedRule.billingUnit.trim()) {
+    serializedRule.billing_unit = normalizedRule.billingUnit.trim();
+  }
   if (audio !== null) {
     serializedRule.audio = audio;
   }
@@ -550,6 +742,9 @@ export const serializeMediaTaskRule = (rule) => {
   }
   if (normalizedRule.aspectRatio.trim()) {
     serializedRule.aspect_ratio = normalizedRule.aspectRatio.trim();
+  }
+  if (normalizedRule.imageSizeTier.trim()) {
+    serializedRule.image_size_tier = normalizedRule.imageSizeTier.trim();
   }
   appendSerializedIntegerRange(
     serializedRule,
@@ -570,6 +765,20 @@ export const serializeMediaTaskRule = (rule) => {
   }
   if (draftCoefficient !== null) {
     serializedRule.draft_coefficient = draftCoefficient;
+  }
+  if (normalizedRule.toolUsageType.trim()) {
+    serializedRule.tool_usage_type = normalizedRule.toolUsageType.trim();
+  }
+  if (toolUsageCount !== null) {
+    serializedRule.tool_usage_count = toolUsageCount;
+  }
+  const freeQuota = toNullableNumber(normalizedRule.freeQuota);
+  if (freeQuota !== null) {
+    serializedRule.free_quota = freeQuota;
+  }
+  const overageThreshold = toNullableNumber(normalizedRule.overageThreshold);
+  if (overageThreshold !== null) {
+    serializedRule.overage_threshold = overageThreshold;
   }
   if (normalizedRule.remark.trim()) {
     serializedRule.remark = normalizedRule.remark.trim();
@@ -598,6 +807,21 @@ export const serializeTextSegmentRule = (rule) => {
   setSerializedNumberField(serializedRule, 'output_max', normalizedRule.outputMax);
   setSerializedStringField(
     serializedRule,
+    'input_modality',
+    normalizedRule.inputModality,
+  );
+  setSerializedStringField(
+    serializedRule,
+    'output_modality',
+    normalizedRule.outputModality,
+  );
+  setSerializedStringField(
+    serializedRule,
+    'billing_unit',
+    normalizedRule.billingUnit,
+  );
+  setSerializedStringField(
+    serializedRule,
     'service_tier',
     normalizeRuleServiceTier(normalizedRule),
   );
@@ -616,6 +840,32 @@ export const serializeTextSegmentRule = (rule) => {
     serializedRule,
     'cache_write_price',
     normalizedRule.cacheWritePrice,
+  );
+  setSerializedNumberField(
+    serializedRule,
+    'cache_storage_price',
+    normalizedRule.cacheStoragePrice,
+  );
+  setSerializedStringField(
+    serializedRule,
+    'image_size_tier',
+    normalizedRule.imageSizeTier,
+  );
+  setSerializedStringField(
+    serializedRule,
+    'tool_usage_type',
+    normalizedRule.toolUsageType,
+  );
+  setSerializedNumberField(
+    serializedRule,
+    'tool_usage_count',
+    normalizedRule.toolUsageCount,
+  );
+  setSerializedNumberField(serializedRule, 'free_quota', normalizedRule.freeQuota);
+  setSerializedNumberField(
+    serializedRule,
+    'overage_threshold',
+    normalizedRule.overageThreshold,
   );
 
   return serializedRule;
@@ -790,8 +1040,34 @@ export const validateTextSegmentRules = (rules = []) => {
         !currentRuleServiceTier ||
         !compareRuleServiceTier ||
         currentRuleServiceTier === compareRuleServiceTier;
+      const currentInputModality = normalizeComparableString(
+        currentRule?.inputModality ?? currentRule?.input_modality,
+      );
+      const compareInputModality = normalizeComparableString(
+        compareRule?.inputModality ?? compareRule?.input_modality,
+      );
+      const inputModalityOverlap =
+        !currentInputModality ||
+        !compareInputModality ||
+        currentInputModality === compareInputModality;
+      const currentOutputModality = normalizeComparableString(
+        currentRule?.outputModality ?? currentRule?.output_modality,
+      );
+      const compareOutputModality = normalizeComparableString(
+        compareRule?.outputModality ?? compareRule?.output_modality,
+      );
+      const outputModalityOverlap =
+        !currentOutputModality ||
+        !compareOutputModality ||
+        currentOutputModality === compareOutputModality;
 
-      if (inputOverlap && outputOverlap && serviceTierOverlap) {
+      if (
+        inputOverlap &&
+        outputOverlap &&
+        serviceTierOverlap &&
+        inputModalityOverlap &&
+        outputModalityOverlap
+      ) {
         errors.push(`${currentRuleId} 与 ${compareRuleId} 的区间明显重叠`);
       }
     }
@@ -819,19 +1095,22 @@ export const findMatchingTextSegmentRule = (rules = [], previewInput = {}) => {
         isRangeMatch(inputTokens, rule?.inputMin, rule?.inputMax) &&
         isRangeMatch(outputTokens, rule?.outputMin, rule?.outputMax) &&
         (!normalizeRuleServiceTier(rule) ||
-          normalizeRuleServiceTier(rule) === previewServiceTier),
+          normalizeRuleServiceTier(rule) === previewServiceTier) &&
+        isOptionalStringMatch(
+          previewInput?.inputModality,
+          rule?.inputModality ?? rule?.input_modality,
+        ) &&
+        isOptionalStringMatch(
+          previewInput?.outputModality,
+          rule?.outputModality ?? rule?.output_modality,
+        ),
     ) ||
     defaultRule
   );
 };
 
 const isMediaTaskStringMatch = (previewValue, ruleValue) => {
-  const normalizedRuleValue = normalizeStringField(ruleValue).trim();
-  if (!normalizedRuleValue) {
-    return true;
-  }
-
-  return normalizeStringField(previewValue).trim() === normalizedRuleValue;
+  return isOptionalStringMatch(previewValue, ruleValue);
 };
 
 const isMediaTaskBooleanMatch = (previewValue, ruleValue) => {
@@ -860,10 +1139,6 @@ const isMediaTaskRangeMatch = (previewValue, minValue, maxValue) => {
 const findMatchingMediaTaskRule = (rules = [], previewInput = {}) =>
   sortMediaTaskRules(rules).find(
     (rule) =>
-      isMediaTaskStringMatch(
-        previewInput?.rawAction,
-        rule?.rawAction ?? rule?.raw_action,
-      ) &&
       isMediaTaskStringMatch(
         previewInput?.inferenceMode,
         rule?.inferenceMode ?? rule?.inference_mode,
@@ -895,11 +1170,11 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
   const matchedRule = findMatchingTextSegmentRule(rules, previewInput);
   const inputTokens = toNullableNumber(previewInput?.inputTokens) ?? 0;
   const outputTokens = toNullableNumber(previewInput?.outputTokens) ?? 0;
-  const serviceTier = normalizeStringField(previewInput?.serviceTier).trim();
 
   if (!matchedRule) {
     return {
       matchedRule: null,
+      matchedSegmentPreview: null,
       conditionSummary: '未命中任何规则',
       formulaSummary: '',
       logPreview: {
@@ -912,22 +1187,28 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
         totalCost: '',
         cacheReadPrice: '',
         cacheWritePrice: '',
+        cacheStoragePrice: '',
+        toolUsageCount: '',
+        freeQuota: '',
+        overageThreshold: '',
+        billingUnit: '',
       },
     };
   }
 
   const inputPrice = toNullableNumber(matchedRule?.inputPrice) ?? 0;
   const outputPrice = toNullableNumber(matchedRule?.outputPrice) ?? 0;
-  const conditionSummary = buildTextSegmentConditionSummary(matchedRule);
+  const matchedSegmentPreview = serializeTextSegmentRule(matchedRule);
+  const conditionSummary = buildTextSegmentPreviewConditionSummary(matchedRule);
   const formulaSummary = `(${formatNumber(inputTokens)} tokens × ${formatNumber(inputPrice)} + ${formatNumber(outputTokens)} tokens × ${formatNumber(outputPrice)}) / 1,000,000`;
-  const serviceTierSummary = serviceTier ? `，服务层 ${serviceTier}` : '';
 
   return {
     matchedRule,
+    matchedSegmentPreview,
     conditionSummary,
     formulaSummary,
     logPreview: {
-      detailSummary: `命中文本分段规则：${conditionSummary}${serviceTierSummary}`,
+      detailSummary: `命中文本分段规则：${conditionSummary}`,
       processSummary: `输入 ${formatNumber(inputTokens)} tokens × ${formatNumber(inputPrice)} + 输出 ${formatNumber(outputTokens)} tokens × ${formatNumber(outputPrice)}`,
     },
     priceSummary: {
@@ -938,6 +1219,13 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
       ),
       cacheReadPrice: formatNumber(matchedRule?.cacheReadPrice),
       cacheWritePrice: formatNumber(matchedRule?.cacheWritePrice),
+      cacheStoragePrice: formatNumber(matchedRule?.cacheStoragePrice),
+      toolUsageCount: formatNumber(previewInput?.toolUsageCount),
+      freeQuota: formatNumber(matchedRule?.freeQuota),
+      overageThreshold: formatNumber(matchedRule?.overageThreshold),
+      billingUnit: normalizeStringField(
+        matchedRule?.billingUnit ?? matchedRule?.billing_unit,
+      ).trim(),
     },
   };
 };
@@ -962,6 +1250,10 @@ export const buildMediaTaskPreview = (rules = [], previewInput = {}) => {
         unitPrice: '',
         draftCoefficient: '',
         estimatedCost: '',
+        toolUsageCount: '',
+        freeQuota: '',
+        overageThreshold: '',
+        billingUnit: '',
       },
     };
   }
@@ -1003,6 +1295,12 @@ export const buildMediaTaskPreview = (rules = [], previewInput = {}) => {
       unitPrice: formatNumber(unitPrice),
       draftCoefficient: formatNumber(effectiveDraftCoefficient),
       estimatedCost: formatNumber(estimatedCost),
+      toolUsageCount: formatNumber(previewInput?.toolUsageCount),
+      freeQuota: formatNumber(matchedRule?.freeQuota),
+      overageThreshold: formatNumber(matchedRule?.overageThreshold),
+      billingUnit: normalizeStringField(
+        matchedRule?.billingUnit ?? matchedRule?.billing_unit,
+      ).trim(),
     },
   };
 };

@@ -47,6 +47,7 @@ test('media task rule editor keeps the advanced rule workflow in a SideSheet wit
   assert.match(source, /sheetPreviewInput/);
   assert.match(source, /sheetPreviewResult/);
   assert.match(source, /previewInput\?\.rawAction/);
+  assert.match(source, /previewInput\?\.inferenceMode/);
   assert.match(source, /previewInput\?\.usageTotalTokens/);
   assert.match(source, /previewInput\?\.inputVideo/);
   assert.match(source, /previewInput\?\.audio/);
@@ -61,7 +62,19 @@ test('media task rule editor keeps the advanced rule workflow in a SideSheet wit
   assert.match(source, /sheetPreviewResult\?\.priceSummary\?\.estimatedCost/);
   assert.match(source, /serializeMediaTaskRule\(previewResult\.matchedRule\)/);
   assert.match(source, /serializedConfig\.segments \|\| \[\]/);
-  assert.doesNotMatch(source, /Modal/);
+  assert.doesNotMatch(source, /<Modal/);
+});
+
+test('media task rule editor renders modality, image tier, billing unit, and tool scaffolding fields', () => {
+  assert.match(source, /field: 'inferenceMode'/);
+  assert.match(source, /field: 'inputModality'/);
+  assert.match(source, /field: 'outputModality'/);
+  assert.match(source, /field: 'billingUnit'/);
+  assert.match(source, /field: 'imageSizeTier'/);
+  assert.match(source, /field: 'toolUsageType'/);
+  assert.match(source, /field: 'toolUsageCount'/);
+  assert.match(source, /field: 'freeQuota'/);
+  assert.match(source, /field: 'overageThreshold'/);
 });
 
 test('media task rule editor keeps delete closures fresh and uses candidate preview counts inside the side sheet', () => {
