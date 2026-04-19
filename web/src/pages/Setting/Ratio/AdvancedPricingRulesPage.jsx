@@ -25,19 +25,102 @@ import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import AdvancedPricingModelList from './components/advanced-pricing/AdvancedPricingModelList';
 import AdvancedPricingPreview from './components/advanced-pricing/AdvancedPricingPreview';
 import AdvancedPricingSummary from './components/advanced-pricing/AdvancedPricingSummary';
+import MediaTaskRuleEditor from './components/advanced-pricing/MediaTaskRuleEditor';
 import TextSegmentRuleEditor from './components/advanced-pricing/TextSegmentRuleEditor';
-import { useAdvancedPricingRulesState } from './hooks/useAdvancedPricingRulesState';
+import {
+  MEDIA_TASK_RULE_TYPE,
+  TEXT_SEGMENT_RULE_TYPE,
+  useAdvancedPricingRulesState,
+} from './hooks/useAdvancedPricingRulesState';
+
+const FALLBACK_MODEL_OPTION_KEYS = [
+  'AdvancedPricingMode',
+  'AdvancedPricingRules',
+  'ModelPrice',
+  'ModelRatio',
+  'CompletionRatio',
+  'CompletionRatioMeta',
+  'CacheRatio',
+  'CreateCacheRatio',
+  'ImageRatio',
+  'AudioRatio',
+  'AudioCompletionRatio',
+];
+
+const parseOptionMap = (rawValue) => {
+  if (!rawValue || typeof rawValue !== 'string') {
+    return {};
+  }
+
+  try {
+    const parsedValue = JSON.parse(rawValue);
+    return parsedValue &&
+      typeof parsedValue === 'object' &&
+      !Array.isArray(parsedValue)
+      ? parsedValue
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+const buildFallbackEnabledModelNames = ({ options, initialModelName = '' }) => {
+  const names = new Set();
+
+  if (initialModelName) {
+    names.add(initialModelName);
+  }
+
+  const parsedAdvancedPricingConfig = parseOptionMap(options?.AdvancedPricingConfig);
+  const canonicalBillingModeMap =
+    parsedAdvancedPricingConfig.billing_mode &&
+    typeof parsedAdvancedPricingConfig.billing_mode === 'object' &&
+    !Array.isArray(parsedAdvancedPricingConfig.billing_mode)
+      ? parsedAdvancedPricingConfig.billing_mode
+      : {};
+  const canonicalRulesMap =
+    parsedAdvancedPricingConfig.rules &&
+    typeof parsedAdvancedPricingConfig.rules === 'object' &&
+    !Array.isArray(parsedAdvancedPricingConfig.rules)
+      ? parsedAdvancedPricingConfig.rules
+      : {};
+
+  Object.keys(canonicalBillingModeMap).forEach((modelName) => names.add(modelName));
+  Object.keys(canonicalRulesMap).forEach((modelName) => names.add(modelName));
+
+  FALLBACK_MODEL_OPTION_KEYS.forEach((key) => {
+    Object.keys(parseOptionMap(options?.[key])).forEach((modelName) =>
+      names.add(modelName),
+    );
+  });
+
+  return Array.from(names)
+    .filter(Boolean)
+    .sort((leftName, rightName) => leftName.localeCompare(rightName));
+};
 
 export default function AdvancedPricingRulesPage(props) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const [enabledModels, setEnabledModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(true);
+  const [shouldUseFallbackEnabledModels, setShouldUseFallbackEnabledModels] =
+    useState(false);
+  const resolvedEnabledModels = shouldUseFallbackEnabledModels
+    ? buildFallbackEnabledModelNames({
+        options: props.options,
+        initialModelName: props.initialModelName,
+      })
+    : enabledModels;
 
   useEffect(() => {
     let active = true;
 
     const loadEnabledModels = async () => {
+      const fallbackEnabledModels = buildFallbackEnabledModelNames({
+        options: props.options,
+        initialModelName: props.initialModelName,
+      });
       setLoadingModels(true);
       try {
         const response = await API.get('/api/channel/models_enabled');
@@ -48,15 +131,18 @@ export default function AdvancedPricingRulesPage(props) {
         }
 
         if (success) {
+          setShouldUseFallbackEnabledModels(false);
           setEnabledModels(Array.isArray(data) ? data : []);
         } else {
-          setEnabledModels([]);
+          setShouldUseFallbackEnabledModels(true);
+          setEnabledModels(fallbackEnabledModels);
           showError(message);
         }
       } catch (error) {
         if (active) {
+          setShouldUseFallbackEnabledModels(true);
+          setEnabledModels(fallbackEnabledModels);
           console.error('获取启用模型失败:', error);
-          setEnabledModels([]);
           showError(t('获取启用模型失败'));
         }
       } finally {
@@ -71,7 +157,7 @@ export default function AdvancedPricingRulesPage(props) {
     return () => {
       active = false;
     };
-  }, [t]);
+  }, [props.initialModelName, props.options, t]);
 
   const {
     loading,
@@ -85,18 +171,23 @@ export default function AdvancedPricingRulesPage(props) {
     validationErrors,
     previewInput,
     previewResult,
+    savePreview,
     handleEffectiveModeChange,
     handleRuleTypeChange,
     handleTextSegmentRulesChange,
+    handleTextSegmentConfigChange,
+    handleMediaTaskConfigChange,
     handlePreviewInputChange,
     handleSave,
   } = useAdvancedPricingRulesState({
     options: props.options,
     refresh: props.refresh,
     t,
-    candidateModelNames: enabledModels,
-    selectedModelName: props.selectedModelName || '',
+    candidateModelNames: resolvedEnabledModels,
+    selectedModelName: props.selectedModelName,
     onSelectedModelChange: props.onSelectedModelChange,
+    initialSelectedModelName: props.initialModelName,
+    initialSelectionVersion: props.initialModelSelectionKey,
   });
 
   const handleBackToPricing = (modelName = selectedModel?.name) => {
@@ -179,38 +270,46 @@ export default function AdvancedPricingRulesPage(props) {
                 description={t('请先从左侧列表选择一个模型')}
               />
             </Card>
-          ) : selectedAdvancedConfig.ruleType === 'text_segment' ? (
+          ) : selectedAdvancedConfig.ruleType === TEXT_SEGMENT_RULE_TYPE ? (
             <>
               <TextSegmentRuleEditor
+                config={selectedAdvancedConfig}
                 rules={selectedAdvancedConfig.rules}
                 validationErrors={validationErrors}
                 onChange={handleTextSegmentRulesChange}
+                onConfigChange={handleTextSegmentConfigChange}
               />
               <AdvancedPricingPreview
                 selectedModel={selectedModel}
                 selectedAdvancedConfig={selectedAdvancedConfig}
                 previewInput={previewInput}
                 previewResult={previewResult}
+                savePreview={savePreview}
+                onPreviewInputChange={handlePreviewInputChange}
+              />
+            </>
+          ) : selectedAdvancedConfig.ruleType === MEDIA_TASK_RULE_TYPE ? (
+            <>
+              <MediaTaskRuleEditor
+                config={selectedAdvancedConfig}
+                validationErrors={validationErrors}
+                onChange={handleMediaTaskConfigChange}
+              />
+              <AdvancedPricingPreview
+                selectedModel={selectedModel}
+                selectedAdvancedConfig={selectedAdvancedConfig}
+                previewInput={previewInput}
+                previewResult={previewResult}
+                savePreview={savePreview}
                 onPreviewInputChange={handlePreviewInputChange}
               />
             </>
           ) : (
-            <>
-              <Card title={t('媒体任务规则编辑器')} style={{ width: '100%' }}>
-                <div className='text-sm text-gray-500'>
-                  {t(
-                    '媒体任务规则编辑器本批先保留页面壳子，已完成规则类型切换与状态摘要，后续批次再补齐完整编辑闭环。',
-                  )}
-                </div>
-              </Card>
-              <AdvancedPricingPreview
-                selectedModel={selectedModel}
-                selectedAdvancedConfig={selectedAdvancedConfig}
-                previewInput={previewInput}
-                previewResult={previewResult}
-                onPreviewInputChange={handlePreviewInputChange}
-              />
-            </>
+            <Card title={t('规则编辑器')} style={{ width: '100%' }}>
+              <div className='text-sm text-gray-500'>
+                {t('当前规则类型暂无可用编辑器。')}
+              </div>
+            </Card>
           )}
         </Space>
       </div>

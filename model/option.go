@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"gorm.io/gorm"
 )
 
 type Option struct {
@@ -19,11 +20,149 @@ type Option struct {
 	Value string `json:"value"`
 }
 
+func syncAdvancedPricingOptionViews() {
+	common.OptionMap["AdvancedPricingConfig"] = ratio_setting.AdvancedPricingConfig2JSONString()
+	common.OptionMap["AdvancedPricingMode"] = ratio_setting.AdvancedPricingMode2JSONString()
+	common.OptionMap["AdvancedPricingRules"] = ratio_setting.AdvancedPricingRules2JSONString()
+}
+
+func isAdvancedPricingOptionKey(key string) bool {
+	switch key {
+	case "AdvancedPricingConfig", "AdvancedPricingMode", "AdvancedPricingRules":
+		return true
+	default:
+		return false
+	}
+}
+
 func AllOption() ([]*Option, error) {
 	var options []*Option
 	var err error
 	err = DB.Find(&options).Error
 	return options, err
+}
+
+func buildPersistedOptionEntries(tx *gorm.DB, key string, value string) ([]Option, error) {
+	if !isAdvancedPricingOptionKey(key) {
+		return []Option{{Key: key, Value: value}}, nil
+	}
+
+	cfg, err := buildAdvancedPricingConfigForPersistence(tx, key, value)
+	if err != nil {
+		return nil, err
+	}
+	configJSON, err := common.Marshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+	modeJSON, err := common.Marshal(cfg.ModelModes)
+	if err != nil {
+		return nil, err
+	}
+	rulesJSON, err := common.Marshal(cfg.ModelRules)
+	if err != nil {
+		return nil, err
+	}
+
+	return []Option{
+		{Key: "AdvancedPricingConfig", Value: string(configJSON)},
+		{Key: "AdvancedPricingMode", Value: string(modeJSON)},
+		{Key: "AdvancedPricingRules", Value: string(rulesJSON)},
+	}, nil
+}
+
+func buildAdvancedPricingConfigForPersistence(tx *gorm.DB, key string, value string) (*ratio_setting.AdvancedPricingConfig, error) {
+	if key == "AdvancedPricingConfig" {
+		return ratio_setting.ParseAdvancedPricingConfig(value)
+	}
+
+	optionValues, err := loadPersistedAdvancedPricingOptionValues(tx)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := buildAdvancedPricingConfigFromOptionValues(optionValues)
+	if err != nil {
+		return nil, err
+	}
+
+	partialValue := value
+	if strings.TrimSpace(partialValue) == "" {
+		partialValue = "{}"
+	}
+
+	switch key {
+	case "AdvancedPricingMode":
+		partialCfg, err := ratio_setting.ParseAdvancedPricingConfig(`{"billing_mode":` + partialValue + `}`)
+		if err != nil {
+			return nil, err
+		}
+		cfg.ModelModes = partialCfg.ModelModes
+	case "AdvancedPricingRules":
+		partialCfg, err := ratio_setting.ParseAdvancedPricingConfig(`{"rules":` + partialValue + `}`)
+		if err != nil {
+			return nil, err
+		}
+		cfg.ModelRules = partialCfg.ModelRules
+	}
+
+	return cfg, nil
+}
+
+func loadPersistedAdvancedPricingOptionValues(tx *gorm.DB) (map[string]string, error) {
+	var options []Option
+	if err := tx.Where("key IN ?", []string{"AdvancedPricingConfig", "AdvancedPricingMode", "AdvancedPricingRules"}).Find(&options).Error; err != nil {
+		return nil, err
+	}
+
+	optionValues := make(map[string]string, len(options))
+	for _, option := range options {
+		optionValues[option.Key] = option.Value
+	}
+	return optionValues, nil
+}
+
+func buildAdvancedPricingConfigFromOptionValues(optionValues map[string]string) (*ratio_setting.AdvancedPricingConfig, error) {
+	if value, ok := optionValues["AdvancedPricingConfig"]; ok && strings.TrimSpace(value) != "" {
+		cfg, err := ratio_setting.ParseAdvancedPricingConfig(value)
+		if err == nil {
+			if !isAdvancedPricingConfigEmpty(cfg) {
+				return cfg, nil
+			}
+			legacyCfg, legacyErr := buildAdvancedPricingConfigFromLegacyOptionValues(optionValues)
+			if legacyErr == nil && !isAdvancedPricingConfigEmpty(legacyCfg) {
+				return legacyCfg, nil
+			}
+			return cfg, nil
+		}
+	}
+
+	return buildAdvancedPricingConfigFromLegacyOptionValues(optionValues)
+}
+
+func buildAdvancedPricingConfigFromLegacyOptionValues(optionValues map[string]string) (*ratio_setting.AdvancedPricingConfig, error) {
+	modeValue := "{}"
+	if value, ok := optionValues["AdvancedPricingMode"]; ok && strings.TrimSpace(value) != "" {
+		modeValue = value
+	}
+	rulesValue := "{}"
+	if value, ok := optionValues["AdvancedPricingRules"]; ok && strings.TrimSpace(value) != "" {
+		rulesValue = value
+	}
+
+	return ratio_setting.ParseAdvancedPricingConfig(`{"billing_mode":` + modeValue + `,"rules":` + rulesValue + `}`)
+}
+
+func isAdvancedPricingConfigEmpty(cfg *ratio_setting.AdvancedPricingConfig) bool {
+	return len(cfg.ModelModes) == 0 && len(cfg.ModelRules) == 0
+}
+
+func saveOptionValue(tx *gorm.DB, option Option) error {
+	current := Option{Key: option.Key}
+	if err := tx.FirstOrCreate(&current, Option{Key: option.Key}).Error; err != nil {
+		return err
+	}
+	current.Value = option.Value
+	return tx.Save(&current).Error
 }
 
 func InitOptionMap() {
@@ -139,6 +278,7 @@ func InitOptionMap() {
 	common.OptionMap["ImageRatio"] = ratio_setting.ImageRatio2JSONString()
 	common.OptionMap["AudioRatio"] = ratio_setting.AudioRatio2JSONString()
 	common.OptionMap["AudioCompletionRatio"] = ratio_setting.AudioCompletionRatio2JSONString()
+	syncAdvancedPricingOptionViews()
 	common.OptionMap["TopUpLink"] = common.TopUpLink
 	//common.OptionMap["ChatLink"] = common.ChatLink
 	//common.OptionMap["ChatLink2"] = common.ChatLink2
@@ -177,11 +317,33 @@ func InitOptionMap() {
 
 func loadOptionsFromDatabase() {
 	options, _ := AllOption()
+	advancedPricingOptions := make(map[string]string, 3)
 	for _, option := range options {
+		if isAdvancedPricingOptionKey(option.Key) {
+			advancedPricingOptions[option.Key] = option.Value
+			continue
+		}
 		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
 		}
+	}
+	loadAdvancedPricingOptions(advancedPricingOptions)
+}
+
+func loadAdvancedPricingOptions(optionValues map[string]string) {
+	cfg, err := buildAdvancedPricingConfigFromOptionValues(optionValues)
+	if err != nil {
+		common.SysLog("failed to build advanced pricing config from database: " + err.Error())
+		return
+	}
+	configJSON, err := common.Marshal(cfg)
+	if err != nil {
+		common.SysLog("failed to marshal advanced pricing config: " + err.Error())
+		return
+	}
+	if err := updateOptionMap("AdvancedPricingConfig", string(configJSON)); err != nil {
+		common.SysLog("failed to update option map: " + err.Error())
 	}
 }
 
@@ -194,18 +356,30 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
-	// Save to database first
-	option := Option{
-		Key: key,
+	optionsToPersist := make([]Option, 0, 3)
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		optionsToPersist, err = buildPersistedOptionEntries(tx, key, value)
+		if err != nil {
+			return err
+		}
+		for _, option := range optionsToPersist {
+			if err := saveOptionValue(tx, option); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
-	// https://gorm.io/docs/update.html#Save-All-Fields
-	DB.FirstOrCreate(&option, Option{Key: key})
-	option.Value = value
-	// Save is a combination function.
-	// If save value does not contain primary key, it will execute Create,
-	// otherwise it will execute Update (with all fields).
-	DB.Save(&option)
 	// Update OptionMap
+	if isAdvancedPricingOptionKey(key) {
+		for _, option := range optionsToPersist {
+			if option.Key == "AdvancedPricingConfig" {
+				return updateOptionMap("AdvancedPricingConfig", option.Value)
+			}
+		}
+	}
 	return updateOptionMap(key, value)
 }
 
@@ -482,6 +656,12 @@ func updateOptionMap(key string, value string) (err error) {
 		err = ratio_setting.UpdateAudioRatioByJSONString(value)
 	case "AudioCompletionRatio":
 		err = ratio_setting.UpdateAudioCompletionRatioByJSONString(value)
+	case "AdvancedPricingConfig":
+		err = ratio_setting.UpdateAdvancedPricingConfigByJSONString(value)
+	case "AdvancedPricingMode":
+		err = ratio_setting.UpdateAdvancedPricingModeByJSONString(value)
+	case "AdvancedPricingRules":
+		err = ratio_setting.UpdateAdvancedPricingRulesByJSONString(value)
 	case "TopUpLink":
 		common.TopUpLink = value
 	//case "ChatLink":
@@ -508,6 +688,9 @@ func updateOptionMap(key string, value string) (err error) {
 		// WaffoPayMethods is read directly from OptionMap via setting.GetWaffoPayMethods().
 		// The value is already stored in OptionMap at the top of this function (line: common.OptionMap[key] = value).
 		// No additional in-memory variable to update.
+	}
+	if isAdvancedPricingOptionKey(key) {
+		syncAdvancedPricingOptionViews()
 	}
 	return err
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayhelper "github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -101,6 +102,22 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 			CompletionTokens: 0,
 			TotalTokens:      relayInfo.GetEstimatePromptTokens(),
 		}
+	} else {
+		refreshedPriceData, ok, err := relayhelper.RefreshTextPriceDataForSettlement(ctx, relayInfo, usage.PromptTokens, usage.CompletionTokens)
+		if err != nil {
+			logger.LogError(ctx, "failed to rebuild advanced text pricing for settlement: "+err.Error())
+		} else if ok {
+			relayInfo.PriceData = refreshedPriceData
+		}
+		summary.CompletionRatio = relayInfo.PriceData.CompletionRatio
+		summary.CacheRatio = relayInfo.PriceData.CacheRatio
+		summary.ImageRatio = relayInfo.PriceData.ImageRatio
+		summary.ModelRatio = relayInfo.PriceData.ModelRatio
+		summary.GroupRatio = relayInfo.PriceData.GroupRatioInfo.GroupRatio
+		summary.ModelPrice = relayInfo.PriceData.ModelPrice
+		summary.CacheCreationRatio = relayInfo.PriceData.CacheCreationRatio
+		summary.CacheCreationRatio5m = relayInfo.PriceData.CacheCreation5mRatio
+		summary.CacheCreationRatio1h = relayInfo.PriceData.CacheCreation1hRatio
 	}
 
 	summary.PromptTokens = usage.PromptTokens

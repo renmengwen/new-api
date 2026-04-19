@@ -236,6 +236,33 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "AdvancedPricingMode":
+		err = ratio_setting.ValidateAdvancedPricingModeJSONString(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "advanced pricing billing mode update failed: " + err.Error(),
+			})
+			return
+		}
+	case "AdvancedPricingRules":
+		err = ratio_setting.ValidateAdvancedPricingRulesJSONString(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "advanced pricing rule update failed: " + err.Error(),
+			})
+			return
+		}
+	case "AdvancedPricingConfig":
+		err = ratio_setting.ValidateAdvancedPricingConfigJSONString(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "advanced pricing config update failed: " + err.Error(),
+			})
+			return
+		}
 	case "ModelRequestRateLimitGroup":
 		err = setting.CheckModelRequestRateLimitGroup(option.Value.(string))
 		if err != nil {
@@ -306,7 +333,12 @@ func UpdateOption(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	createSettingOptionAuditLog(c, option, oldValue, option.Value.(string))
+	afterValue := option.Value.(string)
+	switch option.Key {
+	case "AdvancedPricingConfig", "AdvancedPricingMode", "AdvancedPricingRules":
+		afterValue = getSettingOptionCurrentValue(option.Key)
+	}
+	createSettingOptionAuditLog(c, option, oldValue, afterValue)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

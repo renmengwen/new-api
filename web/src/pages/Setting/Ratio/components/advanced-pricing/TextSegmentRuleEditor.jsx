@@ -23,9 +23,10 @@ import {
   Button,
   Card,
   Input,
-  Modal,
+  Radio,
+  RadioGroup,
+  SideSheet,
   Space,
-  Switch,
   Table,
   Tag,
   Typography,
@@ -34,18 +35,24 @@ import { IconDelete, IconEdit, IconPlus } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import {
   buildTextSegmentConditionSummary,
+  buildTextSegmentPreview,
   createEmptyTextSegmentRule,
+  getTextSegmentRuleEditorMeta,
   normalizeTextSegmentRule,
+  serializeAdvancedPricingConfig,
+  serializeTextSegmentRule,
   sortTextSegmentRules,
   validateTextSegmentRules,
 } from '../../hooks/advancedPricingRuleHelpers';
+import { useIsMobile } from '../../../../../hooks/common/useIsMobile';
 
+const { TextArea } = Input;
 const { Text } = Typography;
-
 const INTEGER_INPUT_REGEX = /^\d*$/;
 const DECIMAL_INPUT_REGEX = /^(\d+(\.\d*)?|\.\d*)?$/;
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const FORM_FIELDS = [
+const TEXT_SEGMENT_FIELDS = [
   {
     field: 'priority',
     label: '优先级',
@@ -55,102 +62,133 @@ const FORM_FIELDS = [
   {
     field: 'inputMin',
     label: '输入最小值',
-    placeholder: '可留空',
+    placeholder: '留空表示不限',
     regex: INTEGER_INPUT_REGEX,
   },
   {
     field: 'inputMax',
     label: '输入最大值',
-    placeholder: '可留空',
+    placeholder: '留空表示不限',
     regex: INTEGER_INPUT_REGEX,
   },
   {
     field: 'outputMin',
     label: '输出最小值',
-    placeholder: '可留空',
+    placeholder: '留空表示不限',
     regex: INTEGER_INPUT_REGEX,
   },
   {
     field: 'outputMax',
     label: '输出最大值',
-    placeholder: '可留空',
+    placeholder: '留空表示不限',
     regex: INTEGER_INPUT_REGEX,
   },
   {
+    field: 'serviceTier',
+    label: '服务层级',
+    placeholder: '例如：standard / premium',
+  },
+  {
     field: 'inputPrice',
-    label: '输入价格',
-    placeholder: '$/1M tokens',
+    label: '输入单价',
+    placeholder: '必填',
     regex: DECIMAL_INPUT_REGEX,
   },
   {
     field: 'outputPrice',
-    label: '输出价格',
-    placeholder: '$/1M tokens',
+    label: '输出单价',
+    placeholder: '可选',
     regex: DECIMAL_INPUT_REGEX,
   },
   {
     field: 'cacheReadPrice',
-    label: '缓存读取价格',
-    placeholder: '$/1M tokens',
+    label: '缓存读单价',
+    placeholder: '可选',
     regex: DECIMAL_INPUT_REGEX,
   },
   {
     field: 'cacheWritePrice',
-    label: '缓存创建价格',
-    placeholder: '$/1M tokens',
+    label: '缓存写单价',
+    placeholder: '可选',
     regex: DECIMAL_INPUT_REGEX,
   },
 ];
 
-export default function TextSegmentRuleEditor({
-  rules,
-  validationErrors,
-  onChange,
-}) {
+function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
   const { t } = useTranslation();
-  const [modalVisible, setModalVisible] = useState(false);
+  const isMobile = useIsMobile();
+  const [sideSheetVisible, setSideSheetVisible] = useState(false);
   const [editingRuleId, setEditingRuleId] = useState('');
   const [draftRule, setDraftRule] = useState(createEmptyTextSegmentRule(1));
   const [draftErrors, setDraftErrors] = useState([]);
+  const [sheetPreviewInput, setSheetPreviewInput] = useState({
+    inputTokens: '',
+    outputTokens: '',
+    serviceTier: '',
+  });
 
-  const sortedRules = useMemo(() => sortTextSegmentRules(rules), [rules]);
+  const sortedRules = useMemo(() => sortTextSegmentRules(rules || []), [rules]);
+  const previewInput = sheetPreviewInput;
 
   const resetDraftState = () => {
     setEditingRuleId('');
     setDraftRule(createEmptyTextSegmentRule(Date.now()));
     setDraftErrors([]);
+    setSheetPreviewInput({
+      inputTokens: '',
+      outputTokens: '',
+      serviceTier: '',
+    });
   };
 
-  const openCreateModal = () => {
-    setEditingRuleId('');
-    setDraftRule(createEmptyTextSegmentRule(Date.now()));
-    setDraftErrors([]);
-    setModalVisible(true);
+  const handleCloseSideSheet = () => {
+    setSideSheetVisible(false);
+    resetDraftState();
   };
 
-  const openEditModal = (rule) => {
+  const openCreateSideSheet = () => {
+    resetDraftState();
+    setSideSheetVisible(true);
+  };
+
+  const openEditSideSheet = (rule) => {
     setEditingRuleId(rule.id);
     setDraftRule(normalizeTextSegmentRule(rule));
     setDraftErrors([]);
-    setModalVisible(true);
+    setSideSheetVisible(true);
   };
 
   const buildNextRules = (candidateRule) =>
     editingRuleId
-      ? rules.map((rule) => (rule.id === editingRuleId ? candidateRule : rule))
-      : [...rules, candidateRule];
+      ? sortedRules.map((rule) =>
+          rule.id === editingRuleId ? candidateRule : rule,
+        )
+      : [...sortedRules, candidateRule];
+
+  const candidatePreviewRules = useMemo(
+    () => buildNextRules(normalizeTextSegmentRule(draftRule)),
+    [draftRule, editingRuleId, sortedRules],
+  );
+  const sheetPreviewResult = useMemo(
+    () => buildTextSegmentPreview(candidatePreviewRules, previewInput),
+    [candidatePreviewRules, previewInput],
+  );
 
   const resolveDraftErrors = (candidateRule) => {
-    const nextRules = buildNextRules(candidateRule);
-    return validateTextSegmentRules(nextRules).filter(
+    const candidateRuleIdPattern = candidateRule.id
+      ? new RegExp(`(^|[\\s:/])${escapeRegExp(candidateRule.id)}(?=$|[\\s:/])`)
+      : null;
+
+    return validateTextSegmentRules(buildNextRules(candidateRule)).filter(
       (error) =>
-        error.includes(candidateRule.id) ||
-        (editingRuleId && error.includes(editingRuleId)),
+        candidateRuleIdPattern &&
+        error.includes(candidateRule.id) &&
+        candidateRuleIdPattern.test(error),
     );
   };
 
   const handleDraftFieldChange = (field, value, regex) => {
-    if (!regex.test(value)) {
+    if (regex && !regex.test(value)) {
       return;
     }
 
@@ -163,76 +201,87 @@ export default function TextSegmentRuleEditor({
     setDraftErrors(resolveDraftErrors(nextDraftRule));
   };
 
-  const handleDraftEnabledChange = (checked) => {
+  const handleEnabledChange = (value) => {
     const nextDraftRule = {
       ...draftRule,
-      enabled: checked,
+      enabled: value === 'true',
     };
+
     setDraftRule(nextDraftRule);
     setDraftErrors(resolveDraftErrors(nextDraftRule));
+  };
+
+  const handlePreviewInputChange = (field, value) => {
+    if (field !== 'serviceTier' && !INTEGER_INPUT_REGEX.test(value)) {
+      return;
+    }
+
+    setSheetPreviewInput((currentValue) => ({
+      ...currentValue,
+      [field]: value,
+    }));
   };
 
   const handleSaveDraft = () => {
     const candidateRule = normalizeTextSegmentRule(draftRule);
     const nextDraftErrors = resolveDraftErrors(candidateRule);
+
     if (nextDraftErrors.length > 0) {
       setDraftErrors(nextDraftErrors);
       return;
     }
 
     onChange(sortTextSegmentRules(buildNextRules(candidateRule)));
-    setModalVisible(false);
-    resetDraftState();
+    handleCloseSideSheet();
   };
 
   const handleDeleteRule = (ruleId) => {
-    onChange(rules.filter((rule) => rule.id !== ruleId));
-  };
-
-  const handleInlineEnabledChange = (ruleId, checked) => {
-    onChange(
-      rules.map((rule) =>
-        rule.id === ruleId ? { ...rule, enabled: checked } : rule,
-      ),
-    );
+    onChange(sortedRules.filter((rule) => rule.id !== ruleId));
   };
 
   const columns = useMemo(
     () => [
       {
-        title: t('启用'),
-        dataIndex: 'enabled',
-        key: 'enabled',
-        render: (_, record) => (
-          <Switch
-            checked={record.enabled !== false}
-            onChange={(checked) => handleInlineEnabledChange(record.id, checked)}
-          />
-        ),
-      },
-      {
         title: t('优先级'),
         dataIndex: 'priority',
         key: 'priority',
+        render: (value) => value || '-',
+      },
+      {
+        title: t('状态'),
+        dataIndex: 'enabled',
+        key: 'enabled',
+        render: (value) => (
+          <Tag color={value === false ? 'grey' : 'green'}>
+            {value === false ? t('停用') : t('启用')}
+          </Tag>
+        ),
       },
       {
         title: t('条件摘要'),
-        dataIndex: 'conditionSummary',
         key: 'conditionSummary',
-        render: (_, record) => buildTextSegmentConditionSummary(record),
+        render: (_, record) => (
+          <Tag color='cyan'>{buildTextSegmentConditionSummary(record)}</Tag>
+        ),
       },
       {
-        title: t('价格摘要'),
-        key: 'priceSummary',
+        title: t('服务层级'),
+        dataIndex: 'serviceTier',
+        key: 'serviceTier',
+        render: (value) => value || '-',
+      },
+      {
+        title: t('计费摘要'),
+        key: 'billingSummary',
         render: (_, record) => (
           <Space wrap>
-            <Tag color='blue'>{t('输入')}: ${record.inputPrice || '-'}</Tag>
-            <Tag color='green'>{t('输出')}: ${record.outputPrice || '-'}</Tag>
+            <Tag color='blue'>{`${t('输入单价')}：${record.inputPrice || '-'}`}</Tag>
+            <Tag color='green'>{`${t('输出单价')}：${record.outputPrice || '-'}`}</Tag>
             <Tag color='cyan'>
-              {t('缓存读')}: ${record.cacheReadPrice || '-'}
+              {`${t('缓存读单价')}：${record.cacheReadPrice || '-'}`}
             </Tag>
-            <Tag color='indigo'>
-              {t('缓存写')}: ${record.cacheWritePrice || '-'}
+            <Tag color='violet'>
+              {`${t('缓存写单价')}：${record.cacheWritePrice || '-'}`}
             </Tag>
           </Space>
         ),
@@ -246,7 +295,7 @@ export default function TextSegmentRuleEditor({
               size='small'
               type='tertiary'
               icon={<IconEdit />}
-              onClick={() => openEditModal(record)}
+              onClick={() => openEditSideSheet(record)}
             >
               {t('编辑')}
             </Button>
@@ -262,21 +311,23 @@ export default function TextSegmentRuleEditor({
         ),
       },
     ],
-    [t, rules],
+    [t],
   );
 
   return (
     <>
       <Card
-        title={t('文本分段规则编辑器')}
+        title={t('规则列表')}
         headerExtraContent={
-          <Button icon={<IconPlus />} onClick={openCreateModal}>
+          <Button icon={<IconPlus />} onClick={openCreateSideSheet}>
             {t('新增规则')}
           </Button>
         }
       >
         <div className='text-sm text-gray-500 mb-3'>
-          {t('按优先级从小到大命中；建议保留一个兜底规则避免请求落空。')}
+          {t(
+            '在这里维护文本请求的分段区间、优先级与价格；左侧列表用于快速查看，右侧抽屉用于新增和编辑规则。',
+          )}
         </div>
 
         {validationErrors.length > 0 ? (
@@ -286,7 +337,7 @@ export default function TextSegmentRuleEditor({
             fullMode={false}
             closeIcon={null}
             style={{ marginBottom: 16 }}
-            title={t('当前规则存在待处理问题')}
+            title={t('当前文本分段规则存在待处理问题')}
             description={
               <Space vertical align='start'>
                 {validationErrors.map((error) => (
@@ -308,27 +359,63 @@ export default function TextSegmentRuleEditor({
             </div>
           }
         />
+
+        <Card
+          bodyStyle={{ padding: 16 }}
+          style={{
+            marginTop: 16,
+            background: 'var(--semi-color-fill-0)',
+          }}
+          title={t('当前规则 JSON')}
+        >
+          <pre
+            style={{
+              margin: 0,
+              padding: 12,
+              borderRadius: 8,
+              background: 'var(--semi-color-fill-1)',
+              width: '100%',
+              overflowX: 'auto',
+            }}
+          >
+            {JSON.stringify(
+              sortedRules
+                .filter((rule) => rule?.enabled !== false)
+                .map((rule) => serializeTextSegmentRule(rule)),
+              null,
+              2,
+            )}
+          </pre>
+        </Card>
       </Card>
 
-      <Modal
-        title={editingRuleId ? t('编辑文本规则') : t('新增文本规则')}
-        visible={modalVisible}
-        onCancel={() => {
-          setModalVisible(false);
-          resetDraftState();
-        }}
-        onOk={handleSaveDraft}
-        size='large'
+      <SideSheet
+        placement='right'
+        title={
+          <Space>
+            <Tag color='blue' shape='circle'>
+              {editingRuleId ? t('编辑') : t('新增')}
+            </Tag>
+            <Text strong>
+              {editingRuleId ? t('编辑文本规则') : t('新增文本规则')}
+            </Text>
+          </Space>
+        }
+        visible={sideSheetVisible}
+        onCancel={handleCloseSideSheet}
+        width={isMobile ? '100%' : 720}
+        bodyStyle={{ padding: 16 }}
+        footer={
+          <Space>
+            <Button onClick={handleCloseSideSheet}>{t('取消')}</Button>
+            <Button theme='solid' type='primary' onClick={handleSaveDraft}>
+              {editingRuleId ? t('保存规则') : t('新增规则')}
+            </Button>
+          </Space>
+        }
+        closeIcon={null}
       >
         <Space vertical align='start' style={{ width: '100%' }}>
-          <div>
-            <div className='mb-2 font-medium text-gray-700'>{t('启用状态')}</div>
-            <Switch
-              checked={draftRule.enabled !== false}
-              onChange={handleDraftEnabledChange}
-            />
-          </div>
-
           <div
             style={{
               width: '100%',
@@ -337,7 +424,7 @@ export default function TextSegmentRuleEditor({
               gap: 12,
             }}
           >
-            {FORM_FIELDS.map((fieldMeta) => (
+            {TEXT_SEGMENT_FIELDS.map((fieldMeta) => (
               <div key={fieldMeta.field}>
                 <div className='mb-1 font-medium text-gray-700'>
                   {t(fieldMeta.label)}
@@ -357,9 +444,41 @@ export default function TextSegmentRuleEditor({
             ))}
           </div>
 
-          <div>
+          <div style={{ width: '100%' }}>
+            <div className='mb-2 font-medium text-gray-700'>{t('状态')}</div>
+            <RadioGroup
+              type='button'
+              value={draftRule.enabled === false ? 'false' : 'true'}
+              onChange={(event) => handleEnabledChange(event.target.value)}
+            >
+              <Radio value='true'>{t('启用')}</Radio>
+              <Radio value='false'>{t('停用')}</Radio>
+            </RadioGroup>
+          </div>
+
+          <div style={{ width: '100%' }}>
             <div className='mb-1 font-medium text-gray-700'>{t('条件摘要')}</div>
-            <Tag color='cyan'>{buildTextSegmentConditionSummary(draftRule)}</Tag>
+            <Tag color={draftRule.enabled === false ? 'grey' : 'cyan'}>
+              {buildTextSegmentConditionSummary(draftRule)}
+            </Tag>
+          </div>
+
+          <div style={{ width: '100%' }}>
+            <div className='mb-1 font-medium text-gray-700'>
+              {t('生成的规则 JSON')}
+            </div>
+            <pre
+              style={{
+                margin: 0,
+                padding: 12,
+                borderRadius: 8,
+                background: 'var(--semi-color-fill-1)',
+                width: '100%',
+                overflowX: 'auto',
+              }}
+            >
+              {JSON.stringify(serializeTextSegmentRule(draftRule), null, 2)}
+            </pre>
           </div>
 
           {draftErrors.length > 0 ? (
@@ -378,8 +497,359 @@ export default function TextSegmentRuleEditor({
               }
             />
           ) : null}
+
+          <Card
+            bodyStyle={{ padding: 16 }}
+            style={{
+              width: '100%',
+              background: 'var(--semi-color-fill-0)',
+            }}
+            title={t('规则命中预览')}
+          >
+            <Space vertical align='start' style={{ width: '100%' }}>
+              <div className='text-sm text-gray-500'>
+                {t('输入预览参数后，这里会展示保存当前草稿后规则集的命中结果。')}
+              </div>
+
+              <div
+                style={{
+                  width: '100%',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div className='mb-1 font-medium text-gray-700'>
+                    {t('输入 token')}
+                  </div>
+                  <Input
+                    value={previewInput?.inputTokens || ''}
+                    placeholder={t('例如 8000')}
+                    onChange={(value) =>
+                      handlePreviewInputChange('inputTokens', value)
+                    }
+                  />
+                </div>
+                <div>
+                  <div className='mb-1 font-medium text-gray-700'>
+                    {t('输出 token')}
+                  </div>
+                  <Input
+                    value={previewInput?.outputTokens || ''}
+                    placeholder={t('例如 2000')}
+                    onChange={(value) =>
+                      handlePreviewInputChange('outputTokens', value)
+                    }
+                  />
+                </div>
+                <div>
+                  <div className='mb-1 font-medium text-gray-700'>
+                    {t('服务层级')}
+                  </div>
+                  <Input
+                    value={previewInput?.serviceTier || ''}
+                    placeholder={t('例如 standard / priority')}
+                    onChange={(value) =>
+                      handlePreviewInputChange('serviceTier', value)
+                    }
+                  />
+                </div>
+              </div>
+
+              <Space wrap>
+                <Tag color='blue'>
+                  {`${t('规则总数')}：${candidatePreviewRules.length}`}
+                </Tag>
+                <Tag color={sheetPreviewResult?.matchedRule ? 'green' : 'grey'}>
+                  {sheetPreviewResult?.matchedRule
+                    ? t('已命中规则')
+                    : t('未命中规则')}
+                </Tag>
+                {sheetPreviewResult?.matchedRule ? (
+                  <Tag color='violet'>
+                    {`${t('优先级')}：${sheetPreviewResult.matchedRule.priority || '-'}`}
+                  </Tag>
+                ) : null}
+              </Space>
+
+              <div style={{ width: '100%' }}>
+                <div className='mb-1 font-medium text-gray-700'>
+                  {t('匹配条件')}
+                </div>
+                <Tag color='cyan'>
+                  {sheetPreviewResult?.conditionSummary || '-'}
+                </Tag>
+              </div>
+
+              <div style={{ width: '100%' }}>
+                <div className='mb-1 font-medium text-gray-700'>
+                  {t('预计计费公式')}
+                </div>
+                <Tag color='blue'>
+                  {sheetPreviewResult?.formulaSummary || '-'}
+                </Tag>
+              </div>
+
+              <div
+                style={{
+                  width: '100%',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div className='text-xs text-gray-500 mb-1'>
+                    {t('输入费用')}
+                  </div>
+                  <div className='font-medium'>
+                    {sheetPreviewResult?.priceSummary?.inputCost || '-'}
+                  </div>
+                </div>
+                <div>
+                  <div className='text-xs text-gray-500 mb-1'>
+                    {t('输出费用')}
+                  </div>
+                  <div className='font-medium'>
+                    {sheetPreviewResult?.priceSummary?.outputCost || '-'}
+                  </div>
+                </div>
+                <div>
+                  <div className='text-xs text-gray-500 mb-1'>
+                    {t('总费用')}
+                  </div>
+                  <div className='font-medium'>
+                    {sheetPreviewResult?.priceSummary?.totalCost || '-'}
+                  </div>
+                </div>
+                <div>
+                  <div className='text-xs text-gray-500 mb-1'>
+                    {t('缓存读单价')}
+                  </div>
+                  <div className='font-medium'>
+                    {sheetPreviewResult?.priceSummary?.cacheReadPrice || '-'}
+                  </div>
+                </div>
+                <div>
+                  <div className='text-xs text-gray-500 mb-1'>
+                    {t('缓存写单价')}
+                  </div>
+                  <div className='font-medium'>
+                    {sheetPreviewResult?.priceSummary?.cacheWritePrice || '-'}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ width: '100%' }}>
+                <div className='mb-1 font-medium text-gray-700'>
+                  {t('日志详情')}
+                </div>
+                <div>{sheetPreviewResult?.logPreview?.detailSummary || '-'}</div>
+              </div>
+
+              <div style={{ width: '100%' }}>
+                <div className='mb-1 font-medium text-gray-700'>
+                  {t('计费过程')}
+                </div>
+                <div>{sheetPreviewResult?.logPreview?.processSummary || '-'}</div>
+              </div>
+
+              <div style={{ width: '100%' }}>
+                <div className='mb-1 font-medium text-gray-700'>
+                  {t('命中规则 JSON')}
+                </div>
+                <pre
+                  style={{
+                    margin: 0,
+                    padding: 12,
+                    borderRadius: 8,
+                    background: 'var(--semi-color-fill-1)',
+                    width: '100%',
+                    overflowX: 'auto',
+                  }}
+                >
+                  {JSON.stringify(
+                    sheetPreviewResult?.matchedRule
+                      ? serializeTextSegmentRule(sheetPreviewResult.matchedRule)
+                      : null,
+                    null,
+                    2,
+                  )}
+                </pre>
+              </div>
+            </Space>
+          </Card>
         </Space>
-      </Modal>
+      </SideSheet>
     </>
+  );
+}
+
+export default function TextSegmentRuleEditor({
+  config,
+  rules,
+  validationErrors = [],
+  onChange,
+  onConfigChange,
+}) {
+  const { t } = useTranslation();
+  const ruleMeta = useMemo(
+    () => getTextSegmentRuleEditorMeta(config, rules),
+    [config, rules],
+  );
+  const serializedConfig = useMemo(
+    () =>
+      serializeAdvancedPricingConfig({
+        ...(config || {}),
+        rules,
+      }),
+    [config, rules],
+  );
+  const priorityHint = t(
+    '按优先级从小到大依次匹配，命中第一条启用规则后停止；停用规则不会参与命中预览和最终保存。',
+  );
+
+  const handleConfigFieldChange = (field, value) => {
+    onConfigChange({
+      ...(config || {}),
+      rules,
+      [field]: value,
+    });
+  };
+
+  return (
+    <Space vertical align='start' style={{ width: '100%' }}>
+      <Card title={t('文本分段规则编辑器')} style={{ width: '100%' }}>
+        <Card
+          bodyStyle={{ padding: 16 }}
+          style={{
+            marginBottom: 16,
+            background: 'var(--semi-color-fill-0)',
+          }}
+          title={t('文本分段规则摘要')}
+        >
+          <div
+            style={{
+              width: '100%',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 12,
+            }}
+          >
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('规则类型')}</div>
+              <Tag color='blue'>{t('文本分段')}</Tag>
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('规则总数')}</div>
+              <Space wrap>
+                <Tag color='cyan'>{`${ruleMeta.totalRules} ${t('条规则')}`}</Tag>
+                <Tag color='green'>{`${ruleMeta.enabledRules} ${t('条启用')}`}</Tag>
+              </Space>
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>
+                {t('默认兜底价格')}
+              </div>
+              <Space wrap>
+                <Tag color={ruleMeta.hasDefaultPrice ? 'green' : 'orange'}>
+                  {ruleMeta.hasDefaultPrice ? t('已设置') : t('未设置')}
+                </Tag>
+                <Text>
+                  {ruleMeta.hasDefaultPrice
+                    ? ruleMeta.defaultPrice
+                    : t('未命中规则时不回退默认价格')}
+                </Text>
+              </Space>
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <div className='mb-1 font-medium text-gray-700'>{t('命中顺序')}</div>
+              <Text>{priorityHint}</Text>
+            </div>
+          </div>
+        </Card>
+
+        <div
+          style={{
+            width: '100%',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 12,
+            marginBottom: 16,
+          }}
+        >
+          <div>
+            <div className='mb-1 font-medium text-gray-700'>{t('显示名称')}</div>
+            <Input
+              value={config?.displayName || ''}
+              placeholder={t('例如：Gemini 长上下文分层')}
+              onChange={(value) => handleConfigFieldChange('displayName', value)}
+            />
+          </div>
+          <div>
+            <div className='mb-1 font-medium text-gray-700'>{t('分段依据')}</div>
+            <Input
+              value={config?.segmentBasis || ''}
+              placeholder={t('例如：input_tokens')}
+              onChange={(value) => handleConfigFieldChange('segmentBasis', value)}
+            />
+          </div>
+          <div>
+            <div className='mb-1 font-medium text-gray-700'>{t('计费单位')}</div>
+            <Input
+              value={config?.billingUnit || ''}
+              placeholder={t('例如：1M tokens')}
+              onChange={(value) => handleConfigFieldChange('billingUnit', value)}
+            />
+          </div>
+          <div>
+            <div className='mb-1 font-medium text-gray-700'>{t('默认单价')}</div>
+            <Input
+              value={config?.defaultPrice || ''}
+              placeholder={t('未命中规则时可选')}
+              onChange={(value) => handleConfigFieldChange('defaultPrice', value)}
+            />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <div className='mb-1 font-medium text-gray-700'>{t('备注')}</div>
+            <TextArea
+              value={config?.note || ''}
+              rows={3}
+              placeholder={t('补充当前文本分段规则的适用说明')}
+              onChange={(value) => handleConfigFieldChange('note', value)}
+            />
+          </div>
+        </div>
+
+        <TextSegmentRulesEditor
+          rules={rules}
+          validationErrors={validationErrors}
+          onChange={onChange}
+        />
+
+        <Card
+          bodyStyle={{ padding: 16 }}
+          style={{
+            marginTop: 16,
+            background: 'var(--semi-color-fill-0)',
+          }}
+          title={t('保存后配置 JSON')}
+        >
+          <pre
+            style={{
+              margin: 0,
+              padding: 12,
+              borderRadius: 8,
+              background: 'var(--semi-color-fill-1)',
+              width: '100%',
+              overflowX: 'auto',
+            }}
+          >
+            {JSON.stringify(serializedConfig, null, 2)}
+          </pre>
+        </Card>
+      </Card>
+    </Space>
   );
 }

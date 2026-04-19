@@ -40,16 +40,34 @@ import {
 
 const { Text } = Typography;
 
-const getModeLabel = (model, t) => {
-  if (!model) {
-    return t('未设置');
+const resolveMode = (mode, fixedBillingMode) => {
+  if (mode === ADVANCED_PRICING_MODE_ADVANCED) {
+    return ADVANCED_PRICING_MODE_ADVANCED;
   }
-  if (model.effectiveMode === ADVANCED_PRICING_MODE_ADVANCED) {
+  if (mode === FIXED_BILLING_MODE_PER_REQUEST) {
+    return FIXED_BILLING_MODE_PER_REQUEST;
+  }
+  if (mode === FIXED_BILLING_MODE_PER_TOKEN) {
+    return FIXED_BILLING_MODE_PER_TOKEN;
+  }
+  return fixedBillingMode || FIXED_BILLING_MODE_PER_TOKEN;
+};
+
+const getModeLabel = (mode, fixedBillingMode, t) => {
+  if (resolveMode(mode, fixedBillingMode) === ADVANCED_PRICING_MODE_ADVANCED) {
     return t('高级规则');
   }
-  return model.fixedBillingMode === FIXED_BILLING_MODE_PER_REQUEST
+  return resolveMode(mode, fixedBillingMode) === FIXED_BILLING_MODE_PER_REQUEST
     ? t('固定按次')
     : t('固定按量');
+};
+
+const getModeColor = (mode, fixedBillingMode) => {
+  const resolvedMode = resolveMode(mode, fixedBillingMode);
+  if (resolvedMode === ADVANCED_PRICING_MODE_ADVANCED) {
+    return 'orange';
+  }
+  return resolvedMode === FIXED_BILLING_MODE_PER_REQUEST ? 'teal' : 'violet';
 };
 
 const getRuleTypeLabel = (ruleType, t) => {
@@ -71,6 +89,22 @@ export default function AdvancedPricingSummary({
   onRuleTypeChange,
 }) {
   const { t } = useTranslation();
+  const hasPendingModeChange =
+    selectedModel && selectedModel.effectiveMode !== selectedModel.selectedMode;
+  const effectiveModeLabel = selectedModel
+    ? getModeLabel(
+        selectedModel.effectiveMode,
+        selectedModel.fixedBillingMode,
+        t,
+      )
+    : t('未设置');
+  const selectedModeLabel = selectedModel
+    ? getModeLabel(
+        selectedModel.selectedMode,
+        selectedModel.fixedBillingMode,
+        t,
+      )
+    : t('未设置');
 
   return (
     <Card
@@ -97,17 +131,16 @@ export default function AdvancedPricingSummary({
             <Tag size='large' color='blue'>
               {selectedModel.name}
             </Tag>
-            <Tag
-              color={
-                selectedModel.effectiveMode === ADVANCED_PRICING_MODE_ADVANCED
-                  ? 'orange'
-                  : selectedModel.fixedBillingMode === FIXED_BILLING_MODE_PER_REQUEST
-                    ? 'teal'
-                    : 'violet'
-              }
-            >
-              {getModeLabel(selectedModel, t)}
+            <Tag color={getModeColor(selectedModel.effectiveMode, selectedModel.fixedBillingMode)}>
+              {t('当前生效')}: {effectiveModeLabel}
             </Tag>
+            {hasPendingModeChange ? (
+              <Tag
+                color={getModeColor(selectedModel.selectedMode, selectedModel.fixedBillingMode)}
+              >
+                {t('本地草稿')}: {selectedModeLabel}
+              </Tag>
+            ) : null}
             <Tag color='cyan'>
               {t('规则类型')}: {getRuleTypeLabel(selectedModel.ruleType, t)}
             </Tag>
@@ -127,7 +160,18 @@ export default function AdvancedPricingSummary({
             </div>
             <div>
               <Text type='tertiary'>{t('当前生效模式')}</Text>
-              <div>{getModeLabel(selectedModel, t)}</div>
+              <div>{effectiveModeLabel}</div>
+            </div>
+            <div>
+              <Text type='tertiary'>{t('本地草稿模式')}</Text>
+              <div>
+                {selectedModeLabel}
+                {hasPendingModeChange ? (
+                  <Tag size='small' color='yellow' style={{ marginLeft: 8 }}>
+                    {t('本地未保存')}
+                  </Tag>
+                ) : null}
+              </div>
             </div>
             <div>
               <Text type='tertiary'>{t('规则类型')}</Text>
@@ -153,7 +197,7 @@ export default function AdvancedPricingSummary({
 
           <div>
             <div className='mb-2 font-medium text-gray-700'>
-              {t('切换当前生效模式')}
+              {t('切换本地草稿模式')}
             </div>
             <RadioGroup
               type='button'
@@ -192,12 +236,27 @@ export default function AdvancedPricingSummary({
               <Radio value={MEDIA_TASK_RULE_TYPE}>{t('媒体任务')}</Radio>
             </RadioGroup>
             <div className='mt-2 text-xs text-gray-500'>
-              {t('规则类型会决定右侧加载哪种编辑器；本批媒体任务编辑器先保留浅壳。')}
+              {t('规则类型会决定右侧加载哪种编辑器；当前已支持文本分段与媒体任务两种规则编辑。')}
             </div>
           </div>
 
-          {selectedModel.hasAdvancedPricing &&
-          selectedModel.selectedMode !== ADVANCED_PRICING_MODE_ADVANCED ? (
+          {hasPendingModeChange ? (
+            <Banner
+              type='warning'
+              bordered
+              fullMode={false}
+              closeIcon={null}
+              title={t('本地未保存')}
+              description={t(
+                '当前生效仍为 {{effectiveMode}}，本地草稿已切换为 {{selectedMode}}。保存后新请求才会按新模式结算。',
+                {
+                  effectiveMode: effectiveModeLabel,
+                  selectedMode: selectedModeLabel,
+                },
+              )}
+            />
+          ) : selectedModel.hasAdvancedPricing &&
+            selectedModel.effectiveMode !== ADVANCED_PRICING_MODE_ADVANCED ? (
             <Banner
               type='warning'
               bordered

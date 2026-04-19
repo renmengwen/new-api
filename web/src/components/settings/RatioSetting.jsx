@@ -20,21 +20,23 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useState } from 'react';
 import { Card, Spin, Tabs } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router-dom';
 
 import GroupRatioSettings from '../../pages/Setting/Ratio/GroupRatioSettings';
+import AdvancedPricingRulesPage from '../../pages/Setting/Ratio/AdvancedPricingRulesPage';
 import ModelRatioSettings from '../../pages/Setting/Ratio/ModelRatioSettings';
 import ModelSettingsVisualEditor from '../../pages/Setting/Ratio/ModelSettingsVisualEditor';
 import ModelRatioNotSetEditor from '../../pages/Setting/Ratio/ModelRationNotSetEditor';
 import UpstreamRatioSync from '../../pages/Setting/Ratio/UpstreamRatioSync';
-import AdvancedPricingRulesPage from '../../pages/Setting/Ratio/AdvancedPricingRulesPage';
 
 import { API, showError, toBoolean } from '../../helpers';
 
 const RatioSetting = () => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const location = useLocation();
+  const [activeTab, setActiveTab] = useState('visual');
+  const [pendingAdvancedPricingModelName, setPendingAdvancedPricingModelName] = useState('');
+  const [advancedPricingInitialModelSelectionKey, setAdvancedPricingInitialModelSelectionKey] = useState(0);
+  const [pendingPricingModelName, setPendingPricingModelName] = useState('');
+  const [pricingInitialModelSelectionKey, setPricingInitialModelSelectionKey] = useState(0);
 
   let [inputs, setInputs] = useState({
     ModelPrice: '',
@@ -50,40 +52,11 @@ const RatioSetting = () => {
     AutoGroups: '',
     DefaultUseAutoGroup: false,
     ExposeRatioEnabled: false,
-    AdvancedPricingMode: '',
-    AdvancedPricingRules: '',
     UserUsableGroups: '',
     'group_ratio_setting.group_special_usable_group': '',
   });
 
   const [loading, setLoading] = useState(false);
-  const [activeTabKey, setActiveTabKey] = useState('visual');
-  const [selectedModelName, setSelectedModelName] = useState('');
-
-  const updateRatioSearchParams = (updates = {}) => {
-    const searchParams = new URLSearchParams(location.search);
-    searchParams.set('tab', 'ratio');
-
-    const nextRatioTab = updates.ratioTab || searchParams.get('ratioTab') || 'visual';
-    searchParams.set('ratioTab', nextRatioTab);
-
-    if (Object.prototype.hasOwnProperty.call(updates, 'pricingModel')) {
-      if (updates.pricingModel) {
-        searchParams.set('pricingModel', updates.pricingModel);
-      } else {
-        searchParams.delete('pricingModel');
-      }
-    } else if (selectedModelName) {
-      searchParams.set('pricingModel', selectedModelName);
-    }
-
-    navigate(`?${searchParams.toString()}`);
-  };
-
-  const handleSelectedModelChange = (modelName) => {
-    setSelectedModelName(modelName || '');
-    updateRatioSearchParams({ pricingModel: modelName || '' });
-  };
 
   const getOptions = async () => {
     const res = await API.get('/api/option/');
@@ -126,28 +99,27 @@ const RatioSetting = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    const searchParams = new URLSearchParams(location.search);
-    if (searchParams.get('tab') !== 'ratio') {
-      return;
-    }
+  const handleTabChange = (itemKey) => {
+    setActiveTab(itemKey);
+  };
 
-    setActiveTabKey(searchParams.get('ratioTab') || 'visual');
-    setSelectedModelName(searchParams.get('pricingModel') || '');
-  }, [location.search]);
+  const handleOpenAdvancedPricingRules = (model) => {
+    setPendingAdvancedPricingModelName(model?.name || '');
+    setAdvancedPricingInitialModelSelectionKey((previous) => previous + 1);
+    setActiveTab('advanced_pricing');
+  };
+
+  const handleBackToPricing = (modelName) => {
+    setPendingPricingModelName(modelName || '');
+    setPricingInitialModelSelectionKey((previous) => previous + 1);
+    setActiveTab('visual');
+  };
 
   return (
     <Spin spinning={loading} size='large'>
       {/* 模型倍率设置以及价格编辑器 */}
       <Card style={{ marginTop: '10px' }}>
-        <Tabs
-          type='card'
-          activeKey={activeTabKey}
-          onChange={(key) => {
-            setActiveTabKey(key);
-            updateRatioSearchParams({ ratioTab: key });
-          }}
-        >
+        <Tabs type='card' activeKey={activeTab} onChange={handleTabChange}>
           <Tabs.TabPane tab={t('模型倍率设置')} itemKey='model'>
             <ModelRatioSettings options={inputs} refresh={onRefresh} />
           </Tabs.TabPane>
@@ -158,32 +130,18 @@ const RatioSetting = () => {
             <ModelSettingsVisualEditor
               options={inputs}
               refresh={onRefresh}
-              selectedModelName={selectedModelName}
-              onSelectedModelChange={handleSelectedModelChange}
-              onEditAdvancedRules={(modelName) => {
-                setActiveTabKey('advanced_pricing');
-                setSelectedModelName(modelName || '');
-                updateRatioSearchParams({
-                  ratioTab: 'advanced_pricing',
-                  pricingModel: modelName || '',
-                });
-              }}
+              initialModelName={pendingPricingModelName}
+              initialModelSelectionKey={pricingInitialModelSelectionKey}
+              onOpenAdvancedPricingRules={handleOpenAdvancedPricingRules}
             />
           </Tabs.TabPane>
           <Tabs.TabPane tab={t('高级定价规则')} itemKey='advanced_pricing'>
             <AdvancedPricingRulesPage
               options={inputs}
               refresh={onRefresh}
-              selectedModelName={selectedModelName}
-              onSelectedModelChange={handleSelectedModelChange}
-              onBackToPricing={(modelName) => {
-                setActiveTabKey('visual');
-                setSelectedModelName(modelName || '');
-                updateRatioSearchParams({
-                  ratioTab: 'visual',
-                  pricingModel: modelName || '',
-                });
-              }}
+              initialModelName={pendingAdvancedPricingModelName}
+              initialModelSelectionKey={advancedPricingInitialModelSelectionKey}
+              onBackToPricing={handleBackToPricing}
             />
           </Tabs.TabPane>
           <Tabs.TabPane tab={t('未设置价格模型')} itemKey='unset_models'>

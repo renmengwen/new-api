@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -312,6 +313,34 @@ func TestRefundTaskQuota_NoToken(t *testing.T) {
 	assert.Equal(t, model.LogTypeRefund, log.Type)
 }
 
+func TestTaskBillingOther_IncludesAdvancedSnapshot(t *testing.T) {
+	task := makeTask(1, 1, 1000, 0, BillingSourceWallet, 0)
+	snapshot := &types.AdvancedRuleSnapshot{
+		RuleType:     types.AdvancedRuleTypeTextSegment,
+		MatchSummary: "input_tokens<=1000",
+	}
+	task.PrivateData.BillingContext.BillingMode = types.BillingModeAdvanced
+	task.PrivateData.BillingContext.AdvancedRuleType = types.AdvancedRuleTypeTextSegment
+	task.PrivateData.BillingContext.AdvancedRuleSnapshot = snapshot
+
+	other := taskBillingOther(task)
+
+	assert.Equal(t, string(types.BillingModeAdvanced), other["billing_mode"])
+	assert.Equal(t, string(types.AdvancedRuleTypeTextSegment), other["advanced_rule_type"])
+	assert.Same(t, snapshot, other["advanced_rule"])
+}
+
+func TestTaskBillingOther_FixedModeDoesNotIncludeBillingMode(t *testing.T) {
+	task := makeTask(1, 1, 1000, 0, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.BillingMode = types.BillingModePerToken
+
+	other := taskBillingOther(task)
+
+	assert.NotContains(t, other, "billing_mode")
+	assert.NotContains(t, other, "advanced_rule_type")
+	assert.NotContains(t, other, "advanced_rule")
+}
+
 // ===========================================================================
 // RecalculateTaskQuota tests
 // ===========================================================================
@@ -450,6 +479,75 @@ func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+}
+
+func TestRecalculate_AdvancedBillingIncludesSnapshotAndSummary(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 15, 15, 15
+	const initQuota, preConsumed = 10000, 2000
+	const actualQuota = 3000
+	const tokenRemain = 5000
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-advanced-recalc", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.BillingMode = types.BillingModeAdvanced
+	task.PrivateData.BillingContext.AdvancedRuleType = types.AdvancedRuleTypeTextSegment
+	task.PrivateData.BillingContext.AdvancedRuleSnapshot = &types.AdvancedRuleSnapshot{
+		RuleType:     types.AdvancedRuleTypeTextSegment,
+		MatchSummary: "input_tokens<=1000",
+	}
+
+	RecalculateTaskQuota(ctx, task, actualQuota, "adaptor adjustment")
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Contains(t, log.Content, "advanced")
+	assert.Contains(t, log.Content, string(types.AdvancedRuleTypeTextSegment))
+	assert.Contains(t, log.Content, "input_tokens<=1000")
+
+	var other map[string]interface{}
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.Equal(t, string(types.BillingModeAdvanced), other["billing_mode"])
+	assert.Equal(t, string(types.AdvancedRuleTypeTextSegment), other["advanced_rule_type"])
+	assert.Contains(t, other, "advanced_rule")
+}
+
+func TestRecalculateTaskQuotaByTokensUsesStoredPerTokenBillingContext(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 16, 16, 16
+	const initQuota, preConsumed = 10000, 2000
+	const tokenRemain = 5000
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-task-per-token", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.BillingMode = types.BillingModePerToken
+	task.PrivateData.BillingContext.ModelRatio = 3
+	task.PrivateData.BillingContext.GroupRatio = 1
+	task.PrivateData.BillingContext.OtherRatios = map[string]float64{
+		"seconds": 2,
+	}
+
+	RecalculateTaskQuotaByTokens(ctx, task, 100)
+
+	require.Equal(t, 600, task.Quota)
+	assert.Equal(t, initQuota+(preConsumed-600), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+(preConsumed-600), getTokenRemainQuota(t, tokenID))
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	var other map[string]interface{}
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.Equal(t, string(types.BillingModePerToken), other["billing_mode"])
 }
 
 // ===========================================================================
@@ -638,6 +736,7 @@ func TestNonTerminalUpdate_NoBilling(t *testing.T) {
 
 type mockAdaptor struct {
 	adjustReturn int
+	adjustCalls  int
 }
 
 func (m *mockAdaptor) Init(_ *relaycommon.RelayInfo) {}
@@ -646,6 +745,7 @@ func (m *mockAdaptor) FetchTask(string, string, map[string]any, string) (*http.R
 }
 func (m *mockAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) { return nil, nil }
 func (m *mockAdaptor) AdjustBillingOnComplete(_ *model.Task, _ *relaycommon.TaskInfo) int {
+	m.adjustCalls++
 	return m.adjustReturn
 }
 
@@ -704,6 +804,98 @@ func TestSettle_PerCallBilling_SkipsTotalTokens(t *testing.T) {
 	assert.Equal(t, initQuota, getUserQuota(t, userID))
 	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, preConsumed, task.Quota)
+	assert.Equal(t, int64(0), countLogs(t))
+}
+
+func TestSettle_AdvancedMediaTaskUsesUsageTokensAndMinTokensBeforeLegacyBranches(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 36, 36, 36
+	const initQuota, tokenRemain = 10000, 8000
+	const unitPrice = 28.0
+	const minTokens = 194400
+	const actualTotalTokens = 100000
+	preConsumed := int(unitPrice * common.QuotaPerUnit)
+	expectedQuota := int(unitPrice * (float64(minTokens) / 1000000.0) * common.QuotaPerUnit)
+	minTokensValue := minTokens
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-advanced-media-settle", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.PerCallBilling = true
+	task.PrivateData.BillingContext.BillingMode = types.BillingModeAdvanced
+	task.PrivateData.BillingContext.AdvancedRuleType = types.AdvancedRuleTypeMediaTask
+	task.PrivateData.BillingContext.ModelPrice = unitPrice
+	task.PrivateData.BillingContext.GroupRatio = 1
+	task.PrivateData.BillingContext.AdvancedRuleSnapshot = &types.AdvancedRuleSnapshot{
+		RuleType:     types.AdvancedRuleTypeMediaTask,
+		MatchSummary: "prompt_tokens=0, task_type=generate",
+		ThresholdSnapshot: types.AdvancedRuleThresholdSnapshot{
+			MinTokens: &minTokensValue,
+		},
+	}
+	roundTripTaskPrivateData(t, task)
+
+	adaptor := &mockAdaptor{adjustReturn: 3000}
+	taskResult := &relaycommon.TaskInfo{
+		Status:      model.TaskStatusSuccess,
+		TotalTokens: actualTotalTokens,
+	}
+
+	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+
+	assert.Equal(t, expectedQuota, task.Quota)
+	assert.Equal(t, initQuota+(preConsumed-expectedQuota), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+(preConsumed-expectedQuota), getTokenRemainQuota(t, tokenID))
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Contains(t, log.Content, "advanced media task recalculation")
+	assert.Contains(t, log.Content, "effective_tokens=194400")
+
+	var other map[string]interface{}
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.Equal(t, string(types.BillingModeAdvanced), other["billing_mode"])
+	assert.Equal(t, string(types.AdvancedRuleTypeMediaTask), other["advanced_rule_type"])
+}
+
+func TestSettle_AdvancedMediaTaskWithoutTotalTokensKeepsPreConsumedQuota(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 37, 37, 37
+	const initQuota, tokenRemain = 10000, 8000
+	const preConsumed = 5000
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-advanced-media-no-total", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.PerCallBilling = true
+	task.PrivateData.BillingContext.BillingMode = types.BillingModeAdvanced
+	task.PrivateData.BillingContext.AdvancedRuleType = types.AdvancedRuleTypeMediaTask
+	task.PrivateData.BillingContext.ModelPrice = 28
+	task.PrivateData.BillingContext.GroupRatio = 1
+	task.PrivateData.BillingContext.AdvancedRuleSnapshot = &types.AdvancedRuleSnapshot{
+		RuleType:     types.AdvancedRuleTypeMediaTask,
+		MatchSummary: "task_type=video_generation, raw_action=generate",
+	}
+	roundTripTaskPrivateData(t, task)
+
+	adaptor := &mockAdaptor{adjustReturn: 3200}
+	taskResult := &relaycommon.TaskInfo{Status: model.TaskStatusSuccess, TotalTokens: 0}
+
+	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+
+	assert.Equal(t, preConsumed, task.Quota)
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, 0, adaptor.adjustCalls)
 	assert.Equal(t, int64(0), countLogs(t))
 }
 

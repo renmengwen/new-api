@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -315,4 +316,352 @@ func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T
 	require.True(t, summary.IsClaudeUsageSemantic)
 	require.Equal(t, 172, summary.PromptTokens)
 	require.Equal(t, 798, summary.Quota)
+}
+
+func TestCalculateTextQuotaSummaryRebuildsAdvancedTextPricingFromActualOutputTokens(t *testing.T) {
+	restoreTextQuotaRatioSettings(t)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"advanced-output-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"advanced-output-model": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"output_min": 0,
+					"output_max": 100,
+					"input_price": 1,
+					"output_price": 1
+				},
+				{
+					"priority": 20,
+					"output_min": 101,
+					"output_max": 1000,
+					"input_price": 4,
+					"output_price": 4
+				}
+			]
+		}
+	}`))
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "advanced-output-model",
+		Request: &dto.OpenAIResponsesRequest{
+			ServiceTier: "default",
+		},
+		PriceData: types.PriceData{
+			BillingMode:          types.BillingModeAdvanced,
+			ModelRatio:           2,
+			CompletionRatio:      1,
+			AdvancedRuleType:     types.AdvancedRuleTypeTextSegment,
+			AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{MatchSummary: "output_tokens=1000"},
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     20,
+		CompletionTokens: 50,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 35, summary.Quota)
+	require.Equal(t, 0.5, summary.ModelRatio)
+	require.Equal(t, 1.0, summary.CompletionRatio)
+	require.NotNil(t, relayInfo.PriceData.AdvancedRuleSnapshot)
+	require.Contains(t, relayInfo.PriceData.AdvancedRuleSnapshot.MatchSummary, "output_tokens=50")
+}
+
+func TestCalculateTextQuotaSummarySettlementCanNewlyResolveAdvancedTextPricing(t *testing.T) {
+	restoreTextQuotaRatioSettings(t)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"advanced-newly-resolved-model":6}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"advanced-newly-resolved-model":2.5}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"advanced-newly-resolved-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"advanced-newly-resolved-model": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"output_min": 0,
+					"output_max": 100,
+					"input_price": 1,
+					"output_price": 1
+				}
+			]
+		}
+	}`))
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "advanced-newly-resolved-model",
+		Request: &dto.OpenAIResponsesRequest{
+			ServiceTier: "default",
+		},
+		PriceData: types.PriceData{
+			BillingMode:     types.BillingModePerToken,
+			ModelRatio:      6,
+			CompletionRatio: 2.5,
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     20,
+		CompletionTokens: 50,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 35, summary.Quota)
+	require.Equal(t, types.BillingModeAdvanced, relayInfo.PriceData.BillingMode)
+	require.Equal(t, types.AdvancedRuleTypeTextSegment, relayInfo.PriceData.AdvancedRuleType)
+	require.Equal(t, 0.5, summary.ModelRatio)
+	require.Equal(t, 1.0, summary.CompletionRatio)
+	require.NotNil(t, relayInfo.PriceData.AdvancedRuleSnapshot)
+	require.Contains(t, relayInfo.PriceData.AdvancedRuleSnapshot.MatchSummary, "output_tokens=50")
+}
+
+func TestCalculateTextQuotaSummarySettlementFallsBackWhenAdvancedTextRuleNoLongerMatches(t *testing.T) {
+	restoreTextQuotaRatioSettings(t)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"advanced-fallback-model":6}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"advanced-fallback-model":2.5}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"advanced-fallback-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"advanced-fallback-model": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"output_min": 101,
+					"output_max": 1000,
+					"input_price": 4,
+					"output_price": 4
+				}
+			]
+		}
+	}`))
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "advanced-fallback-model",
+		Request: &dto.OpenAIResponsesRequest{
+			ServiceTier: "default",
+		},
+		PriceData: types.PriceData{
+			BillingMode:          types.BillingModeAdvanced,
+			ModelRatio:           2,
+			CompletionRatio:      1,
+			AdvancedRuleType:     types.AdvancedRuleTypeTextSegment,
+			AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{MatchSummary: "output_tokens=500"},
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     20,
+		CompletionTokens: 50,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 870, summary.Quota)
+	require.Equal(t, types.BillingModePerToken, relayInfo.PriceData.BillingMode)
+	require.Equal(t, 6.0, summary.ModelRatio)
+	require.Equal(t, 2.5, summary.CompletionRatio)
+	require.Nil(t, relayInfo.PriceData.AdvancedRuleSnapshot)
+}
+
+func TestCalculateTextQuotaSummarySettlementPreservesOriginalRequestGroupRatioInfo(t *testing.T) {
+	restoreTextQuotaRatioSettings(t)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":5}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"advanced-group-ratio-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"advanced-group-ratio-model": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"output_min": 0,
+					"output_max": 100,
+					"input_price": 1,
+					"output_price": 1
+				}
+			]
+		}
+	}`))
+
+	originalGroupRatio := types.GroupRatioInfo{
+		GroupRatio:        2,
+		GroupSpecialRatio: 2,
+		HasSpecialRatio:   true,
+	}
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "advanced-group-ratio-model",
+		UsingGroup:      "vip",
+		Request: &dto.OpenAIResponsesRequest{
+			ServiceTier: "default",
+		},
+		PriceData: types.PriceData{
+			BillingMode:          types.BillingModeAdvanced,
+			ModelRatio:           2,
+			CompletionRatio:      1,
+			AdvancedRuleType:     types.AdvancedRuleTypeTextSegment,
+			AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{MatchSummary: "output_tokens=500"},
+			GroupRatioInfo:       originalGroupRatio,
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     20,
+		CompletionTokens: 50,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 70, summary.Quota)
+	require.Equal(t, originalGroupRatio, relayInfo.PriceData.GroupRatioInfo)
+	require.Equal(t, originalGroupRatio.GroupRatio, summary.GroupRatio)
+}
+
+func TestCalculateTextQuotaSummarySettlementFallsBackWhenAdvancedConfigDriftsToLegacy(t *testing.T) {
+	restoreTextQuotaRatioSettings(t)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"advanced-drift-model":6}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"advanced-drift-model":2.5}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{}`))
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "advanced-drift-model",
+		Request: &dto.OpenAIResponsesRequest{
+			ServiceTier: "default",
+		},
+		PriceData: types.PriceData{
+			BillingMode:          types.BillingModeAdvanced,
+			ModelRatio:           2,
+			CompletionRatio:      1,
+			AdvancedRuleType:     types.AdvancedRuleTypeTextSegment,
+			AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{MatchSummary: "output_tokens=500"},
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     20,
+		CompletionTokens: 50,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 870, summary.Quota)
+	require.Equal(t, types.BillingModePerToken, relayInfo.PriceData.BillingMode)
+	require.Equal(t, 6.0, summary.ModelRatio)
+	require.Equal(t, 2.5, summary.CompletionRatio)
+	require.Nil(t, relayInfo.PriceData.AdvancedRuleSnapshot)
+}
+
+func TestCalculateTextQuotaSummarySettlementDoesNotRefreshForCurrentAdvancedMediaTaskConfig(t *testing.T) {
+	restoreTextQuotaRatioSettings(t)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"advanced-media-task-model":6}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"advanced-media-task-model":2.5}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"advanced-media-task-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"advanced-media-task-model": {
+			"rule_type": "media_task",
+			"segments": [
+				{
+					"priority": 10,
+					"unit_price": 8.8,
+					"remark": "media task"
+				}
+			]
+		}
+	}`))
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "advanced-media-task-model",
+		Request: &dto.OpenAIResponsesRequest{
+			ServiceTier: "default",
+		},
+		PriceData: types.PriceData{
+			BillingMode:     types.BillingModePerToken,
+			ModelRatio:      3,
+			CompletionRatio: 1.5,
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     20,
+		CompletionTokens: 50,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 285, summary.Quota)
+	require.Equal(t, types.BillingModePerToken, relayInfo.PriceData.BillingMode)
+	require.Equal(t, 3.0, summary.ModelRatio)
+	require.Equal(t, 1.5, summary.CompletionRatio)
+}
+
+func restoreTextQuotaRatioSettings(t *testing.T) {
+	t.Helper()
+
+	advancedModeJSON := ratio_setting.AdvancedPricingMode2JSONString()
+	advancedRulesJSON := ratio_setting.AdvancedPricingRules2JSONString()
+	groupRatioJSON := ratio_setting.GroupRatio2JSONString()
+	groupGroupRatioJSON := ratio_setting.GroupGroupRatio2JSONString()
+	modelRatioJSON := ratio_setting.ModelRatio2JSONString()
+	completionRatioJSON := ratio_setting.CompletionRatio2JSONString()
+	cacheRatioJSON := ratio_setting.CacheRatio2JSONString()
+	createCacheRatioJSON := ratio_setting.CreateCacheRatio2JSONString()
+
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(advancedModeJSON))
+		require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(advancedRulesJSON))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(groupRatioJSON))
+		require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(groupGroupRatioJSON))
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(modelRatioJSON))
+		require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(completionRatioJSON))
+		require.NoError(t, ratio_setting.UpdateCacheRatioByJSONString(cacheRatioJSON))
+		require.NoError(t, ratio_setting.UpdateCreateCacheRatioByJSONString(createCacheRatioJSON))
+	})
 }
