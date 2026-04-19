@@ -196,22 +196,7 @@ export function useAdvancedPricingRulesState({
   ]);
 
   const models = useMemo(() => {
-    const modelNames = new Set(candidateModelNames);
-
-    MODEL_OPTION_KEYS.forEach((key) => {
-      Object.keys(sourceMaps[key] || {}).forEach((modelName) => {
-        modelNames.add(modelName);
-      });
-    });
-
-    Object.keys(advancedPricingModeMap).forEach((modelName) => {
-      modelNames.add(modelName);
-    });
-    Object.keys(advancedPricingMap).forEach((modelName) => {
-      modelNames.add(modelName);
-    });
-
-    return Array.from(modelNames)
+    return Array.from(new Set((candidateModelNames || []).filter(Boolean)))
       .sort((leftName, rightName) => leftName.localeCompare(rightName))
       .map((modelName) => {
         const fixedBillingMode = getFixedBillingModeForModel(modelName, sourceMaps);

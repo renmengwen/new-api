@@ -113,6 +113,25 @@ test('advanced pricing rules state does not blindly overwrite dirty drafts when 
   );
 });
 
+test('advanced pricing rules state builds the model list strictly from candidate model names', () => {
+  assert.match(
+    source,
+    /const models = useMemo\(\(\) => \{[\s\S]*Array\.from\(new Set\(\(candidateModelNames \|\| \[\]\)\.filter\(Boolean\)\)\)/,
+  );
+  assert.doesNotMatch(
+    source,
+    /MODEL_OPTION_KEYS\.forEach\(\(key\) => \{[\s\S]*modelNames\.add\(modelName\)/,
+  );
+  assert.doesNotMatch(
+    source,
+    /Object\.keys\(advancedPricingModeMap\)\.forEach\(\(modelName\) => \{[\s\S]*modelNames\.add\(modelName\)/,
+  );
+  assert.doesNotMatch(
+    source,
+    /Object\.keys\(advancedPricingMap\)\.forEach\(\(modelName\) => \{[\s\S]*modelNames\.add\(modelName\)/,
+  );
+});
+
 test('advanced pricing rules state saves against the latest server snapshot and handles partial success without Promise.all fanout', () => {
   assert.match(source, /buildAdvancedPricingSaveMaps/);
   assert.match(source, /saveAdvancedPricingOptions/);
