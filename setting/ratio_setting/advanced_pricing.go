@@ -125,6 +125,7 @@ type advancedTextRuntimeContext struct {
 	inputModalities  []string
 	outputModalities []string
 	imageSizeTier    string
+	imageCount       *int
 	cacheRead        *bool
 	cacheCreate      *bool
 }
@@ -343,6 +344,7 @@ func buildAdvancedTextRuntimeContext(ctx AdvancedPricingRuntimeContext) advanced
 		inputModalities:  collectAdvancedTextInputModalities(ctx),
 		outputModalities: collectAdvancedTextOutputModalities(ctx),
 		imageSizeTier:    extractAdvancedTextImageSizeTier(ctx),
+		imageCount:       extractAdvancedTextImageCount(ctx),
 	}
 }
 
@@ -535,6 +537,22 @@ func extractAdvancedTextImageSizeTier(ctx AdvancedPricingRuntimeContext) string 
 		}
 	}
 	return ""
+}
+
+func extractAdvancedTextImageCount(ctx AdvancedPricingRuntimeContext) *int {
+	if !isAdvancedPricingImageGenerationPath(ctx.RequestURLPath) {
+		return nil
+	}
+	switch req := ctx.Request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		if req.N != nil && *req.N > 0 {
+			return cloneAdvancedIntPtr(req.N)
+		}
+		defaultCount := 1
+		return &defaultCount
+	default:
+		return nil
+	}
 }
 
 type advancedPricingGoogleExtraBody struct {
@@ -1098,6 +1116,7 @@ func buildAdvancedPricingContextSnapshot(billingUnit string, segment AdvancedPri
 		InputModalities:  cloneAdvancedStringSlice(runtimeCtx.inputModalities),
 		OutputModalities: cloneAdvancedStringSlice(runtimeCtx.outputModalities),
 		ImageSizeTier:    runtimeCtx.imageSizeTier,
+		ImageCount:       cloneAdvancedIntPtr(runtimeCtx.imageCount),
 		ToolUsageType:    normalizeAdvancedPricingComparableString(segment.ToolUsageType),
 		ToolUsageCount:   cloneAdvancedIntPtr(segment.ToolUsageCount),
 		FreeQuota:        cloneAdvancedIntPtr(segment.FreeQuota),

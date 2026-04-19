@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -640,6 +641,159 @@ func TestCalculateTextQuotaSummarySettlementDoesNotRefreshForCurrentAdvancedMedi
 	require.Equal(t, types.BillingModePerToken, relayInfo.PriceData.BillingMode)
 	require.Equal(t, 3.0, summary.ModelRatio)
 	require.Equal(t, 1.5, summary.CompletionRatio)
+}
+
+func TestCalculateTextQuotaSummarySettlementUsesLiveDurationForAdvancedPerSecond(t *testing.T) {
+	restoreTextQuotaRatioSettings(t)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gemini-3.1-flash-live-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gemini-3.1-flash-live-preview": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_second",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000000,
+					"input_modality": "audio",
+					"output_modality": "audio",
+					"input_price": 0.5,
+					"output_price": 1.5
+				}
+			]
+		}
+	}`))
+
+	message := dto.Message{Role: "user"}
+	message.SetMediaContent([]dto.MediaContent{
+		{
+			Type: dto.ContentTypeInputAudio,
+			InputAudio: &dto.MessageInputAudio{
+				Data:   "UklGRg==",
+				Format: "wav",
+			},
+		},
+	})
+
+	request := &dto.GeneralOpenAIRequest{
+		Model:    "gemini-3.1-flash-live-preview",
+		Messages: []dto.Message{message},
+		ExtraBody: []byte(`{
+			"google": {
+				"generation_config": {
+					"response_modalities": ["AUDIO"]
+				}
+			}
+		}`),
+	}
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3.1-flash-live-preview",
+		Request:         request,
+		PriceData: types.PriceData{
+			BillingMode:      types.BillingModeAdvanced,
+			AdvancedRuleType: types.AdvancedRuleTypeTextSegment,
+			GroupRatioInfo:   types.GroupRatioInfo{GroupRatio: 1},
+			AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{
+				RuleType:    types.AdvancedRuleTypeTextSegment,
+				BillingUnit: types.AdvancedBillingUnitPerSecond,
+				PriceSnapshot: types.AdvancedRulePriceSnapshot{
+					InputPrice:  common.GetPointer(0.5),
+					OutputPrice: common.GetPointer(1.5),
+				},
+			},
+			AdvancedPricingContext: &types.AdvancedPricingContextSnapshot{
+				BillingUnit: types.AdvancedBillingUnitPerSecond,
+			},
+		},
+		StartTime: time.Now().Add(-3 * time.Second),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     10,
+		CompletionTokens: 0,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 3000000, summary.Quota)
+	require.Equal(t, types.BillingModeAdvanced, relayInfo.PriceData.BillingMode)
+	require.Equal(t, types.AdvancedBillingUnitPerSecond, relayInfo.PriceData.AdvancedRuleSnapshot.BillingUnit)
+}
+
+func TestCalculateTextQuotaSummarySettlementUsesImageCountForAdvancedPerImage(t *testing.T) {
+	restoreTextQuotaRatioSettings(t)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gemini-3.1-flash-image-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gemini-3.1-flash-image-preview": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_image",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000000,
+					"output_modality": "image",
+					"input_price": 0.5,
+					"output_price": 3
+				}
+			]
+		}
+	}`))
+
+	imageCount := 2
+	request := &dto.GeneralOpenAIRequest{
+		Model:  "gemini-3.1-flash-image-preview",
+		Prompt: "Generate a stylized skyline illustration",
+		Size:   "1024x1024",
+		N:      &imageCount,
+	}
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3.1-flash-image-preview",
+		Request:         request,
+		RequestURLPath:  "/v1/images/generations",
+		PriceData: types.PriceData{
+			BillingMode:      types.BillingModeAdvanced,
+			AdvancedRuleType: types.AdvancedRuleTypeTextSegment,
+			GroupRatioInfo:   types.GroupRatioInfo{GroupRatio: 1},
+			AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{
+				RuleType:    types.AdvancedRuleTypeTextSegment,
+				BillingUnit: types.AdvancedBillingUnitPerImage,
+				PriceSnapshot: types.AdvancedRulePriceSnapshot{
+					InputPrice:  common.GetPointer(0.5),
+					OutputPrice: common.GetPointer(3.0),
+				},
+			},
+			AdvancedPricingContext: &types.AdvancedPricingContextSnapshot{
+				BillingUnit: types.AdvancedBillingUnitPerImage,
+				ImageCount:  &imageCount,
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     516,
+		CompletionTokens: 0,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 3500000, summary.Quota)
+	require.Equal(t, types.BillingModeAdvanced, relayInfo.PriceData.BillingMode)
+	require.Equal(t, types.AdvancedBillingUnitPerImage, relayInfo.PriceData.AdvancedRuleSnapshot.BillingUnit)
+	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext)
+	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext.ImageCount)
+	require.Equal(t, 2, *relayInfo.PriceData.AdvancedPricingContext.ImageCount)
 }
 
 func restoreTextQuotaRatioSettings(t *testing.T) {

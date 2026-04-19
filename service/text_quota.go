@@ -212,7 +212,17 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	}
 
 	var audioInputQuota decimal.Decimal
-	if !relayInfo.PriceData.UsePrice {
+	advancedNonTokenQuota, usedAdvancedNonTokenBilling := calculateAdvancedNonTokenQuota(summary, relayInfo.PriceData, dGroupRatio, dQuotaPerUnit)
+	if usedAdvancedNonTokenBilling {
+		quotaCalculateDecimal := advancedNonTokenQuota
+		quotaCalculateDecimal = quotaCalculateDecimal.Add(dWebSearchQuota)
+		quotaCalculateDecimal = quotaCalculateDecimal.Add(dClaudeWebSearchQuota)
+		quotaCalculateDecimal = quotaCalculateDecimal.Add(dFileSearchQuota)
+		if !ratio.IsZero() && quotaCalculateDecimal.LessThanOrEqual(decimal.Zero) {
+			quotaCalculateDecimal = decimal.NewFromInt(1)
+		}
+		summary.Quota = int(quotaCalculateDecimal.Round(0).IntPart())
+	} else if !relayInfo.PriceData.UsePrice {
 		baseTokens := dPromptTokens
 
 		var cachedTokensWithRatio decimal.Decimal
@@ -289,13 +299,77 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		summary.Quota = int(quotaCalculateDecimal.Round(0).IntPart())
 	}
 
-	if summary.TotalTokens == 0 {
+	if summary.TotalTokens == 0 && !usedAdvancedNonTokenBilling {
 		summary.Quota = 0
 	} else if !ratio.IsZero() && summary.Quota == 0 {
 		summary.Quota = 1
 	}
 
 	return summary
+}
+
+func calculateAdvancedNonTokenQuota(summary textQuotaSummary, priceData types.PriceData, dGroupRatio, dQuotaPerUnit decimal.Decimal) (decimal.Decimal, bool) {
+	if priceData.BillingMode != types.BillingModeAdvanced || priceData.AdvancedRuleType != types.AdvancedRuleTypeTextSegment || priceData.AdvancedRuleSnapshot == nil {
+		return decimal.Zero, false
+	}
+
+	billingUnit := strings.TrimSpace(priceData.AdvancedRuleSnapshot.BillingUnit)
+	switch billingUnit {
+	case types.AdvancedBillingUnitPerSecond, types.AdvancedBillingUnitPerMinute, types.AdvancedBillingUnitPerImage:
+	default:
+		return decimal.Zero, false
+	}
+
+	usageQuantity := resolveAdvancedNonTokenUsageQuantity(summary, priceData.AdvancedPricingContext, billingUnit)
+	unitPriceTotal := calculateAdvancedNonTokenUnitPriceTotal(priceData.AdvancedRuleSnapshot)
+
+	if billingUnit == types.AdvancedBillingUnitPerMinute {
+		usageQuantity = usageQuantity.Div(decimal.NewFromInt(60))
+	}
+
+	return usageQuantity.Mul(unitPriceTotal).Mul(dGroupRatio).Mul(dQuotaPerUnit), true
+}
+
+func resolveAdvancedNonTokenUsageQuantity(summary textQuotaSummary, ctx *types.AdvancedPricingContextSnapshot, billingUnit string) decimal.Decimal {
+	switch billingUnit {
+	case types.AdvancedBillingUnitPerSecond:
+		if ctx != nil && ctx.LiveDurationSecs != nil {
+			return decimal.NewFromInt(int64(*ctx.LiveDurationSecs))
+		}
+		return decimal.NewFromInt(summary.UseTimeSeconds)
+	case types.AdvancedBillingUnitPerMinute:
+		if ctx != nil && ctx.LiveDurationSecs != nil {
+			return decimal.NewFromInt(int64(*ctx.LiveDurationSecs))
+		}
+		return decimal.NewFromInt(summary.UseTimeSeconds)
+	case types.AdvancedBillingUnitPerImage:
+		if ctx != nil && ctx.ImageCount != nil {
+			return decimal.NewFromInt(int64(*ctx.ImageCount))
+		}
+		return decimal.Zero
+	default:
+		return decimal.Zero
+	}
+}
+
+func calculateAdvancedNonTokenUnitPriceTotal(snapshot *types.AdvancedRuleSnapshot) decimal.Decimal {
+	if snapshot == nil {
+		return decimal.Zero
+	}
+
+	total := decimal.Zero
+	for _, price := range []*float64{
+		snapshot.PriceSnapshot.InputPrice,
+		snapshot.PriceSnapshot.OutputPrice,
+		snapshot.PriceSnapshot.CacheReadPrice,
+		snapshot.PriceSnapshot.CacheCreatePrice,
+		snapshot.PriceSnapshot.CacheStoragePrice,
+	} {
+		if price != nil {
+			total = total.Add(decimal.NewFromFloat(*price))
+		}
+	}
+	return total
 }
 
 func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) string {
