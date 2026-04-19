@@ -50,6 +50,10 @@ import { useIsMobile } from '../../../../../hooks/common/useIsMobile';
 const { Text } = Typography;
 const INTEGER_INPUT_REGEX = /^\d*$/;
 const DECIMAL_INPUT_REGEX = /^(\d+(\.\d*)?|\.\d*)?$/;
+const TEXT_SEGMENT_PREVIEW_NUMERIC_FIELDS = new Set([
+  'inputTokens',
+  'outputTokens',
+]);
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const TEXT_SEGMENT_FIELDS = [
@@ -134,9 +138,20 @@ const TEXT_SEGMENT_FIELDS = [
     regex: DECIMAL_INPUT_REGEX,
   },
   {
+    field: 'imageSizeTier',
+    label: '鍥惧儚妗ｄ綅',
+    placeholder: '渚嬪 hd / 2k',
+  },
+  {
     field: 'toolUsageType',
     label: 'Tool Usage',
     placeholder: '例如 google_search',
+  },
+  {
+    field: 'toolUsageCount',
+    label: 'Tool Usage Count',
+    placeholder: 'optional',
+    regex: INTEGER_INPUT_REGEX,
   },
   {
     field: 'freeQuota',
@@ -163,6 +178,8 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
     inputTokens: '',
     outputTokens: '',
     serviceTier: '',
+    inputModality: '',
+    outputModality: '',
   });
 
   const sortedRules = useMemo(() => sortTextSegmentRules(rules || []), [rules]);
@@ -176,6 +193,8 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
       inputTokens: '',
       outputTokens: '',
       serviceTier: '',
+      inputModality: '',
+      outputModality: '',
     });
   };
 
@@ -250,7 +269,10 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
   };
 
   const handlePreviewInputChange = (field, value) => {
-    if (field !== 'serviceTier' && !INTEGER_INPUT_REGEX.test(value)) {
+    if (
+      TEXT_SEGMENT_PREVIEW_NUMERIC_FIELDS.has(field) &&
+      !INTEGER_INPUT_REGEX.test(value)
+    ) {
       return;
     }
 
@@ -590,6 +612,30 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
                     placeholder={t('例如 standard / priority')}
                     onChange={(value) =>
                       handlePreviewInputChange('serviceTier', value)
+                    }
+                  />
+                </div>
+                <div>
+                  <div className='mb-1 font-medium text-gray-700'>
+                    {t('输入模态')}
+                  </div>
+                  <Input
+                    value={previewInput?.inputModality || ''}
+                    placeholder={t('例如 text / audio')}
+                    onChange={(value) =>
+                      handlePreviewInputChange('inputModality', value)
+                    }
+                  />
+                </div>
+                <div>
+                  <div className='mb-1 font-medium text-gray-700'>
+                    {t('输出模态')}
+                  </div>
+                  <Input
+                    value={previewInput?.outputModality || ''}
+                    placeholder={t('例如 text / image')}
+                    onChange={(value) =>
+                      handlePreviewInputChange('outputModality', value)
                     }
                   />
                 </div>

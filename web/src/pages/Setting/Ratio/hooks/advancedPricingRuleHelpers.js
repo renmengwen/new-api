@@ -98,6 +98,36 @@ export const buildTextSegmentConditionSummary = (rule) => {
   );
   const summaries = [inputSummary, outputSummary].filter(Boolean);
   const serviceTier = normalizeRuleServiceTier(rule);
+  const inputModality = normalizeStringField(
+    rule?.inputModality ?? rule?.input_modality,
+  ).trim();
+  const outputModality = normalizeStringField(
+    rule?.outputModality ?? rule?.output_modality,
+  ).trim();
+  const imageSizeTier = normalizeStringField(
+    rule?.imageSizeTier ?? rule?.image_size_tier,
+  ).trim();
+  const toolUsageType = normalizeStringField(
+    rule?.toolUsageType ?? rule?.tool_usage_type,
+  ).trim();
+  const toolUsageCount = normalizeNumericField(
+    rule?.toolUsageCount ?? rule?.tool_usage_count,
+  );
+  if (inputModality) {
+    summaries.push(`input_modality=${inputModality}`);
+  }
+  if (outputModality) {
+    summaries.push(`output_modality=${outputModality}`);
+  }
+  if (imageSizeTier) {
+    summaries.push(`image_size_tier=${imageSizeTier}`);
+  }
+  if (toolUsageType) {
+    summaries.push(`tool_usage_type=${toolUsageType}`);
+  }
+  if (toolUsageCount !== '') {
+    summaries.push(`tool_usage_count>=${toolUsageCount}`);
+  }
 
   if (serviceTier) {
     summaries.push(`服务层=${serviceTier}`);
@@ -115,8 +145,6 @@ const hasTextSegmentCondition = (rule) =>
   normalizeStringField(rule?.inputModality ?? rule?.input_modality).trim() !==
     '' ||
   normalizeStringField(rule?.outputModality ?? rule?.output_modality).trim() !==
-    '' ||
-  normalizeStringField(rule?.toolUsageType ?? rule?.tool_usage_type).trim() !==
     '';
 
 const isRangeMatch = (value, minValue, maxValue) => {
@@ -192,7 +220,9 @@ export const createEmptyTextSegmentRule = (seed = Date.now()) => ({
   cacheReadPrice: '',
   cacheWritePrice: '',
   cacheStoragePrice: '',
+  imageSizeTier: '',
   toolUsageType: '',
+  toolUsageCount: '',
   freeQuota: '',
   overageThreshold: '',
 });
@@ -226,7 +256,9 @@ const TEXT_SEGMENT_RULE_EDITOR_ONLY_KEYS = new Set([
   'cacheReadPrice',
   'cacheWritePrice',
   'cacheStoragePrice',
+  'imageSizeTier',
   'toolUsageType',
+  'toolUsageCount',
   'freeQuota',
   'overageThreshold',
 ]);
@@ -292,8 +324,14 @@ export const normalizeTextSegmentRule = (rule, index = 0) => ({
   cacheStoragePrice: normalizeNumericField(
     rule?.cacheStoragePrice ?? rule?.cache_storage_price,
   ),
+  imageSizeTier: normalizeStringField(
+    rule?.imageSizeTier ?? rule?.image_size_tier,
+  ),
   toolUsageType: normalizeStringField(
     rule?.toolUsageType ?? rule?.tool_usage_type,
+  ),
+  toolUsageCount: normalizeNumericField(
+    rule?.toolUsageCount ?? rule?.tool_usage_count,
   ),
   freeQuota: normalizeNumericField(rule?.freeQuota ?? rule?.free_quota),
   overageThreshold: normalizeNumericField(
@@ -349,6 +387,7 @@ export const createEmptyMediaTaskRule = (seed = Date.now()) => ({
   draft: '',
   draftCoefficient: '',
   toolUsageType: '',
+  toolUsageCount: '',
   freeQuota: '',
   overageThreshold: '',
   remark: '',
@@ -399,6 +438,9 @@ export const normalizeMediaTaskRule = (rule, index = 0) => ({
   ),
   toolUsageType: normalizeStringField(
     rule?.toolUsageType ?? rule?.tool_usage_type,
+  ),
+  toolUsageCount: normalizeNumericField(
+    rule?.toolUsageCount ?? rule?.tool_usage_count,
   ),
   freeQuota: normalizeNumericField(rule?.freeQuota ?? rule?.free_quota),
   overageThreshold: normalizeNumericField(
@@ -486,6 +528,13 @@ export const buildMediaTaskConditionSummary = (rule) => {
       `tool_usage_type=${normalizeStringField(
         rule?.toolUsageType ?? rule?.tool_usage_type,
       ).trim()}`,
+    );
+  }
+  if (hasValue(rule?.toolUsageCount) || rule?.toolUsageCount === 0) {
+    summaries.push(
+      `tool_usage_count>=${normalizeNumericField(
+        rule?.toolUsageCount ?? rule?.tool_usage_count,
+      )}`,
     );
   }
 
@@ -630,6 +679,7 @@ export const serializeMediaTaskRule = (rule) => {
   const draftCoefficient = toNullableNumber(normalizedRule.draftCoefficient);
   const unitPrice = toNullableNumber(normalizedRule.unitPrice);
   const minTokens = toNullableNumber(normalizedRule.minTokens);
+  const toolUsageCount = toNullableNumber(normalizedRule.toolUsageCount);
   const audio = toBooleanRuleValue(normalizedRule.audio);
   const inputVideo = toBooleanRuleValue(normalizedRule.inputVideo);
   const draft = toBooleanRuleValue(normalizedRule.draft);
@@ -689,6 +739,9 @@ export const serializeMediaTaskRule = (rule) => {
   }
   if (normalizedRule.toolUsageType.trim()) {
     serializedRule.tool_usage_type = normalizedRule.toolUsageType.trim();
+  }
+  if (toolUsageCount !== null) {
+    serializedRule.tool_usage_count = toolUsageCount;
   }
   const freeQuota = toNullableNumber(normalizedRule.freeQuota);
   if (freeQuota !== null) {
@@ -766,8 +819,18 @@ export const serializeTextSegmentRule = (rule) => {
   );
   setSerializedStringField(
     serializedRule,
+    'image_size_tier',
+    normalizedRule.imageSizeTier,
+  );
+  setSerializedStringField(
+    serializedRule,
     'tool_usage_type',
     normalizedRule.toolUsageType,
+  );
+  setSerializedNumberField(
+    serializedRule,
+    'tool_usage_count',
+    normalizedRule.toolUsageCount,
   );
   setSerializedNumberField(serializedRule, 'free_quota', normalizedRule.freeQuota);
   setSerializedNumberField(
@@ -948,8 +1011,34 @@ export const validateTextSegmentRules = (rules = []) => {
         !currentRuleServiceTier ||
         !compareRuleServiceTier ||
         currentRuleServiceTier === compareRuleServiceTier;
+      const currentInputModality = normalizeComparableString(
+        currentRule?.inputModality ?? currentRule?.input_modality,
+      );
+      const compareInputModality = normalizeComparableString(
+        compareRule?.inputModality ?? compareRule?.input_modality,
+      );
+      const inputModalityOverlap =
+        !currentInputModality ||
+        !compareInputModality ||
+        currentInputModality === compareInputModality;
+      const currentOutputModality = normalizeComparableString(
+        currentRule?.outputModality ?? currentRule?.output_modality,
+      );
+      const compareOutputModality = normalizeComparableString(
+        compareRule?.outputModality ?? compareRule?.output_modality,
+      );
+      const outputModalityOverlap =
+        !currentOutputModality ||
+        !compareOutputModality ||
+        currentOutputModality === compareOutputModality;
 
-      if (inputOverlap && outputOverlap && serviceTierOverlap) {
+      if (
+        inputOverlap &&
+        outputOverlap &&
+        serviceTierOverlap &&
+        inputModalityOverlap &&
+        outputModalityOverlap
+      ) {
         errors.push(`${currentRuleId} 与 ${compareRuleId} 的区间明显重叠`);
       }
     }
@@ -985,10 +1074,6 @@ export const findMatchingTextSegmentRule = (rules = [], previewInput = {}) => {
         isOptionalStringMatch(
           previewInput?.outputModality,
           rule?.outputModality ?? rule?.output_modality,
-        ) &&
-        isOptionalStringMatch(
-          previewInput?.toolUsageType,
-          rule?.toolUsageType ?? rule?.tool_usage_type,
         ),
     ) ||
     defaultRule
@@ -1026,20 +1111,8 @@ const findMatchingMediaTaskRule = (rules = [], previewInput = {}) =>
   sortMediaTaskRules(rules).find(
     (rule) =>
       isMediaTaskStringMatch(
-        previewInput?.rawAction,
-        rule?.rawAction ?? rule?.raw_action,
-      ) &&
-      isMediaTaskStringMatch(
         previewInput?.inferenceMode,
         rule?.inferenceMode ?? rule?.inference_mode,
-      ) &&
-      isMediaTaskStringMatch(
-        previewInput?.inputModality,
-        rule?.inputModality ?? rule?.input_modality,
-      ) &&
-      isMediaTaskStringMatch(
-        previewInput?.outputModality,
-        rule?.outputModality ?? rule?.output_modality,
       ) &&
       isMediaTaskBooleanMatch(
         previewInput?.inputVideo,
@@ -1050,14 +1123,6 @@ const findMatchingMediaTaskRule = (rules = [], previewInput = {}) =>
       isMediaTaskStringMatch(
         previewInput?.aspectRatio,
         rule?.aspectRatio ?? rule?.aspect_ratio,
-      ) &&
-      isMediaTaskStringMatch(
-        previewInput?.imageSizeTier,
-        rule?.imageSizeTier ?? rule?.image_size_tier,
-      ) &&
-      isMediaTaskStringMatch(
-        previewInput?.toolUsageType,
-        rule?.toolUsageType ?? rule?.tool_usage_type,
       ) &&
       isMediaTaskRangeMatch(
         previewInput?.outputDuration,

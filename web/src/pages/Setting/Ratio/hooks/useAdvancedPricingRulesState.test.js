@@ -207,6 +207,39 @@ test('validateTextSegmentRules allows overlapping ranges when service tiers diff
   assert.equal(errors.length, 0);
 });
 
+test('validateTextSegmentRules allows overlapping ranges when text modalities differ', () => {
+  const errors = validateTextSegmentRules([
+    {
+      id: 'rule-text',
+      enabled: true,
+      priority: 1,
+      inputMin: 0,
+      inputMax: 32000,
+      outputMin: 0,
+      outputMax: 16000,
+      inputModality: 'text',
+      outputModality: 'text',
+      inputPrice: '0.2',
+      outputPrice: '0.4',
+    },
+    {
+      id: 'rule-audio',
+      enabled: true,
+      priority: 2,
+      inputMin: 0,
+      inputMax: 32000,
+      outputMin: 0,
+      outputMax: 16000,
+      inputModality: 'audio',
+      outputModality: 'audio',
+      inputPrice: '0.25',
+      outputPrice: '0.5',
+    },
+  ]);
+
+  assert.equal(errors.length, 0);
+});
+
 test('validateTextSegmentRules allows a single default text rule without conditions', () => {
   const errors = validateTextSegmentRules([
     {
@@ -421,6 +454,22 @@ test('buildTextSegmentPreview matches service tier case-insensitively', () => {
   assert.match(preview.conditionSummary, /default/i);
 });
 
+test('buildTextSegmentConditionSummary includes modality and schema-supported extension fields', () => {
+  const summary = buildTextSegmentConditionSummary({
+    inputModality: 'audio',
+    outputModality: 'text',
+    imageSizeTier: 'hd',
+    toolUsageType: 'web_search',
+    toolUsageCount: '1000',
+  });
+
+  assert.match(summary, /input_modality=audio/);
+  assert.match(summary, /output_modality=text/);
+  assert.match(summary, /image_size_tier=hd/);
+  assert.match(summary, /tool_usage_type=web_search/);
+  assert.match(summary, /tool_usage_count>=1000/);
+});
+
 test('buildTextSegmentPreview matches modality-aware rules and exposes cache/tool scaffolding fields', () => {
   const preview = buildTextSegmentPreview(
     [
@@ -458,6 +507,36 @@ test('buildTextSegmentPreview matches modality-aware rules and exposes cache/too
   assert.equal(preview.matchedSegmentPreview.input_modality, 'audio');
   assert.equal(preview.matchedSegmentPreview.output_modality, 'text');
   assert.equal(preview.matchedSegmentPreview.tool_usage_type, 'google_search');
+});
+
+test('buildTextSegmentPreview ignores schema-only text selectors that backend matching does not implement', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-audio',
+        enabled: true,
+        priority: 1,
+        inputModality: 'audio',
+        outputModality: 'text',
+        imageSizeTier: 'hd',
+        toolUsageType: 'google_search',
+        toolUsageCount: '1000',
+        inputPrice: '1',
+        outputPrice: '2',
+      },
+    ],
+    {
+      inputModality: 'audio',
+      outputModality: 'text',
+      imageSizeTier: 'sd',
+      toolUsageType: 'code_interpreter',
+      toolUsageCount: '1',
+      inputTokens: '64',
+      outputTokens: '32',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-audio');
 });
 
 test('getTextSegmentRuleEditorMeta counts enabled rules and treats explicit zero default price as configured', () => {
@@ -608,6 +687,46 @@ test('buildMediaTaskPreview matches output modality, image tier, and tool usage 
   assert.equal(preview.matchedSegmentPreview.output_modality, 'image');
   assert.equal(preview.matchedSegmentPreview.image_size_tier, '2k');
   assert.equal(preview.matchedSegmentPreview.tool_usage_type, 'google_search');
+});
+
+test('buildMediaTaskPreview ignores media selectors that backend P1 matching does not implement', () => {
+  const preview = buildMediaTaskPreview(
+    [
+      {
+        id: 'media-backend-aligned',
+        priority: 1,
+        rawAction: 'generate',
+        inputModality: 'image',
+        outputModality: 'video',
+        imageSizeTier: '4k',
+        toolUsageType: 'web_search',
+        toolUsageCount: '3',
+        inferenceMode: 'quality',
+        resolution: '1080p',
+        aspectRatio: '16:9',
+        outputDurationMin: '0',
+        outputDurationMax: '8',
+        draft: 'true',
+        unitPrice: '0.4',
+      },
+    ],
+    {
+      rawAction: 'different-action',
+      inputModality: 'audio',
+      outputModality: 'image',
+      imageSizeTier: '1k',
+      toolUsageType: 'code_interpreter',
+      toolUsageCount: '99',
+      inferenceMode: 'quality',
+      resolution: '1080p',
+      aspectRatio: '16:9',
+      outputDuration: '6',
+      draft: 'true',
+      usageTotalTokens: '100',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'media-backend-aligned');
 });
 
 test('advanced pricing helper constants stay aligned with persisted runtime enums', () => {
@@ -774,6 +893,30 @@ test('normalizeAdvancedPricingConfig round-trips canonical text_segment configs 
   assert.deepEqual(serializeAdvancedPricingConfig(normalizedConfig), canonicalConfig);
 });
 
+test('normalizeAdvancedPricingConfig round-trips text image tier and tool usage count scaffolding fields', () => {
+  const canonicalConfig = {
+    rule_type: 'text_segment',
+    display_name: 'Gemini Audio',
+    billing_unit: 'per_second',
+    segments: [
+      {
+        priority: 1,
+        input_modality: 'audio',
+        output_modality: 'text',
+        image_size_tier: 'hd',
+        tool_usage_count: 1000,
+        input_price: 1.2,
+      },
+    ],
+  };
+
+  const normalizedConfig = normalizeAdvancedPricingConfig(canonicalConfig);
+
+  assert.equal(normalizedConfig.rules[0].imageSizeTier, 'hd');
+  assert.equal(normalizedConfig.rules[0].toolUsageCount, '1000');
+  assert.deepEqual(serializeAdvancedPricingConfig(normalizedConfig), canonicalConfig);
+});
+
 test('serializeAdvancedPricingConfig emits canonical media_task json and preserves explicit zero and false values', () => {
   const serializedConfig = serializeAdvancedPricingConfig({
     ruleType: 'media_task',
@@ -845,6 +988,7 @@ test('serializeAdvancedPricingConfig emits media task extension fields for modal
         billingUnit: 'per_image',
         imageSizeTier: '2k',
         toolUsageType: 'google_search',
+        toolUsageCount: '3',
         freeQuota: '100',
         overageThreshold: '250',
         unitPrice: '0.4',
@@ -865,6 +1009,7 @@ test('serializeAdvancedPricingConfig emits media task extension fields for modal
         billing_unit: 'per_image',
         image_size_tier: '2k',
         tool_usage_type: 'google_search',
+        tool_usage_count: 3,
         free_quota: 100,
         overage_threshold: 250,
         unit_price: 0.4,
@@ -1343,6 +1488,7 @@ test('buildMediaTaskConditionSummary summarizes key media task filters for opera
     outputDurationMin: '0',
     outputDurationMax: '5',
     draft: 'true',
+    toolUsageCount: '100',
     minTokens: '1200',
   });
 
@@ -1352,6 +1498,7 @@ test('buildMediaTaskConditionSummary summarizes key media task filters for opera
   assert.match(summary, /16:9/);
   assert.match(summary, /0/);
   assert.match(summary, /5/);
+  assert.match(summary, /100/);
   assert.match(summary, /1200/);
 });
 

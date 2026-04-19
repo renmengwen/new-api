@@ -54,6 +54,8 @@ test('text segment rule editor keeps the modern config contract, summary metadat
   assert.match(source, /previewInput\?\.inputTokens/);
   assert.match(source, /previewInput\?\.outputTokens/);
   assert.match(source, /previewInput\?\.serviceTier/);
+  assert.match(source, /previewInput\?\.inputModality/);
+  assert.match(source, /previewInput\?\.outputModality/);
   assert.match(source, /error\.includes\(candidateRule\.id\)/);
   assert.doesNotMatch(source, /error\.includes\(String\(candidateRule\.priority\)\)/);
   assert.doesNotMatch(source, /LegacyTextSegmentRuleEditor/);
@@ -65,9 +67,11 @@ test('text segment rule editor keeps the modern config contract, summary metadat
 test('text segment rule editor renders modality, unit, cache storage, and tool scaffolding fields', () => {
   assert.match(source, /field: 'inputModality'/);
   assert.match(source, /field: 'outputModality'/);
+  assert.match(source, /field: 'imageSizeTier'/);
   assert.match(source, /field: 'billingUnit'/);
   assert.match(source, /field: 'cacheStoragePrice'/);
   assert.match(source, /field: 'toolUsageType'/);
+  assert.match(source, /field: 'toolUsageCount'/);
   assert.match(source, /field: 'freeQuota'/);
   assert.match(source, /field: 'overageThreshold'/);
 });

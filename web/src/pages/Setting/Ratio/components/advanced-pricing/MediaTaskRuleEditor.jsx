@@ -52,6 +52,7 @@ const INTEGER_INPUT_REGEX = /^\d*$/;
 const DECIMAL_INPUT_REGEX = /^(\d+(\.\d*)?|\.\d*)?$/;
 const EMPTY_MEDIA_TASK_PREVIEW_INPUT = {
   rawAction: '',
+  inferenceMode: '',
   usageTotalTokens: '',
   inputVideo: '',
   audio: '',
@@ -195,18 +196,24 @@ export default function MediaTaskRuleEditor({
       },
       {
         field: 'toolUsageType',
-        label: t('Tool Usage'),
+        label: t('工具调用类型'),
         placeholder: t('例如 google_search'),
       },
       {
+        field: 'toolUsageCount',
+        label: t('工具调用次数'),
+        placeholder: t('可选'),
+        regex: INTEGER_INPUT_REGEX,
+      },
+      {
         field: 'freeQuota',
-        label: t('Free Quota'),
+        label: t('免费额度'),
         placeholder: t('可选'),
         regex: INTEGER_INPUT_REGEX,
       },
       {
         field: 'overageThreshold',
-        label: t('Overage Threshold'),
+        label: t('超额阈值'),
         placeholder: t('可选'),
         regex: INTEGER_INPUT_REGEX,
       },
@@ -840,6 +847,19 @@ export default function MediaTaskRuleEditor({
                     }
                   />
                 </div>
+              </div>
+
+              <div style={{ width: '100%' }}>
+                <div className='mb-1 font-medium text-gray-700'>
+                  {t('推理模式')}
+                </div>
+                <Input
+                  value={previewInput?.inferenceMode || ''}
+                  placeholder={t('如 fast / quality')}
+                  onChange={(value) =>
+                    handlePreviewInputChange('inferenceMode', value)
+                  }
+                />
               </div>
 
               <div style={{ width: '100%' }}>
