@@ -32,6 +32,7 @@ import {
   timestamp2string,
   renderQuota,
   renderNumber,
+  convertUSDToCurrency,
   getLogOther,
   copy,
   renderClaudeLogContent,
@@ -81,19 +82,19 @@ const buildAdvancedPriceSummary = (t, other, snapshot) => {
   const priceSnapshot = snapshot?.price_snapshot || {};
   const summary = [];
   if (priceSnapshot.input_price !== undefined) {
-    summary.push(`${t('输入')} ${renderQuota(priceSnapshot.input_price)} / 1M tokens`);
+    summary.push(`${t('输入')} ${renderAdvancedPrice(priceSnapshot.input_price)} / 1M tokens`);
   }
   if (priceSnapshot.output_price !== undefined) {
-    summary.push(`${t('输出')} ${renderQuota(priceSnapshot.output_price)} / 1M tokens`);
+    summary.push(`${t('输出')} ${renderAdvancedPrice(priceSnapshot.output_price)} / 1M tokens`);
   }
   if (priceSnapshot.cache_read_price !== undefined) {
-    summary.push(`${t('缓存读取')} ${renderQuota(priceSnapshot.cache_read_price)} / 1M tokens`);
+    summary.push(`${t('缓存读取')} ${renderAdvancedPrice(priceSnapshot.cache_read_price)} / 1M tokens`);
   }
   if (priceSnapshot.cache_create_price !== undefined) {
-    summary.push(`${t('缓存创建')} ${renderQuota(priceSnapshot.cache_create_price)} / 1M tokens`);
+    summary.push(`${t('缓存创建')} ${renderAdvancedPrice(priceSnapshot.cache_create_price)} / 1M tokens`);
   }
   if (summary.length === 0 && other?.model_price !== undefined) {
-    summary.push(`${t('单价')} ${renderQuota(other.model_price)} / 1M tokens`);
+    summary.push(`${t('单价')} ${renderAdvancedPrice(other.model_price)} / 1M tokens`);
   }
   if (summary.length === 0) {
     return `${t('单价摘要')}：${t('未记录')}`;
@@ -158,6 +159,11 @@ const renderAdvancedBillingProcessBase = (t, log, other) => {
 const toAdvancedNumber = (value) => {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
+};
+
+const renderAdvancedPrice = (usdAmount, digits = 6) => {
+  const amount = toAdvancedNumber(usdAmount);
+  return convertUSDToCurrency(amount === null ? 0 : amount, digits);
 };
 
 const getAdvancedGroupRatio = (other) => {
@@ -226,9 +232,9 @@ const buildAdvancedExtraChargeItems = (t, other, snapshot) => {
     }
     items.push({
       label,
-      formulaPart: `${label} ${renderNumber(tokens)} tokens / 1M tokens * ${renderQuota(price)}`,
+      formulaPart: `${label} ${renderNumber(tokens)} tokens / 1M tokens * ${renderAdvancedPrice(price)}`,
       amount: (tokens / 1000000) * price,
-      summary: `${label} ${renderQuota(price)} / 1M tokens`,
+      summary: `${label} ${renderAdvancedPrice(price)} / 1M tokens`,
     });
   };
   const pushCountItem = (label, callCount, unitPrice) => {
@@ -239,9 +245,9 @@ const buildAdvancedExtraChargeItems = (t, other, snapshot) => {
     }
     items.push({
       label,
-      formulaPart: `${label} ${renderNumber(count)} 次 * ${renderQuota(price)}`,
+      formulaPart: `${label} ${renderNumber(count)} 次 * ${renderAdvancedPrice(price)}`,
       amount: count * price,
-      summary: `${label} ${renderNumber(count)} 次 × ${renderQuota(price)}`,
+      summary: `${label} ${renderNumber(count)} 次 × ${renderAdvancedPrice(price)}`,
     });
   };
 
@@ -322,11 +328,11 @@ const buildAdvancedTextSegmentFormula = (t, log, other, snapshot) => {
   let baseAmount = 0;
 
   if (inputPrice > 0) {
-    baseParts.push(`${t('输入')} ${renderNumber(inputTokens)} tokens / 1M tokens * ${renderQuota(inputPrice)}`);
+    baseParts.push(`${t('输入')} ${renderNumber(inputTokens)} tokens / 1M tokens * ${renderAdvancedPrice(inputPrice)}`);
     baseAmount += (inputTokens / 1000000) * inputPrice;
   }
   if (outputPrice > 0) {
-    baseParts.push(`${t('输出')} ${renderNumber(outputTokens)} tokens / 1M tokens * ${renderQuota(outputPrice)}`);
+    baseParts.push(`${t('输出')} ${renderNumber(outputTokens)} tokens / 1M tokens * ${renderAdvancedPrice(outputPrice)}`);
     baseAmount += (outputTokens / 1000000) * outputPrice;
   }
 
@@ -338,7 +344,7 @@ const buildAdvancedTextSegmentFormula = (t, log, other, snapshot) => {
   const formula = baseParts.length > 0 ? baseParts.join(' + ') : t('暂无可展示的高级计费公式');
   return [
     `${t('本次用量')}：${t('输入')} ${renderNumber(inputTokens)} tokens，${t('输出')} ${renderNumber(outputTokens)} tokens`,
-    `${t('最终计费公式')}：(${formula}) * ${t('分组倍率')} ${renderNumber(groupRatio)} = ${renderQuota(
+    `${t('最终计费公式')}：(${formula}) * ${t('分组倍率')} ${renderNumber(groupRatio)} = ${renderAdvancedPrice(
       baseAmount * groupRatio,
     )}`,
   ];
@@ -372,9 +378,9 @@ const buildAdvancedMediaTaskFormula = (t, log, other, snapshot) => {
     )}）`,
     `${t('最终计费公式')}：${renderNumber(
       effectiveTokens,
-    )} tokens / 1M tokens * ${renderQuota(unitPrice)} * ${t('分组倍率')} ${renderNumber(
+    )} tokens / 1M tokens * ${renderAdvancedPrice(unitPrice)} * ${t('分组倍率')} ${renderNumber(
       groupRatio,
-    )} = ${renderQuota(((effectiveTokens / 1000000) * unitPrice) * groupRatio)}`,
+    )} = ${renderAdvancedPrice(((effectiveTokens / 1000000) * unitPrice) * groupRatio)}`,
   ];
 };
 

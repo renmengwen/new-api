@@ -96,6 +96,19 @@ test('advanced billing process includes final formulas for text segments and med
   assert.match(hookSource, /priceSnapshot\.input_price/);
   assert.match(hookSource, /priceSnapshot\.output_price/);
   assert.match(hookSource, /thresholdSnapshot\.min_tokens/);
+  assert.match(hookSource, /convertUSDToCurrency/);
+  assert.doesNotMatch(
+    hookSource,
+    /const buildAdvancedMediaTaskFormula[\s\S]*renderQuota\(unitPrice\)/,
+  );
+  assert.doesNotMatch(
+    hookSource,
+    /const buildAdvancedTextSegmentFormula[\s\S]*renderQuota\(inputPrice\)/,
+  );
+  assert.doesNotMatch(
+    hookSource,
+    /const buildAdvancedTextSegmentFormula[\s\S]*renderQuota\(outputPrice\)/,
+  );
 });
 
 test('advanced billing helpers keep coexistence extras instead of swallowing legacy surcharge details', () => {
