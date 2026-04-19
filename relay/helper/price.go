@@ -338,6 +338,7 @@ func buildAdvancedPricingRuntimeContext(info *relaycommon.RelayInfo, promptToken
 	}
 
 	runtimeCtx.Request = info.Request
+	runtimeCtx.RequestURLPath = info.RequestURLPath
 	if strings.TrimSpace(info.InputAudioFormat) != "" {
 		runtimeCtx.InputModalities = append(runtimeCtx.InputModalities, "audio")
 	}

@@ -112,6 +112,7 @@ type AdvancedPricingRuntimeContext struct {
 	PromptTokens     int
 	Meta             *types.TokenCountMeta
 	Request          dto.Request
+	RequestURLPath   string
 	Task             *AdvancedPricingTaskContext
 	InputModalities  []string
 	OutputModalities []string
@@ -123,6 +124,7 @@ type advancedTextRuntimeContext struct {
 	serviceTier      string
 	inputModalities  []string
 	outputModalities []string
+	imageSizeTier    string
 	cacheRead        *bool
 	cacheCreate      *bool
 }
@@ -340,6 +342,7 @@ func buildAdvancedTextRuntimeContext(ctx AdvancedPricingRuntimeContext) advanced
 		serviceTier:      extractAdvancedPricingServiceTier(ctx.Request),
 		inputModalities:  collectAdvancedTextInputModalities(ctx),
 		outputModalities: collectAdvancedTextOutputModalities(ctx),
+		imageSizeTier:    extractAdvancedTextImageSizeTier(ctx),
 	}
 }
 
@@ -500,15 +503,151 @@ func collectAdvancedTextOutputModalities(ctx AdvancedPricingRuntimeContext) []st
 	switch req := ctx.Request.(type) {
 	case *dto.GeneralOpenAIRequest:
 		modalities = append(modalities, extractAdvancedPricingRawStringSlice(req.Modalities)...)
+		modalities = append(modalities, extractAdvancedPricingGoogleResponseModalities(req.ExtraBody)...)
 		if len(req.Audio) > 0 {
 			modalities = append(modalities, "audio")
 		}
+		if isAdvancedPricingImageGenerationPath(ctx.RequestURLPath) {
+			modalities = append(modalities, "image")
+		}
+	case *dto.GeminiChatRequest:
+		modalities = append(modalities, req.GenerationConfig.ResponseModalities...)
 	}
 
 	if len(modalities) == 0 {
 		modalities = append(modalities, "text")
 	}
 	return normalizeAdvancedPricingModalities(modalities)
+}
+
+func extractAdvancedTextImageSizeTier(ctx AdvancedPricingRuntimeContext) string {
+	switch req := ctx.Request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		if imageSizeTier := extractAdvancedPricingGoogleImageSizeTier(req.ExtraBody); imageSizeTier != "" {
+			return imageSizeTier
+		}
+		if imageSizeTier := deriveAdvancedPricingImageSizeTierFromSize(req.Size); imageSizeTier != "" {
+			return imageSizeTier
+		}
+	case *dto.GeminiChatRequest:
+		if imageSizeTier := extractGeminiChatRequestImageSizeTier(req); imageSizeTier != "" {
+			return imageSizeTier
+		}
+	}
+	return ""
+}
+
+type advancedPricingGoogleExtraBody struct {
+	Google struct {
+		GenerationConfig struct {
+			ResponseModalities []string `json:"response_modalities,omitempty"`
+		} `json:"generation_config,omitempty"`
+		ImageConfig struct {
+			ImageSize      string `json:"image_size,omitempty"`
+			ImageSizeCamel string `json:"imageSize,omitempty"`
+		} `json:"image_config,omitempty"`
+	} `json:"google,omitempty"`
+}
+
+func extractAdvancedPricingGoogleResponseModalities(data []byte) []string {
+	extraBody, ok := parseAdvancedPricingGoogleExtraBody(data)
+	if !ok {
+		return nil
+	}
+	return extraBody.Google.GenerationConfig.ResponseModalities
+}
+
+func extractAdvancedPricingGoogleImageSizeTier(data []byte) string {
+	extraBody, ok := parseAdvancedPricingGoogleExtraBody(data)
+	if !ok {
+		return ""
+	}
+	return normalizeAdvancedPricingImageSizeTier(firstNonEmptyString(extraBody.Google.ImageConfig.ImageSize, extraBody.Google.ImageConfig.ImageSizeCamel))
+}
+
+func extractGeminiChatRequestImageSizeTier(req *dto.GeminiChatRequest) string {
+	if req == nil || len(req.GenerationConfig.ImageConfig) == 0 {
+		return ""
+	}
+
+	var imageConfig struct {
+		ImageSize      string `json:"image_size,omitempty"`
+		ImageSizeCamel string `json:"imageSize,omitempty"`
+	}
+	if err := common.Unmarshal(req.GenerationConfig.ImageConfig, &imageConfig); err != nil {
+		return ""
+	}
+	return normalizeAdvancedPricingImageSizeTier(firstNonEmptyString(imageConfig.ImageSize, imageConfig.ImageSizeCamel))
+}
+
+func parseAdvancedPricingGoogleExtraBody(data []byte) (advancedPricingGoogleExtraBody, bool) {
+	if len(data) == 0 || common.GetJsonType(data) != "object" {
+		return advancedPricingGoogleExtraBody{}, false
+	}
+	var extraBody advancedPricingGoogleExtraBody
+	if err := common.Unmarshal(data, &extraBody); err != nil {
+		return advancedPricingGoogleExtraBody{}, false
+	}
+	return extraBody, true
+}
+
+func deriveAdvancedPricingImageSizeTierFromSize(size string) string {
+	normalizedSize := strings.ToLower(strings.TrimSpace(size))
+	switch normalizedSize {
+	case "1k", "2k", "4k":
+		return normalizedSize
+	}
+
+	parts := strings.Split(normalizedSize, "x")
+	if len(parts) != 2 {
+		return ""
+	}
+	width, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return ""
+	}
+	height, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return ""
+	}
+	longestEdge := width
+	if height > longestEdge {
+		longestEdge = height
+	}
+	switch {
+	case longestEdge >= 4096:
+		return "4k"
+	case longestEdge >= 2048:
+		return "2k"
+	case longestEdge >= 1024:
+		return "1k"
+	default:
+		return ""
+	}
+}
+
+func normalizeAdvancedPricingImageSizeTier(value string) string {
+	return normalizeAdvancedPricingComparableString(value)
+}
+
+func isAdvancedPricingImageGenerationPath(path string) bool {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return false
+	}
+	if idx := strings.Index(trimmed, "?"); idx >= 0 {
+		trimmed = trimmed[:idx]
+	}
+	return strings.HasPrefix(trimmed, "/v1/images/generations")
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func normalizeAdvancedPricingModalities(values []string) []string {
@@ -811,6 +950,9 @@ func matchAdvancedTextSegment(segment AdvancedPriceRule, runtimeCtx advancedText
 	if outputModality := normalizeAdvancedPricingComparableString(segment.OutputModality); outputModality != "" && !advancedPricingModalityMatch(runtimeCtx.outputModalities, outputModality) {
 		return false
 	}
+	if imageSizeTier := normalizeAdvancedPricingImageSizeTier(segment.ImageSizeTier); imageSizeTier != "" && imageSizeTier != runtimeCtx.imageSizeTier {
+		return false
+	}
 	if segment.CacheRead != nil {
 		if runtimeCtx.cacheRead == nil || *segment.CacheRead != *runtimeCtx.cacheRead {
 			return false
@@ -955,7 +1097,7 @@ func buildAdvancedPricingContextSnapshot(billingUnit string, segment AdvancedPri
 		BillingUnit:      billingUnit,
 		InputModalities:  cloneAdvancedStringSlice(runtimeCtx.inputModalities),
 		OutputModalities: cloneAdvancedStringSlice(runtimeCtx.outputModalities),
-		ImageSizeTier:    normalizeAdvancedPricingComparableString(segment.ImageSizeTier),
+		ImageSizeTier:    runtimeCtx.imageSizeTier,
 		ToolUsageType:    normalizeAdvancedPricingComparableString(segment.ToolUsageType),
 		ToolUsageCount:   cloneAdvancedIntPtr(segment.ToolUsageCount),
 		FreeQuota:        cloneAdvancedIntPtr(segment.FreeQuota),
@@ -988,6 +1130,9 @@ func buildAdvancedMatchSummary(segment AdvancedPriceRule, runtimeCtx advancedTex
 	}
 	if len(runtimeCtx.outputModalities) > 0 {
 		parts = append(parts, fmt.Sprintf("output_modalities=%s", strings.Join(runtimeCtx.outputModalities, ",")))
+	}
+	if runtimeCtx.imageSizeTier != "" {
+		parts = append(parts, fmt.Sprintf("image_size_tier=%s", runtimeCtx.imageSizeTier))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -1435,7 +1580,8 @@ func hasTextCondition(segment AdvancedPriceRule) bool {
 		hasIntRange(segment.OutputMin, segment.OutputMax) ||
 		normalizeAdvancedPricingServiceTier(segment.ServiceTier) != "" ||
 		normalizeAdvancedPricingComparableString(segment.InputModality) != "" ||
-		normalizeAdvancedPricingComparableString(segment.OutputModality) != ""
+		normalizeAdvancedPricingComparableString(segment.OutputModality) != "" ||
+		normalizeAdvancedPricingImageSizeTier(segment.ImageSizeTier) != ""
 }
 
 func validateUnsupportedTextRuntimeFields(modelName string, segment AdvancedPriceRule) error {
@@ -1486,6 +1632,9 @@ func textSegmentsOverlap(left, right AdvancedPriceRule) bool {
 		return false
 	}
 	if normalizeAdvancedPricingComparableString(left.OutputModality) != normalizeAdvancedPricingComparableString(right.OutputModality) {
+		return false
+	}
+	if normalizeAdvancedPricingImageSizeTier(left.ImageSizeTier) != normalizeAdvancedPricingImageSizeTier(right.ImageSizeTier) {
 		return false
 	}
 	if !boolPointerEqual(left.CacheRead, right.CacheRead) {

@@ -334,6 +334,181 @@ func TestModelPriceHelperMatchesAdvancedTextSegmentByModalityAndCapturesRuntimeC
 	require.Equal(t, []string{"audio"}, priceData.AdvancedPricingContext.OutputModalities)
 }
 
+func TestModelPriceHelperMatchesAdvancedTextSegmentPerSecondForGeminiLiveAudio(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gemini-3.1-flash-live-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gemini-3.1-flash-live-preview": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_second",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000000,
+					"input_modality": "audio",
+					"output_modality": "audio",
+					"input_price": 3,
+					"output_price": 12
+				}
+			]
+		}
+	}`))
+
+	message := dto.Message{Role: "user"}
+	message.SetMediaContent([]dto.MediaContent{
+		{
+			Type: dto.ContentTypeInputAudio,
+			InputAudio: &dto.MessageInputAudio{
+				Data:   "UklGRg==",
+				Format: "wav",
+			},
+		},
+	})
+
+	request := &dto.GeneralOpenAIRequest{
+		Model:    "gemini-3.1-flash-live-preview",
+		Messages: []dto.Message{message},
+		ExtraBody: []byte(`{
+			"google": {
+				"generation_config": {
+					"response_modalities": ["AUDIO"]
+				}
+			}
+		}`),
+	}
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3.1-flash-live-preview",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         request,
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, request.GetTokenCountMeta())
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, types.AdvancedBillingUnitPerSecond, priceData.AdvancedRuleSnapshot.BillingUnit)
+	require.Equal(t, "audio", priceData.AdvancedRuleSnapshot.InputModality)
+	require.Equal(t, "audio", priceData.AdvancedRuleSnapshot.OutputModality)
+	require.Equal(t, []string{"audio"}, priceData.AdvancedPricingContext.OutputModalities)
+}
+
+func TestModelPriceHelperMatchesAdvancedTextSegmentPerImageForGeminiImageGeneration(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gemini-3.1-flash-image-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gemini-3.1-flash-image-preview": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_image",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000000,
+					"output_modality": "image",
+					"input_price": 0.5,
+					"output_price": 3
+				}
+			]
+		}
+	}`))
+
+	request := &dto.GeneralOpenAIRequest{
+		Model:  "gemini-3.1-flash-image-preview",
+		Prompt: "Generate a stylized skyline illustration",
+		Size:   "1024x1024",
+	}
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3.1-flash-image-preview",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         request,
+		RequestURLPath:  "/v1/images/generations",
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 64, request.GetTokenCountMeta())
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, types.AdvancedBillingUnitPerImage, priceData.AdvancedRuleSnapshot.BillingUnit)
+	require.Equal(t, "image", priceData.AdvancedRuleSnapshot.OutputModality)
+	require.Equal(t, []string{"image"}, priceData.AdvancedPricingContext.OutputModalities)
+}
+
+func TestModelPriceHelperMatchesAdvancedTextSegmentByImageSizeTier(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gemini-3-pro-image-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gemini-3-pro-image-preview": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_image",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000000,
+					"output_modality": "image",
+					"image_size_tier": "1k",
+					"input_price": 2,
+					"output_price": 120
+				},
+				{
+					"priority": 20,
+					"input_min": 0,
+					"input_max": 1000000,
+					"output_modality": "image",
+					"image_size_tier": "2k",
+					"input_price": 2,
+					"output_price": 134
+				},
+				{
+					"priority": 30,
+					"input_min": 0,
+					"input_max": 1000000,
+					"output_modality": "image",
+					"image_size_tier": "4k",
+					"input_price": 2,
+					"output_price": 240
+				}
+			]
+		}
+	}`))
+
+	request := &dto.GeneralOpenAIRequest{
+		Model:  "gemini-3-pro-image-preview",
+		Prompt: "Generate a photorealistic product render",
+		Size:   "2048x2048",
+	}
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3-pro-image-preview",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         request,
+		RequestURLPath:  "/v1/images/generations",
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 64, request.GetTokenCountMeta())
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "2k", priceData.AdvancedRuleSnapshot.ImageSizeTier)
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, "2k", priceData.AdvancedPricingContext.ImageSizeTier)
+	require.Equal(t, 1.0, priceData.ModelRatio)
+	require.Equal(t, 67.0, priceData.CompletionRatio)
+}
+
 func TestModelPriceHelperHonorsExplicitPerTokenModeWhenPriceAndRatioBothExist(t *testing.T) {
 	restoreRatioSettings(t)
 
