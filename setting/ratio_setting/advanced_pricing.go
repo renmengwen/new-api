@@ -941,6 +941,9 @@ func buildAdvancedMediaRuleSnapshot(ruleType AdvancedRuleType, taskType string, 
 		BillingUnit:   billingUnit,
 		ImageSizeTier: normalizeAdvancedPricingComparableString(segment.ImageSizeTier),
 		ToolUsageType: normalizeAdvancedPricingComparableString(segment.ToolUsageType),
+		PriceSnapshot: types.AdvancedRulePriceSnapshot{
+			InputPrice: cloneAdvancedFloatPtr(segment.UnitPrice),
+		},
 		ThresholdSnapshot: types.AdvancedRuleThresholdSnapshot{
 			MinTokens:        cloneAdvancedIntPtr(segment.MinTokens),
 			ToolUsageCount:   cloneAdvancedIntPtr(segment.ToolUsageCount),

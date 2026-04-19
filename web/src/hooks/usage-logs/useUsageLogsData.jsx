@@ -179,6 +179,15 @@ const getAdvancedPriceSnapshot = (snapshot) => snapshot?.price_snapshot || {};
 
 const getAdvancedThresholdSnapshot = (snapshot) => snapshot?.threshold_snapshot || {};
 
+const getAdvancedLegacyMediaUnitPrice = (snapshot) => {
+  const matchSummary = snapshot?.match_summary;
+  if (typeof matchSummary !== 'string' || matchSummary.length === 0) {
+    return null;
+  }
+  const matched = matchSummary.match(/(?:^|,\s*)unit_price=([0-9]+(?:\.[0-9]+)?)/);
+  return matched ? toAdvancedNumber(matched[1]) : null;
+};
+
 const getAdvancedActualUsageTokens = (log, other) => {
   const explicitUsage =
     toAdvancedNumber(other?.usage_total_tokens) ??
@@ -355,6 +364,7 @@ const resolveAdvancedUnitPrice = (snapshot, other) => {
   return (
     toAdvancedNumber(priceSnapshot.input_price) ??
     toAdvancedNumber(priceSnapshot.output_price) ??
+    getAdvancedLegacyMediaUnitPrice(snapshot) ??
     toAdvancedNumber(other?.model_price) ??
     getAdvancedLegacyInputPrice(other) ??
     0

@@ -95,6 +95,8 @@ test('advanced billing process includes final formulas for text segments and med
   assert.match(hookSource, /groupRatio/);
   assert.match(hookSource, /priceSnapshot\.input_price/);
   assert.match(hookSource, /priceSnapshot\.output_price/);
+  assert.match(hookSource, /const getAdvancedLegacyMediaUnitPrice = \(snapshot\) => \{/);
+  assert.match(hookSource, /unit_price=\(\[0-9\]\+\(\?:\\\.\[0-9\]\+\)\?\)/);
   assert.match(hookSource, /thresholdSnapshot\.min_tokens/);
   assert.match(hookSource, /convertUSDToCurrency/);
   assert.doesNotMatch(
@@ -108,6 +110,10 @@ test('advanced billing process includes final formulas for text segments and med
   assert.doesNotMatch(
     hookSource,
     /const buildAdvancedTextSegmentFormula[\s\S]*renderQuota\(outputPrice\)/,
+  );
+  assert.match(
+    hookSource,
+    /const resolveAdvancedUnitPrice = \(snapshot, other\) => \{[\s\S]*getAdvancedLegacyMediaUnitPrice\(snapshot\)[\s\S]*other\?\.model_price/,
   );
 });
 
