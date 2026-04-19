@@ -174,6 +174,41 @@ func TestParseAdvancedPricingConfigAllowsExactRanges(t *testing.T) {
 	require.Equal(t, 5, *cfg.ModelRules["veo-3.1-fast-generate-preview"].Segments[0].OutputDurationMax)
 }
 
+func TestParseAdvancedPricingConfigAllowsOpenEndedTextRanges(t *testing.T) {
+	cfg, err := ParseAdvancedPricingConfig(`{
+      "rules": {
+        "gemini-3.1-pro-preview": {
+          "rule_type": "text_segment",
+          "segments": [
+            {
+              "priority": 1,
+              "input_min": 0,
+              "input_max": 200000,
+              "output_min": 0,
+              "output_max": 200000,
+              "input_price": 2,
+              "output_price": 12,
+              "cache_read_price": 0.2
+            },
+            {
+              "priority": 2,
+              "input_min": 200001,
+              "output_min": 200001,
+              "input_price": 4,
+              "output_price": 18,
+              "cache_read_price": 0.4
+            }
+          ]
+        }
+      }
+    }`)
+	require.NoError(t, err)
+	require.Equal(t, 200001, *cfg.ModelRules["gemini-3.1-pro-preview"].Segments[1].InputMin)
+	require.Nil(t, cfg.ModelRules["gemini-3.1-pro-preview"].Segments[1].InputMax)
+	require.Equal(t, 200001, *cfg.ModelRules["gemini-3.1-pro-preview"].Segments[1].OutputMin)
+	require.Nil(t, cfg.ModelRules["gemini-3.1-pro-preview"].Segments[1].OutputMax)
+}
+
 func TestParseAdvancedPricingConfigMatchesTextServiceTierCaseInsensitively(t *testing.T) {
 	cfg, err := ParseAdvancedPricingConfig(`{
       "rules": {

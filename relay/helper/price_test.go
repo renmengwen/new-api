@@ -216,6 +216,53 @@ func TestModelPriceHelperMatchesAdvancedTextSegmentServiceTierCaseInsensitively(
 	require.Equal(t, 2.0, priceData.CompletionRatio)
 }
 
+func TestModelPriceHelperMatchesAdvancedTextSegmentWithOpenEndedRanges(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gemini-3.1-pro-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gemini-3.1-pro-preview": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 1,
+					"input_min": 0,
+					"input_max": 200000,
+					"output_min": 0,
+					"output_max": 200000,
+					"input_price": 2,
+					"output_price": 12,
+					"cache_read_price": 0.2
+				},
+				{
+					"priority": 2,
+					"input_min": 200001,
+					"output_min": 200001,
+					"input_price": 4,
+					"output_price": 18,
+					"cache_read_price": 0.4
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3.1-pro-preview",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 210000, &types.TokenCountMeta{MaxTokens: 210001})
+	require.NoError(t, err)
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, 2.0, priceData.ModelRatio)
+	require.Equal(t, 4.5, priceData.CompletionRatio)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot.Priority)
+	require.Equal(t, 2, *priceData.AdvancedRuleSnapshot.Priority)
+}
+
 func TestModelPriceHelperHonorsExplicitPerTokenModeWhenPriceAndRatioBothExist(t *testing.T) {
 	restoreRatioSettings(t)
 

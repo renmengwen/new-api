@@ -623,10 +623,13 @@ func matchAdvancedMediaTaskSegment(segment AdvancedPriceRule, runtimeCtx advance
 }
 
 func isAdvancedTokenCountInRange(value int, minVal, maxVal *int) bool {
-	if minVal == nil || maxVal == nil {
-		return true
+	if minVal != nil && value < *minVal {
+		return false
 	}
-	return value >= *minVal && value <= *maxVal
+	if maxVal != nil && value > *maxVal {
+		return false
+	}
+	return true
 }
 
 func deriveAdvancedRelativeRatio(inputPrice *float64, targetPrice *float64) (float64, error) {
@@ -736,10 +739,10 @@ func buildAdvancedMediaMatchSummary(segment AdvancedPriceRule, runtimeCtx advanc
 func buildAdvancedConditionTags(segment AdvancedPriceRule) []string {
 	tags := make([]string, 0, 5)
 	if hasIntRange(segment.InputMin, segment.InputMax) {
-		tags = append(tags, fmt.Sprintf("input:%d-%d", *segment.InputMin, *segment.InputMax))
+		tags = append(tags, formatAdvancedRangeTag("input", segment.InputMin, segment.InputMax))
 	}
 	if hasIntRange(segment.OutputMin, segment.OutputMax) {
-		tags = append(tags, fmt.Sprintf("output:%d-%d", *segment.OutputMin, *segment.OutputMax))
+		tags = append(tags, formatAdvancedRangeTag("output", segment.OutputMin, segment.OutputMax))
 	}
 	if serviceTier := normalizeAdvancedPricingServiceTier(segment.ServiceTier); serviceTier != "" {
 		tags = append(tags, fmt.Sprintf("service_tier:%s", serviceTier))
@@ -751,6 +754,18 @@ func buildAdvancedConditionTags(segment AdvancedPriceRule) []string {
 		tags = append(tags, fmt.Sprintf("cache_create:%t", *segment.CacheCreate))
 	}
 	return tags
+}
+
+func formatAdvancedRangeTag(label string, minVal, maxVal *int) string {
+	minText := "-inf"
+	if minVal != nil {
+		minText = strconv.Itoa(*minVal)
+	}
+	maxText := "+inf"
+	if maxVal != nil {
+		maxText = strconv.Itoa(*maxVal)
+	}
+	return fmt.Sprintf("%s:%s-%s", label, minText, maxText)
 }
 
 func buildAdvancedMediaConditionTags(segment AdvancedPriceRule) []string {
@@ -1084,13 +1099,13 @@ func validateTextRange(modelName, rangeName string, minVal, maxVal *int) error {
 	if minVal == nil && maxVal == nil {
 		return nil
 	}
-	if minVal == nil || maxVal == nil {
-		return fmt.Errorf("model %s text segment %s 区间 must include both min and max", modelName, rangeName)
-	}
-	if *minVal < 0 || *maxVal < 0 {
+	if minVal != nil && *minVal < 0 {
 		return fmt.Errorf("model %s text segment %s 区间 cannot be negative", modelName, rangeName)
 	}
-	if *maxVal < *minVal {
+	if maxVal != nil && *maxVal < 0 {
+		return fmt.Errorf("model %s text segment %s 区间 cannot be negative", modelName, rangeName)
+	}
+	if minVal != nil && maxVal != nil && *maxVal < *minVal {
 		return fmt.Errorf("model %s text segment %s 区间 is invalid", modelName, rangeName)
 	}
 	return nil
@@ -1127,7 +1142,7 @@ func hasPositiveAdvancedPrice(price *float64) bool {
 }
 
 func hasIntRange(minVal, maxVal *int) bool {
-	return minVal != nil && maxVal != nil
+	return minVal != nil || maxVal != nil
 }
 
 func textSegmentsOverlap(left, right AdvancedPriceRule) bool {
@@ -1150,10 +1165,13 @@ func textSegmentsOverlap(left, right AdvancedPriceRule) bool {
 }
 
 func intRangeOverlap(leftMin, leftMax, rightMin, rightMax *int) bool {
-	if !hasIntRange(leftMin, leftMax) || !hasIntRange(rightMin, rightMax) {
-		return true
+	if leftMax != nil && rightMin != nil && *leftMax < *rightMin {
+		return false
 	}
-	return *leftMin <= *rightMax && *rightMin <= *leftMax
+	if rightMax != nil && leftMin != nil && *rightMax < *leftMin {
+		return false
+	}
+	return true
 }
 
 func boolPointerEqual(left, right *bool) bool {
