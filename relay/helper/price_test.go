@@ -804,6 +804,37 @@ func TestResolveRawTaskActionInfersKlingTextGenerateWithoutImageBeforeBuildReque
 	require.Equal(t, constant.TaskActionTextGenerate, resolveRawTaskAction(info, c))
 }
 
+func TestResolveRawTaskActionInfersDoubaoTextGenerateWithoutReferences(t *testing.T) {
+	body := `{"model":"doubao-seedance-2-0-260128","prompt":"video prompt","size":"1280x720","duration":5,"metadata":{"input_video":false}}`
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", bytes.NewBufferString(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	info := &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeDoubaoVideo},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+
+	require.Nil(t, relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate))
+	require.Equal(t, constant.TaskActionGenerate, info.Action)
+	require.Equal(t, constant.TaskActionTextGenerate, resolveRawTaskAction(info, c))
+}
+
+func TestResolveRawTaskActionInfersDoubaoGenerateWithReferenceVideo(t *testing.T) {
+	body := `{"model":"doubao-seedance-2-0-260128","prompt":"video prompt","metadata":{"videos":["https://example.com/reference.mp4"]}}`
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", bytes.NewBufferString(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	info := &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeDoubaoVideo},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+
+	require.Nil(t, relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate))
+	require.Equal(t, constant.TaskActionGenerate, resolveRawTaskAction(info, c))
+}
+
 func TestModelPriceHelperPerCallMatchesAdvancedMediaTaskWhenJimengMultipartInfersFirstTailGenerateBeforeBuildRequestBody(t *testing.T) {
 	restoreRatioSettings(t)
 

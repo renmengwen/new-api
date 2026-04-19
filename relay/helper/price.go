@@ -415,6 +415,7 @@ func deriveRawTaskActionFromTaskRequest(info *relaycommon.RelayInfo, c *gin.Cont
 		imageCount = multipartInputRefCount
 	}
 	hasImage := imageCount > 0 || strings.TrimSpace(taskReq.InputReference) != ""
+	hasReferenceMedia := taskMetadataHasReferenceURLs(taskReq.Metadata, "videos", "video_url", "audios", "audio_url")
 
 	switch resolveTaskChannelType(info, c) {
 	case constant.ChannelTypeVidu:
@@ -443,9 +444,14 @@ func deriveRawTaskActionFromTaskRequest(info *relaycommon.RelayInfo, c *gin.Cont
 		default:
 			return constant.TaskActionTextGenerate
 		}
+	case constant.ChannelTypeDoubaoVideo, constant.ChannelTypeVolcEngine:
+		if hasImage || hasReferenceMedia {
+			return constant.TaskActionGenerate
+		}
+		return constant.TaskActionTextGenerate
 	}
 
-	if hasImage {
+	if hasImage || hasReferenceMedia {
 		return constant.TaskActionGenerate
 	}
 	if taskReq.Prompt != "" || taskReq.Model != "" {
@@ -488,6 +494,34 @@ func taskMetadataString(metadata map[string]interface{}, keys ...string) string 
 		}
 	}
 	return ""
+}
+
+func taskMetadataHasReferenceURLs(metadata map[string]interface{}, keys ...string) bool {
+	for _, key := range keys {
+		value, ok := metadata[key]
+		if !ok {
+			continue
+		}
+		switch data := value.(type) {
+		case string:
+			if strings.TrimSpace(data) != "" {
+				return true
+			}
+		case []string:
+			for _, item := range data {
+				if strings.TrimSpace(item) != "" {
+					return true
+				}
+			}
+		case []interface{}:
+			for _, item := range data {
+				if str, ok := item.(string); ok && strings.TrimSpace(str) != "" {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func taskMetadataBool(metadata map[string]interface{}, keys ...string) (bool, bool) {
