@@ -67,3 +67,26 @@ test('resolveVisibleModels preserves the existing unset snapshot semantics', () 
 
   assert.deepEqual(result.map((model) => model.name), ['enabled-unset']);
 });
+
+test('unset mode keeps only channel-enabled models from the initial unset snapshot', () => {
+  const result = resolveInitialVisibleModelNames({
+    nextModels: models,
+    filterMode: 'unset',
+    candidateModelNames: ['enabled-unset'],
+    isBasePricingUnset: (model) =>
+      model.fixedPrice === '' && model.inputPrice === '',
+  });
+
+  assert.deepEqual(result, ['enabled-unset']);
+});
+
+test('resolveVisibleModels intersects unset models with channel-enabled candidates', () => {
+  const result = resolveVisibleModels({
+    models,
+    filterMode: 'unset',
+    candidateModelNames: ['enabled-unset'],
+    initialVisibleModelNames: ['enabled-unset', 'hidden-priced'],
+  });
+
+  assert.deepEqual(result.map((model) => model.name), ['enabled-unset']);
+});

@@ -44,12 +44,7 @@ test('advanced pricing page wires model list, summary, editor, preview, and save
   assert.match(source, /ruleType === TEXT_SEGMENT_RULE_TYPE/);
   assert.match(source, /ruleType === MEDIA_TASK_RULE_TYPE/);
   assert.match(source, /API\.get\('\/api\/channel\/models_enabled'\)/);
-  assert.match(source, /const buildFallbackEnabledModelNames = \(\{ options, initialModelName = '' \}\) => \{/);
-  assert.match(source, /options\?\.AdvancedPricingConfig/);
-  assert.match(source, /'AdvancedPricingMode'/);
-  assert.match(source, /'AdvancedPricingRules'/);
-  assert.match(source, /'ModelPrice'/);
-  assert.match(source, /if \(initialModelName\) \{\s*names\.add\(initialModelName\);\s*\}/s);
+  assert.match(source, /import \{ buildFallbackEnabledModelNames \} from '\.\/enabledModelCandidates';/);
   assert.match(
     source,
     /const fallbackEnabledModels = buildFallbackEnabledModelNames\(\{\s*options: props\.options,\s*initialModelName: props\.initialModelName,\s*\}\);/s,

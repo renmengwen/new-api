@@ -22,6 +22,7 @@ import { Card, Empty, Modal, Space, Spin } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { API, showError } from '../../../helpers';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
+import { buildFallbackEnabledModelNames } from './enabledModelCandidates';
 import AdvancedPricingModelList from './components/advanced-pricing/AdvancedPricingModelList';
 import AdvancedPricingPreview from './components/advanced-pricing/AdvancedPricingPreview';
 import AdvancedPricingSummary from './components/advanced-pricing/AdvancedPricingSummary';
@@ -32,72 +33,6 @@ import {
   TEXT_SEGMENT_RULE_TYPE,
   useAdvancedPricingRulesState,
 } from './hooks/useAdvancedPricingRulesState';
-
-const FALLBACK_MODEL_OPTION_KEYS = [
-  'AdvancedPricingMode',
-  'AdvancedPricingRules',
-  'ModelPrice',
-  'ModelRatio',
-  'CompletionRatio',
-  'CompletionRatioMeta',
-  'CacheRatio',
-  'CreateCacheRatio',
-  'ImageRatio',
-  'AudioRatio',
-  'AudioCompletionRatio',
-];
-
-const parseOptionMap = (rawValue) => {
-  if (!rawValue || typeof rawValue !== 'string') {
-    return {};
-  }
-
-  try {
-    const parsedValue = JSON.parse(rawValue);
-    return parsedValue &&
-      typeof parsedValue === 'object' &&
-      !Array.isArray(parsedValue)
-      ? parsedValue
-      : {};
-  } catch {
-    return {};
-  }
-};
-
-const buildFallbackEnabledModelNames = ({ options, initialModelName = '' }) => {
-  const names = new Set();
-
-  if (initialModelName) {
-    names.add(initialModelName);
-  }
-
-  const parsedAdvancedPricingConfig = parseOptionMap(options?.AdvancedPricingConfig);
-  const canonicalBillingModeMap =
-    parsedAdvancedPricingConfig.billing_mode &&
-    typeof parsedAdvancedPricingConfig.billing_mode === 'object' &&
-    !Array.isArray(parsedAdvancedPricingConfig.billing_mode)
-      ? parsedAdvancedPricingConfig.billing_mode
-      : {};
-  const canonicalRulesMap =
-    parsedAdvancedPricingConfig.rules &&
-    typeof parsedAdvancedPricingConfig.rules === 'object' &&
-    !Array.isArray(parsedAdvancedPricingConfig.rules)
-      ? parsedAdvancedPricingConfig.rules
-      : {};
-
-  Object.keys(canonicalBillingModeMap).forEach((modelName) => names.add(modelName));
-  Object.keys(canonicalRulesMap).forEach((modelName) => names.add(modelName));
-
-  FALLBACK_MODEL_OPTION_KEYS.forEach((key) => {
-    Object.keys(parseOptionMap(options?.[key])).forEach((modelName) =>
-      names.add(modelName),
-    );
-  });
-
-  return Array.from(names)
-    .filter(Boolean)
-    .sort((leftName, rightName) => leftName.localeCompare(rightName));
-};
 
 export default function AdvancedPricingRulesPage(props) {
   const { t } = useTranslation();

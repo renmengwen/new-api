@@ -22,35 +22,21 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const source = fs.readFileSync(
-  new URL('./ModelSettingsVisualEditor.jsx', import.meta.url),
+  new URL('./ModelRationNotSetEditor.jsx', import.meta.url),
   'utf8',
 );
 
-test('price settings wrapper falls back to configured and initial models when loading enabled models fails', () => {
+test('unset pricing page uses the same enabled-model fallback strategy as the price settings page', () => {
   assert.match(source, /API\.get\('\/api\/channel\/models_enabled'\)/);
   assert.match(source, /import \{ buildFallbackEnabledModelNames \} from '\.\/enabledModelCandidates';/);
   assert.match(
     source,
-    /const fallbackEnabledModels = buildFallbackEnabledModelNames\(\{\s*options: props\.options,\s*initialModelName: props\.initialModelName,\s*\}\);/s,
+    /buildFallbackEnabledModelNames\(\{\s*options: props\.options,\s*initialModelName: props\.initialModelName,\s*\}\)/s,
   );
+  assert.match(source, /const resolvedEnabledModels = shouldUseFallbackEnabledModels/);
   assert.match(source, /setEnabledModels\(fallbackEnabledModels\);\s*showError\(message\);/s);
   assert.match(source, /setEnabledModels\(fallbackEnabledModels\);\s*console\.error\(/s);
-  assert.match(source, /const resolvedEnabledModels = shouldUseFallbackEnabledModels/);
   assert.match(source, /candidateModelNames=\{resolvedEnabledModels\}/);
-  assert.match(source, /filterMode='enabled'/);
-  assert.match(source, /allowAddModel=\{false\}/);
+  assert.match(source, /filterMode='unset'/);
   assert.doesNotMatch(source, /setEnabledModels\(\[\]\)/);
-});
-
-test('price settings wrapper routes edit advanced rules into the advanced pricing tab flow', () => {
-  assert.match(source, /onEditAdvancedRules=\{\(model\) => props\.onOpenAdvancedPricingRules\?\.\(model\)\}/);
-  assert.match(
-    source,
-    /initialSelectedModelName=\{props\.initialModelName\}/,
-  );
-  assert.match(
-    source,
-    /initialSelectionVersion=\{props\.initialModelSelectionKey\}/,
-  );
-  assert.doesNotMatch(source, /onEditAdvancedRules=\{\(model\)\s*=>\s*showError\(/);
 });
