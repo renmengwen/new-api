@@ -57,8 +57,10 @@ curl -X POST "{{base_url}}/v1/video/generations" \
   -d '{
     "model": "doubao-seedance-2-0-260128",
     "prompt": "第一人称果茶广告，明亮商业短片风格，镜头稳定，结尾举杯展示产品。",
+    "size": "1280x720",
     "metadata": {
-      "ratio": "16:9",
+      "aspect_ratio": "16:9",
+      "resolution": "720p",
       "duration": 5,
       "watermark": false
     }
@@ -72,6 +74,7 @@ curl -X POST "{{base_url}}/v1/video/generations" \
 | `model` | string | 是 | 视频模型名称 |
 | `prompt` | string | 是 | 文生视频提示词 |
 | `images` | array[string] | 否 | 图片引用列表。如果只传一张图，也请放在数组中 |
+| `size` | string | 否 | 输出尺寸，例如 `1280x720`。高级定价匹配时建议与 `metadata.aspect_ratio`、`metadata.resolution` 一起传，避免宽高比推导缺失 |
 | `metadata` | object | 否 | Seedance 扩展参数 |
 
 ## `metadata` 常用字段
@@ -79,15 +82,42 @@ curl -X POST "{{base_url}}/v1/video/generations" \
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---:|---|
 | `ratio` | string | 否 | 画面比例，如 `16:9` |
+| `aspect_ratio` | string | 否 | 画面比例，如 `16:9`。**启用高级定价规则匹配时，建议优先传这个字段** |
 | `duration` | int | 否 | 视频时长，单位秒 |
 | `watermark` | bool | 否 | 是否添加水印 |
 | `generate_audio` | bool | 否 | 是否生成音频，模型相关 |
 | `resolution` | string | 否 | 分辨率，模型相关，部分模型或模式不支持 |
 | `service_tier` | string | 否 | 服务等级，模型相关 |
+| `input_video` | bool | 否 | 是否显式声明“本次请求带参考视频”。**命中高级定价中的“输入含视频”规则时建议显式传 `true`** |
+| `input_video_duration` | int | 否 | 输入参考视频时长，单位秒。**命中高级定价中的输入视频时长区间时必须显式传递** |
 | `image_roles` | array[string] | 否 | 与 `images` 按顺序一一对应的图片角色列表。常用值：`reference_image`、`first_frame`、`last_frame` |
 | `videos` | array[string] | 否 | 参考视频 URL 列表，会转换为火山 `content[]`，默认 `role=reference_video`；如果只传一个视频，也请放在数组中 |
 | `audios` | array[string] | 否 | 参考音频 URL 列表，会转换为火山 `content[]`，默认 `role=reference_audio`；如果只传一个音频，也请放在数组中 |
 | `seed` | int | 否 | 随机种子 |
+
+## 高级定价规则匹配说明
+
+如果某个视频模型已经切换到“高级规则生效”，请求体建议遵循以下约定，否则可能出现“`advanced pricing did not match any active rule`”：
+
+- 建议同时传：
+  - `size`
+  - `metadata.aspect_ratio`
+  - `metadata.resolution`
+  - `metadata.duration`
+- 如果要命中“输入含视频”规则：
+  - 必须显式传 `metadata.input_video=true`
+  - 并显式传 `metadata.input_video_duration`
+- 当前高级定价匹配**不读取** `metadata.ratio` 来做宽高比判断，建议统一使用 `metadata.aspect_ratio`
+
+示例：
+
+- 想命中“输入含视频 / 720p / 16:9 / 输出 5 秒 / 输入视频 2~15 秒”这类规则时，必须同时满足：
+  - `videos` 已传
+  - `input_video=true`
+  - `input_video_duration` 落在规则区间内
+  - `aspect_ratio=16:9`
+  - `resolution=720p`
+  - `duration=5`
 
 ## 图片引用与 role 规则
 
@@ -132,6 +162,7 @@ curl -X POST "{{base_url}}/v1/video/generations" \
 {
   "model": "doubao-seedance-2-0-260128",
   "prompt": "全程使用视频1的第一视角构图，全程使用音频1作为背景音乐。",
+  "size": "1280x720",
   "images": [
     "https://ark-project.tos-cn-beijing.volces.com/doc_image/r2v_tea_pic1.jpg",
     "https://ark-project.tos-cn-beijing.volces.com/doc_image/r2v_tea_pic2.jpg"
@@ -144,8 +175,38 @@ curl -X POST "{{base_url}}/v1/video/generations" \
       "https://ark-project.tos-cn-beijing.volces.com/doc_audio/r2v_tea_audio1.mp3"
     ],
     "generate_audio": true,
-    "ratio": "16:9",
+    "aspect_ratio": "16:9",
+    "resolution": "720p",
     "duration": 11,
+    "watermark": false
+  }
+}
+```
+
+## 命中“输入含视频”高级规则示例
+
+下面这份请求体适合命中类似以下媒体任务规则：
+
+- 输入含视频
+- `720p`
+- `16:9`
+- 输出 `5` 秒
+- 输入视频时长 `2~15` 秒
+
+```json
+{
+  "model": "doubao-seedance-2-0-260128",
+  "prompt": "基于输入视频延展生成一段镜头运动更流畅、光影更统一的短片，保持主体风格一致，电影感构图。",
+  "size": "1280x720",
+  "metadata": {
+    "videos": [
+      "https://ark-project.tos-cn-beijing.volces.com/doc_video/r2v_tea_video1.mp4"
+    ],
+    "input_video": true,
+    "input_video_duration": 3,
+    "aspect_ratio": "16:9",
+    "resolution": "720p",
+    "duration": 5,
     "watermark": false
   }
 }
