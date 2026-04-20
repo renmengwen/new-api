@@ -598,7 +598,7 @@ test('buildTextSegmentPreview matches modality-aware rules and exposes cache/too
   assert.equal(preview.matchedSegmentPreview.tool_usage_type, 'google_search');
 });
 
-test('buildTextSegmentPreview ignores schema-only text selectors that backend matching does not implement', () => {
+test('buildTextSegmentPreview does not match when image tier or tool usage selectors miss', () => {
   const preview = buildTextSegmentPreview(
     [
       {
@@ -625,13 +625,136 @@ test('buildTextSegmentPreview ignores schema-only text selectors that backend ma
     },
   );
 
-  assert.equal(preview.matchedRule?.id, 'segment-audio');
-  assert.doesNotMatch(preview.conditionSummary, /image_size_tier=/);
-  assert.doesNotMatch(preview.conditionSummary, /tool_usage_type=/);
-  assert.doesNotMatch(preview.conditionSummary, /tool_usage_count>=/);
-  assert.doesNotMatch(preview.logPreview.detailSummary, /image_size_tier=/);
-  assert.doesNotMatch(preview.logPreview.detailSummary, /tool_usage_type=/);
-  assert.doesNotMatch(preview.logPreview.detailSummary, /tool_usage_count>=/);
+  assert.equal(preview.matchedRule, null);
+  assert.equal(preview.matchedSegmentPreview, null);
+  assert.equal(preview.formulaSummary, '');
+  assert.equal(preview.priceSummary.billingUnit, '');
+});
+
+test('buildTextSegmentPreview switches to per-image preview copy and matches image tier plus tool usage selectors', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-image-tier',
+        enabled: true,
+        priority: 1,
+        outputModality: 'image',
+        billingUnit: 'per_image',
+        imageSizeTier: '2k',
+        toolUsageType: 'google_search',
+        toolUsageCount: '1000',
+        inputPrice: '0.5',
+        outputPrice: '3',
+      },
+    ],
+    {
+      outputModality: 'image',
+      imageSizeTier: '2k',
+      toolUsageType: 'google_search',
+      toolUsageCount: '1200',
+      imageCount: '2',
+      inputTokens: '64',
+      outputTokens: '2',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-image-tier');
+  assert.match(preview.conditionSummary, /image_size_tier=2k/);
+  assert.match(preview.conditionSummary, /tool_usage_type=google_search/);
+  assert.match(preview.conditionSummary, /tool_usage_count>=1000/);
+  assert.match(preview.formulaSummary, /per_image/);
+  assert.match(preview.formulaSummary, /2/);
+  assert.match(preview.logPreview.detailSummary, /image_size_tier=2k/);
+  assert.match(preview.logPreview.processSummary, /per_image/);
+  assert.equal(preview.priceSummary.billingUnit, 'per_image');
+  assert.equal(preview.priceSummary.toolUsageCount, '1200');
+});
+
+test('buildTextSegmentPreview per-image preview does not fall back to output tokens as image count', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-image-count-explicit',
+        enabled: true,
+        priority: 1,
+        outputModality: 'image',
+        billingUnit: 'per_image',
+        imageSizeTier: '2k',
+        inputPrice: '0.5',
+        outputPrice: '3',
+      },
+    ],
+    {
+      outputModality: 'image',
+      imageSizeTier: '2k',
+      outputTokens: '2048',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-image-count-explicit');
+  assert.equal(preview.priceSummary.imageCount, '0');
+  assert.match(preview.formulaSummary, /^0 per_image/);
+  assert.doesNotMatch(preview.formulaSummary, /2048 per_image/);
+});
+
+test('buildTextSegmentPreview switches to per-1000-calls preview copy and shows free quota overage usage', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-grounding',
+        enabled: true,
+        priority: 1,
+        billingUnit: 'per_1000_calls',
+        toolUsageType: 'google_search',
+        toolUsageCount: '1000',
+        freeQuota: '1000',
+        inputPrice: '35',
+        outputPrice: '0',
+      },
+    ],
+    {
+      toolUsageType: 'google_search',
+      toolUsageCount: '1200',
+      inputTokens: '32',
+      outputTokens: '0',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-grounding');
+  assert.match(preview.conditionSummary, /tool_usage_type=google_search/);
+  assert.match(preview.formulaSummary, /per_1000_calls/);
+  assert.match(preview.formulaSummary, /1200/);
+  assert.match(preview.formulaSummary, /1000/);
+  assert.match(preview.logPreview.processSummary, /free_quota/i);
+  assert.equal(preview.priceSummary.billingUnit, 'per_1000_calls');
+  assert.equal(preview.priceSummary.freeQuota, '1000');
+});
+
+test('buildTextSegmentPreview per-1000-calls preview keeps input price as the unit price', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-grounding-input-price',
+        enabled: true,
+        priority: 1,
+        billingUnit: 'per_1000_calls',
+        toolUsageType: 'google_search',
+        toolUsageCount: '1000',
+        freeQuota: '100',
+        overageThreshold: '1000',
+        inputPrice: '35',
+        outputPrice: '999',
+      },
+    ],
+    {
+      toolUsageType: 'google_search',
+      toolUsageCount: '1200',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-grounding-input-price');
+  assert.match(preview.formulaSummary, /35/);
+  assert.doesNotMatch(preview.formulaSummary, /999/);
 });
 
 test('getTextSegmentRuleEditorMeta counts enabled rules and treats explicit zero default price as configured', () => {
@@ -784,7 +907,7 @@ test('buildMediaTaskPreview matches output modality, image tier, and tool usage 
   assert.equal(preview.matchedSegmentPreview.tool_usage_type, 'google_search');
 });
 
-test('buildMediaTaskPreview ignores media selectors that backend P1 matching does not implement', () => {
+test('buildMediaTaskPreview does not match when media selectors miss', () => {
   const preview = buildMediaTaskPreview(
     [
       {
@@ -821,7 +944,68 @@ test('buildMediaTaskPreview ignores media selectors that backend P1 matching doe
     },
   );
 
-  assert.equal(preview.matchedRule?.id, 'media-backend-aligned');
+  assert.equal(preview.matchedRule, null);
+  assert.equal(preview.matchedSegmentPreview, null);
+  assert.equal(preview.formulaSummary, '');
+  assert.equal(preview.priceSummary.billingUnit, '');
+});
+
+test('buildMediaTaskPreview switches formula copy by billing unit and honors preview selector fields', () => {
+  const perSecondPreview = buildMediaTaskPreview(
+    [
+      {
+        id: 'media-live',
+        priority: 1,
+        rawAction: 'generate',
+        outputModality: 'video',
+        billingUnit: 'per_second',
+        imageSizeTier: '2k',
+        toolUsageType: 'google_search',
+        toolUsageCount: '10',
+        unitPrice: '0.5',
+      },
+    ],
+    {
+      rawAction: 'generate',
+      outputModality: 'video',
+      imageSizeTier: '2k',
+      toolUsageType: 'google_search',
+      toolUsageCount: '20',
+      liveDurationSecs: '8',
+    },
+  );
+
+  assert.equal(perSecondPreview.matchedRule?.id, 'media-live');
+  assert.match(perSecondPreview.conditionSummary, /image_size_tier=2k/);
+  assert.match(perSecondPreview.conditionSummary, /tool_usage_type=google_search/);
+  assert.match(perSecondPreview.formulaSummary, /per_second/);
+  assert.match(perSecondPreview.formulaSummary, /8/);
+  assert.match(perSecondPreview.logPreview.processSummary, /per_second/);
+
+  const perCallsPreview = buildMediaTaskPreview(
+    [
+      {
+        id: 'media-grounding',
+        priority: 1,
+        rawAction: 'generate',
+        billingUnit: 'per_1000_calls',
+        toolUsageType: 'google_search',
+        toolUsageCount: '1000',
+        freeQuota: '100',
+        unitPrice: '35',
+      },
+    ],
+    {
+      rawAction: 'generate',
+      toolUsageType: 'google_search',
+      toolUsageCount: '1200',
+    },
+  );
+
+  assert.equal(perCallsPreview.matchedRule?.id, 'media-grounding');
+  assert.match(perCallsPreview.formulaSummary, /per_1000_calls/);
+  assert.match(perCallsPreview.logPreview.processSummary, /free_quota/i);
+  assert.equal(perCallsPreview.priceSummary.billingUnit, 'per_1000_calls');
 });
 
 test('advanced pricing helper constants stay aligned with persisted runtime enums', () => {

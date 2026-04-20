@@ -190,6 +190,14 @@ const isRangeMatch = (value, minValue, maxValue) => {
   return true;
 };
 
+const hasPreviewTextSegmentCondition = (rule) =>
+  hasTextSegmentCondition(rule) ||
+  normalizeStringField(rule?.imageSizeTier ?? rule?.image_size_tier).trim() !==
+    '' ||
+  normalizeStringField(rule?.toolUsageType ?? rule?.tool_usage_type).trim() !==
+    '' ||
+  hasExplicitValue(rule?.toolUsageCount ?? rule?.tool_usage_count);
+
 const isRangeOverlap = (minAValue, maxAValue, minBValue, maxBValue) => {
   const minA = toNullableNumber(minAValue);
   const maxA = toNullableNumber(maxAValue);
@@ -1081,8 +1089,10 @@ export const findMatchingTextSegmentRule = (rules = [], previewInput = {}) => {
     (rule) => rule?.enabled !== false,
   );
   const defaultRule =
-    sortedRules.find((rule) => !hasTextSegmentCondition(rule)) || null;
-  const conditionalRules = sortedRules.filter((rule) => hasTextSegmentCondition(rule));
+    sortedRules.find((rule) => !hasPreviewTextSegmentCondition(rule)) || null;
+  const conditionalRules = sortedRules.filter((rule) =>
+    hasPreviewTextSegmentCondition(rule),
+  );
   const inputTokens = toNullableNumber(previewInput?.inputTokens) ?? 0;
   const outputTokens = toNullableNumber(previewInput?.outputTokens) ?? 0;
   const previewServiceTier = normalizeStringField(previewInput?.serviceTier)
@@ -1103,6 +1113,18 @@ export const findMatchingTextSegmentRule = (rules = [], previewInput = {}) => {
         isOptionalStringMatch(
           previewInput?.outputModality,
           rule?.outputModality ?? rule?.output_modality,
+        ) &&
+        isOptionalStringMatch(
+          previewInput?.imageSizeTier,
+          rule?.imageSizeTier ?? rule?.image_size_tier,
+        ) &&
+        isOptionalStringMatch(
+          previewInput?.toolUsageType,
+          rule?.toolUsageType ?? rule?.tool_usage_type,
+        ) &&
+        isToolUsageCountMatch(
+          previewInput?.toolUsageCount,
+          rule?.toolUsageCount ?? rule?.tool_usage_count,
         ),
     ) ||
     defaultRule
@@ -1136,12 +1158,85 @@ const isMediaTaskRangeMatch = (previewValue, minValue, maxValue) => {
   return isRangeMatch(normalizedPreviewValue, minValue, maxValue);
 };
 
+const isToolUsageCountMatch = (previewValue, ruleValue) => {
+  if (!hasExplicitValue(ruleValue)) {
+    return true;
+  }
+
+  const normalizedPreviewValue = toNullableNumber(previewValue);
+  const normalizedRuleValue = toNullableNumber(ruleValue);
+  if (normalizedRuleValue === null) {
+    return true;
+  }
+  if (normalizedPreviewValue === null) {
+    return false;
+  }
+  return normalizedPreviewValue >= normalizedRuleValue;
+};
+
+const resolvePreviewBillingUnit = (value, fallback = 'per_million_tokens') => {
+  const billingUnit = normalizeStringField(value).trim();
+  return billingUnit || fallback;
+};
+
+const resolvePreviewImageCount = (previewInput = {}, fallbackValue = 0) =>
+  toNullableNumber(previewInput?.imageCount) ??
+  toNullableNumber(fallbackValue) ??
+  0;
+
+const resolvePreviewLiveDuration = (previewInput = {}, fallbackValue = 0) =>
+  toNullableNumber(previewInput?.liveDurationSecs) ??
+  toNullableNumber(fallbackValue) ??
+  0;
+
+const resolvePreviewCallCount = (previewInput = {}) =>
+  toNullableNumber(previewInput?.toolUsageCount) ?? 0;
+
+const buildPerSecondFormulaSummary = (quantity, unitPrice, multiplier = 1) =>
+  `${formatNumber(quantity)} per_second × ${formatNumber(unitPrice)} × ${formatNumber(multiplier)}`;
+
+const buildPerImageFormulaSummary = (quantity, unitPrice, multiplier = 1) =>
+  `${formatNumber(quantity)} per_image × ${formatNumber(unitPrice)} × ${formatNumber(multiplier)}`;
+
+const buildPer1000CallsFormulaSummary = (
+  totalCount,
+  freeQuota,
+  unitPrice,
+  multiplier = 1,
+  overageThreshold = 1000,
+) =>
+  `max(${formatNumber(totalCount)} - ${formatNumber(freeQuota)}, 0) / ${formatNumber(overageThreshold)} per_1000_calls × ${formatNumber(unitPrice)} × ${formatNumber(multiplier)}`;
+
 const findMatchingMediaTaskRule = (rules = [], previewInput = {}) =>
   sortMediaTaskRules(rules).find(
     (rule) =>
       isMediaTaskStringMatch(
+        previewInput?.rawAction,
+        rule?.rawAction ?? rule?.raw_action,
+      ) &&
+      isMediaTaskStringMatch(
         previewInput?.inferenceMode,
         rule?.inferenceMode ?? rule?.inference_mode,
+      ) &&
+      isMediaTaskStringMatch(
+        previewInput?.inputModality,
+        rule?.inputModality ?? rule?.input_modality,
+      ) &&
+      isMediaTaskStringMatch(
+        previewInput?.outputModality,
+        rule?.outputModality ?? rule?.output_modality,
+      ) &&
+      isMediaTaskStringMatch(
+        previewInput?.imageSizeTier,
+        rule?.imageSizeTier ?? rule?.image_size_tier,
+      ) &&
+      isMediaTaskStringMatch(
+        previewInput?.toolUsageType,
+        rule?.toolUsageType ?? rule?.tool_usage_type,
+      ) &&
+      isToolUsageCountMatch(
+        previewInput?.toolUsageCount,
+        rule?.toolUsageCount ?? rule?.tool_usage_count,
       ) &&
       isMediaTaskBooleanMatch(
         previewInput?.inputVideo,
@@ -1170,6 +1265,11 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
   const matchedRule = findMatchingTextSegmentRule(rules, previewInput);
   const inputTokens = toNullableNumber(previewInput?.inputTokens) ?? 0;
   const outputTokens = toNullableNumber(previewInput?.outputTokens) ?? 0;
+  const previewToolUsageCount = resolvePreviewCallCount(previewInput);
+  const previewImageCount = resolvePreviewImageCount(previewInput);
+  const previewLiveDuration = resolvePreviewLiveDuration(previewInput);
+  const previewImageSizeTier = normalizeStringField(previewInput?.imageSizeTier).trim();
+  const previewToolUsageType = normalizeStringField(previewInput?.toolUsageType).trim();
 
   if (!matchedRule) {
     return {
@@ -1188,7 +1288,11 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
         cacheReadPrice: '',
         cacheWritePrice: '',
         cacheStoragePrice: '',
+        imageSizeTier: '',
+        toolUsageType: '',
         toolUsageCount: '',
+        imageCount: '',
+        liveDurationSecs: '',
         freeQuota: '',
         overageThreshold: '',
         billingUnit: '',
@@ -1198,9 +1302,51 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
 
   const inputPrice = toNullableNumber(matchedRule?.inputPrice) ?? 0;
   const outputPrice = toNullableNumber(matchedRule?.outputPrice) ?? 0;
+  const billingUnit = resolvePreviewBillingUnit(
+    matchedRule?.billingUnit ?? matchedRule?.billing_unit,
+  );
+  const freeQuota = toNullableNumber(matchedRule?.freeQuota ?? matchedRule?.free_quota) ?? 0;
+  const overageThreshold =
+    toNullableNumber(
+      matchedRule?.overageThreshold ?? matchedRule?.overage_threshold,
+    ) ?? 1000;
+  const unitPrice =
+    billingUnit === 'per_1000_calls' ? inputPrice : inputPrice + outputPrice;
+  const perTokenTotalCost =
+    (inputTokens * inputPrice + outputTokens * outputPrice) / MILLION;
   const matchedSegmentPreview = serializeTextSegmentRule(matchedRule);
-  const conditionSummary = buildTextSegmentPreviewConditionSummary(matchedRule);
-  const formulaSummary = `(${formatNumber(inputTokens)} tokens × ${formatNumber(inputPrice)} + ${formatNumber(outputTokens)} tokens × ${formatNumber(outputPrice)}) / 1,000,000`;
+  const conditionSummary = buildTextSegmentConditionSummary(matchedRule);
+  const billableCallUnits =
+    Math.max(previewToolUsageCount - freeQuota, 0) / overageThreshold;
+  let formulaSummary = `(${formatNumber(inputTokens)} tokens × ${formatNumber(inputPrice)} + ${formatNumber(outputTokens)} tokens × ${formatNumber(outputPrice)}) / 1,000,000`;
+  let processSummary = `输入 ${formatNumber(inputTokens)} tokens × ${formatNumber(inputPrice)} + 输出 ${formatNumber(outputTokens)} tokens × ${formatNumber(outputPrice)}`;
+  let totalCost = perTokenTotalCost;
+
+  switch (billingUnit) {
+    case 'per_second':
+      formulaSummary = buildPerSecondFormulaSummary(previewLiveDuration, unitPrice);
+      totalCost = previewLiveDuration * unitPrice;
+      processSummary = `${formulaSummary} = ${formatNumber(totalCost)}`;
+      break;
+    case 'per_image':
+      formulaSummary = buildPerImageFormulaSummary(previewImageCount, unitPrice);
+      totalCost = previewImageCount * unitPrice;
+      processSummary = `${formulaSummary} = ${formatNumber(totalCost)}`;
+      break;
+    case 'per_1000_calls':
+      formulaSummary = buildPer1000CallsFormulaSummary(
+        previewToolUsageCount,
+        freeQuota,
+        unitPrice,
+        1,
+        overageThreshold,
+      );
+      totalCost = billableCallUnits * unitPrice;
+      processSummary = `tool_usage_count ${formatNumber(previewToolUsageCount)}, free_quota ${formatNumber(freeQuota)}, overage_threshold ${formatNumber(overageThreshold)}: ${formulaSummary} = ${formatNumber(totalCost)}`;
+      break;
+    default:
+      break;
+  }
 
   return {
     matchedRule,
@@ -1209,18 +1355,20 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
     formulaSummary,
     logPreview: {
       detailSummary: `命中文本分段规则：${conditionSummary}`,
-      processSummary: `输入 ${formatNumber(inputTokens)} tokens × ${formatNumber(inputPrice)} + 输出 ${formatNumber(outputTokens)} tokens × ${formatNumber(outputPrice)}`,
+      processSummary,
     },
     priceSummary: {
       inputCost: formatNumber((inputTokens * inputPrice) / MILLION),
       outputCost: formatNumber((outputTokens * outputPrice) / MILLION),
-      totalCost: formatNumber(
-        (inputTokens * inputPrice + outputTokens * outputPrice) / MILLION,
-      ),
+      totalCost: formatNumber(totalCost),
       cacheReadPrice: formatNumber(matchedRule?.cacheReadPrice),
       cacheWritePrice: formatNumber(matchedRule?.cacheWritePrice),
       cacheStoragePrice: formatNumber(matchedRule?.cacheStoragePrice),
+      imageSizeTier: previewImageSizeTier,
+      toolUsageType: previewToolUsageType,
       toolUsageCount: formatNumber(previewInput?.toolUsageCount),
+      imageCount: formatNumber(previewImageCount),
+      liveDurationSecs: formatNumber(previewLiveDuration),
       freeQuota: formatNumber(matchedRule?.freeQuota),
       overageThreshold: formatNumber(matchedRule?.overageThreshold),
       billingUnit: normalizeStringField(
@@ -1250,7 +1398,11 @@ export const buildMediaTaskPreview = (rules = [], previewInput = {}) => {
         unitPrice: '',
         draftCoefficient: '',
         estimatedCost: '',
+        imageSizeTier: '',
+        toolUsageType: '',
         toolUsageCount: '',
+        imageCount: '',
+        liveDurationSecs: '',
         freeQuota: '',
         overageThreshold: '',
         billingUnit: '',
@@ -1270,11 +1422,67 @@ export const buildMediaTaskPreview = (rules = [], previewInput = {}) => {
   const estimatedCost =
     (billableTokens * unitPrice * effectiveDraftCoefficient) / MILLION;
   const conditionSummary = buildMediaTaskConditionSummary(matchedRule);
-  const formulaSummary =
+  const billingUnit = resolvePreviewBillingUnit(
+    matchedRule?.billingUnit ?? matchedRule?.billing_unit,
+    'total_tokens',
+  );
+  const previewImageCount = resolvePreviewImageCount(previewInput, 1);
+  const previewLiveDuration = resolvePreviewLiveDuration(previewInput);
+  const previewToolUsageCount = resolvePreviewCallCount(previewInput);
+  const freeQuota = toNullableNumber(matchedRule?.freeQuota ?? matchedRule?.free_quota) ?? 0;
+  const overageThreshold =
+    toNullableNumber(
+      matchedRule?.overageThreshold ?? matchedRule?.overage_threshold,
+    ) ?? 1000;
+  const overageUnits =
+    Math.max(previewToolUsageCount - freeQuota, 0) / overageThreshold;
+  let formulaSummary =
     minTokens > 0
       ? `max(${formatNumber(usageTotalTokens)}, ${formatNumber(minTokens)}) × ${formatNumber(unitPrice)} × ${formatNumber(effectiveDraftCoefficient)} / 1,000,000`
       : `${formatNumber(billableTokens)} × ${formatNumber(unitPrice)} × ${formatNumber(effectiveDraftCoefficient)} / 1,000,000`;
+  let processSummary =
+    usageTotalTokens < minTokens
+      ? `usage_total_tokens ${formatNumber(usageTotalTokens)} 低于 min_tokens ${formatNumber(minTokens)}，按 (${formatNumber(billableTokens)} × ${formatNumber(unitPrice)} × ${formatNumber(effectiveDraftCoefficient)}) / 1,000,000 = ${formatNumber(estimatedCost)} 结算`
+      : `usage_total_tokens ${formatNumber(usageTotalTokens)} × ${formatNumber(unitPrice)} × ${formatNumber(effectiveDraftCoefficient)} / 1,000,000 = ${formatNumber(estimatedCost)}`;
+  let resolvedEstimatedCost = estimatedCost;
   const matchedSegmentPreview = serializeMediaTaskRule(matchedRule);
+
+  switch (billingUnit) {
+    case 'per_second':
+      formulaSummary = buildPerSecondFormulaSummary(
+        previewLiveDuration,
+        unitPrice,
+        effectiveDraftCoefficient,
+      );
+      resolvedEstimatedCost =
+        previewLiveDuration * unitPrice * effectiveDraftCoefficient;
+      processSummary = `${formulaSummary} = ${formatNumber(resolvedEstimatedCost)}`;
+      break;
+    case 'per_image':
+      formulaSummary = buildPerImageFormulaSummary(
+        previewImageCount,
+        unitPrice,
+        effectiveDraftCoefficient,
+      );
+      resolvedEstimatedCost =
+        previewImageCount * unitPrice * effectiveDraftCoefficient;
+      processSummary = `${formulaSummary} = ${formatNumber(resolvedEstimatedCost)}`;
+      break;
+    case 'per_1000_calls':
+      formulaSummary = buildPer1000CallsFormulaSummary(
+        previewToolUsageCount,
+        freeQuota,
+        unitPrice,
+        effectiveDraftCoefficient,
+        overageThreshold,
+      );
+      resolvedEstimatedCost =
+        overageUnits * unitPrice * effectiveDraftCoefficient;
+      processSummary = `tool_usage_count ${formatNumber(previewToolUsageCount)}, free_quota ${formatNumber(freeQuota)}, overage_threshold ${formatNumber(overageThreshold)}: ${formulaSummary} = ${formatNumber(resolvedEstimatedCost)}`;
+      break;
+    default:
+      break;
+  }
 
   return {
     matchedRule,
@@ -1283,10 +1491,7 @@ export const buildMediaTaskPreview = (rules = [], previewInput = {}) => {
     formulaSummary,
     logPreview: {
       detailSummary: `命中媒体任务规则 ${matchedRule?.id || '-'}：${conditionSummary}`,
-      processSummary:
-        usageTotalTokens < minTokens
-          ? `usage_total_tokens ${formatNumber(usageTotalTokens)} 低于 min_tokens ${formatNumber(minTokens)}，按 (${formatNumber(billableTokens)} × ${formatNumber(unitPrice)} × ${formatNumber(effectiveDraftCoefficient)}) / 1,000,000 = ${formatNumber(estimatedCost)} 结算`
-          : `usage_total_tokens ${formatNumber(usageTotalTokens)} × ${formatNumber(unitPrice)} × ${formatNumber(effectiveDraftCoefficient)} / 1,000,000 = ${formatNumber(estimatedCost)}`,
+      processSummary,
     },
     priceSummary: {
       usageTotalTokens: formatNumber(usageTotalTokens),
@@ -1294,8 +1499,16 @@ export const buildMediaTaskPreview = (rules = [], previewInput = {}) => {
       minTokens: formatNumber(minTokens),
       unitPrice: formatNumber(unitPrice),
       draftCoefficient: formatNumber(effectiveDraftCoefficient),
-      estimatedCost: formatNumber(estimatedCost),
+      estimatedCost: formatNumber(resolvedEstimatedCost),
+      imageSizeTier: normalizeStringField(
+        previewInput?.imageSizeTier,
+      ).trim(),
+      toolUsageType: normalizeStringField(
+        previewInput?.toolUsageType,
+      ).trim(),
       toolUsageCount: formatNumber(previewInput?.toolUsageCount),
+      imageCount: formatNumber(previewImageCount),
+      liveDurationSecs: formatNumber(previewLiveDuration),
       freeQuota: formatNumber(matchedRule?.freeQuota),
       overageThreshold: formatNumber(matchedRule?.overageThreshold),
       billingUnit: normalizeStringField(

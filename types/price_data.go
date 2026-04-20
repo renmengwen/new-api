@@ -67,6 +67,8 @@ type AdvancedPricingContextSnapshot struct {
 	InputModalities  []string `json:"input_modalities,omitempty"`
 	OutputModalities []string `json:"output_modalities,omitempty"`
 	ImageSizeTier    string   `json:"image_size_tier,omitempty"`
+	LiveDurationSecs *int     `json:"live_duration_secs,omitempty"`
+	ImageCount       *int     `json:"image_count,omitempty"`
 	ToolUsageType    string   `json:"tool_usage_type,omitempty"`
 	ToolUsageCount   *int     `json:"tool_usage_count,omitempty"`
 	FreeQuota        *int     `json:"free_quota,omitempty"`

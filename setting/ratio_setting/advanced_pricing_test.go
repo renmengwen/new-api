@@ -263,7 +263,7 @@ func TestParseAdvancedPricingConfigSupportsP1ModalityFields(t *testing.T) {
 	require.Equal(t, "hd", segment.ImageSizeTier)
 	require.NotNil(t, segment.CacheStoragePrice)
 	require.Equal(t, 1.5, *segment.CacheStoragePrice)
-	require.Equal(t, "web_search", segment.ToolUsageType)
+	require.Equal(t, "google_search", segment.ToolUsageType)
 	require.NotNil(t, segment.ToolUsageCount)
 	require.Equal(t, 1000, *segment.ToolUsageCount)
 	require.NotNil(t, segment.FreeQuota)

@@ -1,4 +1,4 @@
-/*
+﻿/*
 Copyright (C) 2025 QuantumNous
 
 This program is free software: you can redistribute it and/or modify
@@ -49,16 +49,24 @@ const MEDIA_TASK_PREVIEW_PRICE_FIELDS = [
 
 const TEXT_SEGMENT_PREVIEW_SCAFFOLD_FIELDS = [
   { key: 'cacheStoragePrice', label: '缓存存储单价' },
-  { key: 'toolUsageCount', label: 'Tool Usage Count' },
-  { key: 'freeQuota', label: 'Free Quota' },
-  { key: 'overageThreshold', label: 'Overage Threshold' },
+  { key: 'imageSizeTier', label: '图片档位' },
+  { key: 'toolUsageType', label: '工具调用类型' },
+  { key: 'toolUsageCount', label: '工具调用次数' },
+  { key: 'imageCount', label: '图片数量' },
+  { key: 'liveDurationSecs', label: '时长（秒）' },
+  { key: 'freeQuota', label: '免费额度' },
+  { key: 'overageThreshold', label: '超额阈值' },
   { key: 'billingUnit', label: '计费单位' },
 ];
 
 const MEDIA_TASK_PREVIEW_SCAFFOLD_FIELDS = [
-  { key: 'toolUsageCount', label: 'Tool Usage Count' },
-  { key: 'freeQuota', label: 'Free Quota' },
-  { key: 'overageThreshold', label: 'Overage Threshold' },
+  { key: 'imageSizeTier', label: '图片档位' },
+  { key: 'toolUsageType', label: '工具调用类型' },
+  { key: 'toolUsageCount', label: '工具调用次数' },
+  { key: 'imageCount', label: '图片数量' },
+  { key: 'liveDurationSecs', label: '时长（秒）' },
+  { key: 'freeQuota', label: '免费额度' },
+  { key: 'overageThreshold', label: '超额阈值' },
   { key: 'billingUnit', label: '计费单位' },
 ];
 
@@ -122,9 +130,13 @@ export default function AdvancedPricingPreview({
   };
 
   mediaTaskPreviewLabels.cacheStoragePrice = t('缓存存储单价');
-  mediaTaskPreviewLabels.toolUsageCount = t('Tool Usage Count');
-  mediaTaskPreviewLabels.freeQuota = t('Free Quota');
-  mediaTaskPreviewLabels.overageThreshold = t('Overage Threshold');
+  mediaTaskPreviewLabels.imageSizeTier = t('图片档位');
+  mediaTaskPreviewLabels.toolUsageType = t('工具调用类型');
+  mediaTaskPreviewLabels.toolUsageCount = t('工具调用次数');
+  mediaTaskPreviewLabels.imageCount = t('图片数量');
+  mediaTaskPreviewLabels.liveDurationSecs = t('时长（秒）');
+  mediaTaskPreviewLabels.freeQuota = t('免费额度');
+  mediaTaskPreviewLabels.overageThreshold = t('超额阈值');
   mediaTaskPreviewLabels.billingUnit = t('计费单位');
 
   const renderSavePreviewCard = () => (
@@ -195,6 +207,11 @@ export default function AdvancedPricingPreview({
       <div style={{ width: '100%' }}>
         <div className='mb-1 font-medium text-gray-700'>{t('预估计费公式')}</div>
         <Tag color='blue'>{previewResult?.formulaSummary || '-'}</Tag>
+      </div>
+
+      <div style={{ width: '100%' }}>
+        <div className='mb-1 font-medium text-gray-700'>{t('计费单位')}</div>
+        <Tag color='cyan'>{previewResult?.priceSummary?.billingUnit || '-'}</Tag>
       </div>
 
       <div
@@ -288,7 +305,7 @@ export default function AdvancedPricingPreview({
       {ruleType === TEXT_SEGMENT_RULE_TYPE ? (
         <Space vertical align='start' style={{ width: '100%' }}>
           <div className='text-sm text-gray-500 mb-3'>
-            {t('输入输入/输出 Token 数量后，这里会展示命中的文本分段规则与价格摘要。')}
+            {t('输入 Token 和输出 Token 数量后，这里会展示命中的文本分段规则与价格摘要。')}
           </div>
 
           <div
@@ -340,7 +357,15 @@ export default function AdvancedPricingPreview({
               />
             </div>
             <div>
-              <div className='mb-1 font-medium text-gray-700'>{t('Tool Usage')}</div>
+              <div className='mb-1 font-medium text-gray-700'>{t('图片档位')}</div>
+              <Input
+                value={previewInput?.imageSizeTier || ''}
+                placeholder={t('例如 1k / 2k / 4k')}
+                onChange={(value) => onPreviewInputChange?.('imageSizeTier', value)}
+              />
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('工具调用类型')}</div>
               <Input
                 value={previewInput?.toolUsageType || ''}
                 placeholder={t('例如 google_search')}
@@ -349,12 +374,28 @@ export default function AdvancedPricingPreview({
             </div>
             <div>
               <div className='mb-1 font-medium text-gray-700'>
-                {t('Tool Usage Count')}
+                {t('工具调用次数')}
               </div>
               <Input
                 value={previewInput?.toolUsageCount || ''}
                 placeholder={t('例如 1000')}
                 onChange={(value) => onPreviewInputChange?.('toolUsageCount', value)}
+              />
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('图片数量')}</div>
+              <Input
+                value={previewInput?.imageCount || ''}
+                placeholder={t('例如 1')}
+                onChange={(value) => onPreviewInputChange?.('imageCount', value)}
+              />
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('时长（秒）')}</div>
+              <Input
+                value={previewInput?.liveDurationSecs || ''}
+                placeholder={t('例如 8')}
+                onChange={(value) => onPreviewInputChange?.('liveDurationSecs', value)}
               />
             </div>
           </div>
@@ -495,7 +536,7 @@ export default function AdvancedPricingPreview({
               />
             </div>
             <div>
-              <div className='mb-1 font-medium text-gray-700'>{t('图像档位')}</div>
+              <div className='mb-1 font-medium text-gray-700'>{t('图片档位')}</div>
               <Input
                 value={previewInput?.imageSizeTier || ''}
                 placeholder={t('例如 1k / 2k / 4k')}
@@ -503,7 +544,7 @@ export default function AdvancedPricingPreview({
               />
             </div>
             <div>
-              <div className='mb-1 font-medium text-gray-700'>{t('Tool Usage')}</div>
+              <div className='mb-1 font-medium text-gray-700'>{t('工具调用类型')}</div>
               <Input
                 value={previewInput?.toolUsageType || ''}
                 placeholder={t('例如 google_search')}
@@ -512,12 +553,28 @@ export default function AdvancedPricingPreview({
             </div>
             <div>
               <div className='mb-1 font-medium text-gray-700'>
-                {t('Tool Usage Count')}
+                {t('工具调用次数')}
               </div>
               <Input
                 value={previewInput?.toolUsageCount || ''}
                 placeholder={t('例如 1000')}
                 onChange={(value) => onPreviewInputChange?.('toolUsageCount', value)}
+              />
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('图片数量')}</div>
+              <Input
+                value={previewInput?.imageCount || ''}
+                placeholder={t('例如 1')}
+                onChange={(value) => onPreviewInputChange?.('imageCount', value)}
+              />
+            </div>
+            <div>
+              <div className='mb-1 font-medium text-gray-700'>{t('时长（秒）')}</div>
+              <Input
+                value={previewInput?.liveDurationSecs || ''}
+                placeholder={t('例如 8')}
+                onChange={(value) => onPreviewInputChange?.('liveDurationSecs', value)}
               />
             </div>
           </div>

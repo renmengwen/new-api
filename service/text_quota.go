@@ -13,6 +13,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayhelper "github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -129,6 +130,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	summary.CacheCreationTokens1h = usage.ClaudeCacheCreation1hTokens
 	summary.ImageTokens = usage.PromptTokensDetails.ImageTokens
 	summary.AudioTokens = usage.PromptTokensDetails.AudioTokens
+	applyAdvancedTextSettlementRuntimeContext(summary, &relayInfo.PriceData)
 	legacyClaudeDerived := isLegacyClaudeDerivedOpenAIUsage(relayInfo, usage)
 	isOpenRouterClaudeBilling := relayInfo.ChannelMeta != nil &&
 		relayInfo.ChannelType == constant.ChannelTypeOpenRouter &&
@@ -212,7 +214,17 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	}
 
 	var audioInputQuota decimal.Decimal
-	if !relayInfo.PriceData.UsePrice {
+	advancedNonTokenQuota, usedAdvancedNonTokenBilling := calculateAdvancedNonTokenQuota(summary, relayInfo.PriceData, dGroupRatio, dQuotaPerUnit)
+	skipLegacyWebSearchQuota := usedAdvancedNonTokenBilling && shouldSkipLegacyWebSearchQuotaForAdvancedBilling(relayInfo.PriceData)
+	if usedAdvancedNonTokenBilling {
+		quotaCalculateDecimal := advancedNonTokenQuota
+		if !skipLegacyWebSearchQuota {
+			quotaCalculateDecimal = quotaCalculateDecimal.Add(dWebSearchQuota)
+			quotaCalculateDecimal = quotaCalculateDecimal.Add(dClaudeWebSearchQuota)
+		}
+		quotaCalculateDecimal = quotaCalculateDecimal.Add(dFileSearchQuota)
+		summary.Quota = int(quotaCalculateDecimal.Round(0).IntPart())
+	} else if !relayInfo.PriceData.UsePrice {
 		baseTokens := dPromptTokens
 
 		var cachedTokensWithRatio decimal.Decimal
@@ -289,13 +301,166 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		summary.Quota = int(quotaCalculateDecimal.Round(0).IntPart())
 	}
 
-	if summary.TotalTokens == 0 {
+	if summary.TotalTokens == 0 && !usedAdvancedNonTokenBilling {
 		summary.Quota = 0
-	} else if !ratio.IsZero() && summary.Quota == 0 {
+	} else if !ratio.IsZero() && summary.Quota == 0 && !usedAdvancedNonTokenBilling {
 		summary.Quota = 1
 	}
 
 	return summary
+}
+
+func applyAdvancedTextSettlementRuntimeContext(summary textQuotaSummary, priceData *types.PriceData) {
+	if priceData == nil || priceData.BillingMode != types.BillingModeAdvanced || priceData.AdvancedRuleType != types.AdvancedRuleTypeTextSegment {
+		return
+	}
+
+	billingUnit := ""
+	if priceData.AdvancedRuleSnapshot != nil {
+		billingUnit = strings.TrimSpace(priceData.AdvancedRuleSnapshot.BillingUnit)
+	}
+	if priceData.AdvancedPricingContext == nil {
+		if billingUnit == "" {
+			return
+		}
+		priceData.AdvancedPricingContext = &types.AdvancedPricingContextSnapshot{}
+	}
+	if priceData.AdvancedPricingContext.BillingUnit == "" {
+		priceData.AdvancedPricingContext.BillingUnit = billingUnit
+	}
+
+	switch strings.TrimSpace(priceData.AdvancedPricingContext.BillingUnit) {
+	case types.AdvancedBillingUnitPerSecond, types.AdvancedBillingUnitPerMinute:
+		liveDurationSecs := int(summary.UseTimeSeconds)
+		if liveDurationSecs < 0 {
+			liveDurationSecs = 0
+		}
+		priceData.AdvancedPricingContext.LiveDurationSecs = common.GetPointer(liveDurationSecs)
+	}
+}
+
+func calculateAdvancedNonTokenQuota(summary textQuotaSummary, priceData types.PriceData, dGroupRatio, dQuotaPerUnit decimal.Decimal) (decimal.Decimal, bool) {
+	if priceData.BillingMode != types.BillingModeAdvanced || priceData.AdvancedRuleType != types.AdvancedRuleTypeTextSegment || priceData.AdvancedRuleSnapshot == nil {
+		return decimal.Zero, false
+	}
+
+	billingUnit := strings.TrimSpace(priceData.AdvancedRuleSnapshot.BillingUnit)
+	switch billingUnit {
+	case types.AdvancedBillingUnitPerSecond, types.AdvancedBillingUnitPerMinute, types.AdvancedBillingUnitPerImage, types.AdvancedBillingUnitPer1000Calls:
+	default:
+		return decimal.Zero, false
+	}
+
+	usageQuantity := resolveAdvancedNonTokenUsageQuantity(summary, priceData.AdvancedPricingContext, billingUnit)
+	if billingUnit == types.AdvancedBillingUnitPer1000Calls {
+		usageQuantity = calculateAdvancedPer1000CallsUnits(priceData.AdvancedPricingContext, priceData.AdvancedRuleSnapshot)
+	}
+	unitPriceTotal := calculateAdvancedNonTokenUnitPriceTotal(priceData.AdvancedRuleSnapshot, billingUnit)
+
+	if billingUnit == types.AdvancedBillingUnitPerMinute {
+		usageQuantity = usageQuantity.Div(decimal.NewFromInt(60))
+	}
+
+	return usageQuantity.Mul(unitPriceTotal).Mul(dGroupRatio).Mul(dQuotaPerUnit), true
+}
+
+func resolveAdvancedNonTokenUsageQuantity(summary textQuotaSummary, ctx *types.AdvancedPricingContextSnapshot, billingUnit string) decimal.Decimal {
+	switch billingUnit {
+	case types.AdvancedBillingUnitPerSecond:
+		if ctx != nil && ctx.LiveDurationSecs != nil {
+			return decimal.NewFromInt(int64(*ctx.LiveDurationSecs))
+		}
+		return decimal.NewFromInt(summary.UseTimeSeconds)
+	case types.AdvancedBillingUnitPerMinute:
+		if ctx != nil && ctx.LiveDurationSecs != nil {
+			return decimal.NewFromInt(int64(*ctx.LiveDurationSecs))
+		}
+		return decimal.NewFromInt(summary.UseTimeSeconds)
+	case types.AdvancedBillingUnitPerImage:
+		if ctx != nil && ctx.ImageCount != nil {
+			return decimal.NewFromInt(int64(*ctx.ImageCount))
+		}
+		return decimal.Zero
+	case types.AdvancedBillingUnitPer1000Calls:
+		if ctx != nil && ctx.ToolUsageCount != nil {
+			return decimal.NewFromInt(int64(*ctx.ToolUsageCount))
+		}
+		return decimal.Zero
+	default:
+		return decimal.Zero
+	}
+}
+
+func calculateAdvancedPer1000CallsUnits(ctx *types.AdvancedPricingContextSnapshot, snapshot *types.AdvancedRuleSnapshot) decimal.Decimal {
+	if ctx == nil || ctx.ToolUsageCount == nil {
+		return decimal.Zero
+	}
+
+	callCount := *ctx.ToolUsageCount
+	if callCount <= 0 {
+		return decimal.Zero
+	}
+
+	freeQuota := 0
+	if ctx.FreeQuota != nil {
+		freeQuota = *ctx.FreeQuota
+	} else if snapshot != nil && snapshot.ThresholdSnapshot.FreeQuota != nil {
+		freeQuota = *snapshot.ThresholdSnapshot.FreeQuota
+	}
+
+	overageThreshold := 1000
+	if ctx.OverageThreshold != nil && *ctx.OverageThreshold > 0 {
+		overageThreshold = *ctx.OverageThreshold
+	} else if snapshot != nil && snapshot.ThresholdSnapshot.OverageThreshold != nil && *snapshot.ThresholdSnapshot.OverageThreshold > 0 {
+		overageThreshold = *snapshot.ThresholdSnapshot.OverageThreshold
+	}
+
+	billableCalls := callCount - freeQuota
+	if billableCalls <= 0 {
+		return decimal.Zero
+	}
+
+	return decimal.NewFromInt(int64(billableCalls)).Div(decimal.NewFromInt(int64(overageThreshold)))
+}
+
+func calculateAdvancedNonTokenUnitPriceTotal(snapshot *types.AdvancedRuleSnapshot, billingUnit string) decimal.Decimal {
+	if snapshot == nil {
+		return decimal.Zero
+	}
+
+	if billingUnit == types.AdvancedBillingUnitPer1000Calls {
+		if snapshot.PriceSnapshot.InputPrice == nil {
+			return decimal.Zero
+		}
+		return decimal.NewFromFloat(*snapshot.PriceSnapshot.InputPrice)
+	}
+
+	total := decimal.Zero
+	for _, price := range []*float64{
+		snapshot.PriceSnapshot.InputPrice,
+		snapshot.PriceSnapshot.OutputPrice,
+		snapshot.PriceSnapshot.CacheReadPrice,
+		snapshot.PriceSnapshot.CacheCreatePrice,
+		snapshot.PriceSnapshot.CacheStoragePrice,
+	} {
+		if price != nil {
+			total = total.Add(decimal.NewFromFloat(*price))
+		}
+	}
+	return total
+}
+
+func shouldSkipLegacyWebSearchQuotaForAdvancedBilling(priceData types.PriceData) bool {
+	if priceData.BillingMode != types.BillingModeAdvanced || priceData.AdvancedRuleType != types.AdvancedRuleTypeTextSegment || priceData.AdvancedRuleSnapshot == nil {
+		return false
+	}
+	if strings.TrimSpace(priceData.AdvancedRuleSnapshot.BillingUnit) != types.AdvancedBillingUnitPer1000Calls {
+		return false
+	}
+	if priceData.AdvancedPricingContext != nil && ratio_setting.NormalizeAdvancedPricingTextToolUsageType(priceData.AdvancedPricingContext.ToolUsageType) == "google_search" {
+		return true
+	}
+	return ratio_setting.NormalizeAdvancedPricingTextToolUsageType(priceData.AdvancedRuleSnapshot.ToolUsageType) == "google_search"
 }
 
 func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) string {

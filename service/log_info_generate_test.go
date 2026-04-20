@@ -54,3 +54,57 @@ func TestGenerateTextOtherInfo_IncludesAdvancedBillingSnapshot(t *testing.T) {
 	assert.NotContains(t, otherJSON, "\"RuleType\"")
 	assert.NotContains(t, otherJSON, "\"MatchSummary\"")
 }
+
+func TestGenerateTextOtherInfo_IncludesAdvancedBillingContextSnapshot(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+
+	imageCount := 2
+	toolUsageCount := 1200
+	freeQuota := 1000
+	relayInfo := &relaycommon.RelayInfo{
+		StartTime:         time.UnixMilli(1000),
+		FirstResponseTime: time.UnixMilli(1500),
+		ChannelMeta:       &relaycommon.ChannelMeta{},
+		PriceData: types.PriceData{
+			BillingMode:      types.BillingModeAdvanced,
+			AdvancedRuleType: types.AdvancedRuleTypeTextSegment,
+			AdvancedPricingContext: &types.AdvancedPricingContextSnapshot{
+				BillingUnit:    types.AdvancedBillingUnitPerImage,
+				ImageSizeTier:  "2k",
+				ImageCount:     &imageCount,
+				ToolUsageType:  "google_search",
+				ToolUsageCount: &toolUsageCount,
+				FreeQuota:      &freeQuota,
+			},
+		},
+	}
+
+	other := GenerateTextOtherInfo(ctx, relayInfo, 1.0, 1.0, 1.0, 0, 0, 0, 1.0)
+
+	contextSnapshot, ok := other["advanced_pricing_context"].(*types.AdvancedPricingContextSnapshot)
+	require.True(t, ok)
+	assert.Equal(t, types.AdvancedBillingUnitPerImage, contextSnapshot.BillingUnit)
+	assert.Equal(t, "2k", contextSnapshot.ImageSizeTier)
+	require.NotNil(t, contextSnapshot.ImageCount)
+	assert.Equal(t, 2, *contextSnapshot.ImageCount)
+	assert.Equal(t, "google_search", contextSnapshot.ToolUsageType)
+	require.NotNil(t, contextSnapshot.ToolUsageCount)
+	assert.Equal(t, 1200, *contextSnapshot.ToolUsageCount)
+	require.NotNil(t, contextSnapshot.FreeQuota)
+	assert.Equal(t, 1000, *contextSnapshot.FreeQuota)
+
+	otherJSON := common.MapToJsonStr(other)
+	assert.Contains(t, otherJSON, "\"advanced_pricing_context\":")
+	assert.Contains(t, otherJSON, "\"billing_unit\":\"per_image\"")
+	assert.Contains(t, otherJSON, "\"image_size_tier\":\"2k\"")
+	assert.Contains(t, otherJSON, "\"image_count\":2")
+	assert.Contains(t, otherJSON, "\"tool_usage_type\":\"google_search\"")
+	assert.Contains(t, otherJSON, "\"tool_usage_count\":1200")
+	assert.Contains(t, otherJSON, "\"free_quota\":1000")
+	assert.NotContains(t, otherJSON, "\"BillingUnit\"")
+	assert.NotContains(t, otherJSON, "\"ToolUsageType\"")
+}

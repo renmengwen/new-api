@@ -112,9 +112,12 @@ type AdvancedPricingRuntimeContext struct {
 	PromptTokens     int
 	Meta             *types.TokenCountMeta
 	Request          dto.Request
+	RequestURLPath   string
 	Task             *AdvancedPricingTaskContext
 	InputModalities  []string
 	OutputModalities []string
+	ToolUsageType    string
+	ToolUsageCount   int
 }
 
 type advancedTextRuntimeContext struct {
@@ -123,6 +126,10 @@ type advancedTextRuntimeContext struct {
 	serviceTier      string
 	inputModalities  []string
 	outputModalities []string
+	imageSizeTier    string
+	imageCount       *int
+	toolUsageType    string
+	toolUsageCount   int
 	cacheRead        *bool
 	cacheCreate      *bool
 }
@@ -173,6 +180,7 @@ func (ruleSet *AdvancedPricingRuleSet) UnmarshalJSON(data []byte) error {
 		ruleSet.TaskType = payload.TaskType
 		ruleSet.Note = payload.Note
 		ruleSet.Segments = payload.Segments
+		normalizeAdvancedPricingRuleSetSegments(ruleSet)
 		return nil
 	}
 
@@ -182,6 +190,7 @@ func (ruleSet *AdvancedPricingRuleSet) UnmarshalJSON(data []byte) error {
 	}
 	if ok {
 		*ruleSet = normalizedRuleSet
+		normalizeAdvancedPricingRuleSetSegments(ruleSet)
 		return nil
 	}
 
@@ -193,6 +202,7 @@ func (ruleSet *AdvancedPricingRuleSet) UnmarshalJSON(data []byte) error {
 	ruleSet.TaskType = payload.TaskType
 	ruleSet.Note = payload.Note
 	ruleSet.Segments = payload.Segments
+	normalizeAdvancedPricingRuleSetSegments(ruleSet)
 	return nil
 }
 
@@ -340,6 +350,10 @@ func buildAdvancedTextRuntimeContext(ctx AdvancedPricingRuntimeContext) advanced
 		serviceTier:      extractAdvancedPricingServiceTier(ctx.Request),
 		inputModalities:  collectAdvancedTextInputModalities(ctx),
 		outputModalities: collectAdvancedTextOutputModalities(ctx),
+		imageSizeTier:    extractAdvancedTextImageSizeTier(ctx),
+		imageCount:       extractAdvancedTextImageCount(ctx),
+		toolUsageType:    NormalizeAdvancedPricingTextToolUsageType(ctx.ToolUsageType),
+		toolUsageCount:   ctx.ToolUsageCount,
 	}
 }
 
@@ -365,6 +379,16 @@ func extractAdvancedPricingServiceTier(request dto.Request) string {
 
 func normalizeAdvancedPricingServiceTier(value string) string {
 	return normalizeAdvancedPricingComparableString(value)
+}
+
+func NormalizeAdvancedPricingTextToolUsageType(value string) string {
+	normalized := normalizeAdvancedPricingComparableString(value)
+	switch normalized {
+	case "web_search", "google_search", "grounding":
+		return "google_search"
+	default:
+		return normalized
+	}
 }
 
 func resolveAdvancedPricingBillingUnit(value string) string {
@@ -500,15 +524,167 @@ func collectAdvancedTextOutputModalities(ctx AdvancedPricingRuntimeContext) []st
 	switch req := ctx.Request.(type) {
 	case *dto.GeneralOpenAIRequest:
 		modalities = append(modalities, extractAdvancedPricingRawStringSlice(req.Modalities)...)
+		modalities = append(modalities, extractAdvancedPricingGoogleResponseModalities(req.ExtraBody)...)
 		if len(req.Audio) > 0 {
 			modalities = append(modalities, "audio")
 		}
+		if isAdvancedPricingImageGenerationPath(ctx.RequestURLPath) {
+			modalities = append(modalities, "image")
+		}
+	case *dto.GeminiChatRequest:
+		modalities = append(modalities, req.GenerationConfig.ResponseModalities...)
 	}
 
 	if len(modalities) == 0 {
 		modalities = append(modalities, "text")
 	}
 	return normalizeAdvancedPricingModalities(modalities)
+}
+
+func extractAdvancedTextImageSizeTier(ctx AdvancedPricingRuntimeContext) string {
+	switch req := ctx.Request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		if imageSizeTier := extractAdvancedPricingGoogleImageSizeTier(req.ExtraBody); imageSizeTier != "" {
+			return imageSizeTier
+		}
+		if imageSizeTier := deriveAdvancedPricingImageSizeTierFromSize(req.Size); imageSizeTier != "" {
+			return imageSizeTier
+		}
+	case *dto.GeminiChatRequest:
+		if imageSizeTier := extractGeminiChatRequestImageSizeTier(req); imageSizeTier != "" {
+			return imageSizeTier
+		}
+	}
+	return ""
+}
+
+func extractAdvancedTextImageCount(ctx AdvancedPricingRuntimeContext) *int {
+	if !isAdvancedPricingImageGenerationPath(ctx.RequestURLPath) {
+		return nil
+	}
+	switch req := ctx.Request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		if req.N != nil && *req.N > 0 {
+			return cloneAdvancedIntPtr(req.N)
+		}
+		defaultCount := 1
+		return &defaultCount
+	default:
+		return nil
+	}
+}
+
+type advancedPricingGoogleExtraBody struct {
+	Google struct {
+		GenerationConfig struct {
+			ResponseModalities []string `json:"response_modalities,omitempty"`
+		} `json:"generation_config,omitempty"`
+		ImageConfig struct {
+			ImageSize      string `json:"image_size,omitempty"`
+			ImageSizeCamel string `json:"imageSize,omitempty"`
+		} `json:"image_config,omitempty"`
+	} `json:"google,omitempty"`
+}
+
+func extractAdvancedPricingGoogleResponseModalities(data []byte) []string {
+	extraBody, ok := parseAdvancedPricingGoogleExtraBody(data)
+	if !ok {
+		return nil
+	}
+	return extraBody.Google.GenerationConfig.ResponseModalities
+}
+
+func extractAdvancedPricingGoogleImageSizeTier(data []byte) string {
+	extraBody, ok := parseAdvancedPricingGoogleExtraBody(data)
+	if !ok {
+		return ""
+	}
+	return normalizeAdvancedPricingImageSizeTier(firstNonEmptyString(extraBody.Google.ImageConfig.ImageSize, extraBody.Google.ImageConfig.ImageSizeCamel))
+}
+
+func extractGeminiChatRequestImageSizeTier(req *dto.GeminiChatRequest) string {
+	if req == nil || len(req.GenerationConfig.ImageConfig) == 0 {
+		return ""
+	}
+
+	var imageConfig struct {
+		ImageSize      string `json:"image_size,omitempty"`
+		ImageSizeCamel string `json:"imageSize,omitempty"`
+	}
+	if err := common.Unmarshal(req.GenerationConfig.ImageConfig, &imageConfig); err != nil {
+		return ""
+	}
+	return normalizeAdvancedPricingImageSizeTier(firstNonEmptyString(imageConfig.ImageSize, imageConfig.ImageSizeCamel))
+}
+
+func parseAdvancedPricingGoogleExtraBody(data []byte) (advancedPricingGoogleExtraBody, bool) {
+	if len(data) == 0 || common.GetJsonType(data) != "object" {
+		return advancedPricingGoogleExtraBody{}, false
+	}
+	var extraBody advancedPricingGoogleExtraBody
+	if err := common.Unmarshal(data, &extraBody); err != nil {
+		return advancedPricingGoogleExtraBody{}, false
+	}
+	return extraBody, true
+}
+
+func deriveAdvancedPricingImageSizeTierFromSize(size string) string {
+	normalizedSize := strings.ToLower(strings.TrimSpace(size))
+	switch normalizedSize {
+	case "1k", "2k", "4k":
+		return normalizedSize
+	}
+
+	parts := strings.Split(normalizedSize, "x")
+	if len(parts) != 2 {
+		return ""
+	}
+	width, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return ""
+	}
+	height, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return ""
+	}
+	longestEdge := width
+	if height > longestEdge {
+		longestEdge = height
+	}
+	switch {
+	case longestEdge >= 4096:
+		return "4k"
+	case longestEdge >= 2048:
+		return "2k"
+	case longestEdge >= 1024:
+		return "1k"
+	default:
+		return ""
+	}
+}
+
+func normalizeAdvancedPricingImageSizeTier(value string) string {
+	return normalizeAdvancedPricingComparableString(value)
+}
+
+func isAdvancedPricingImageGenerationPath(path string) bool {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return false
+	}
+	if idx := strings.Index(trimmed, "?"); idx >= 0 {
+		trimmed = trimmed[:idx]
+	}
+	return strings.HasPrefix(trimmed, "/v1/images/generations")
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func normalizeAdvancedPricingModalities(values []string) []string {
@@ -811,6 +987,15 @@ func matchAdvancedTextSegment(segment AdvancedPriceRule, runtimeCtx advancedText
 	if outputModality := normalizeAdvancedPricingComparableString(segment.OutputModality); outputModality != "" && !advancedPricingModalityMatch(runtimeCtx.outputModalities, outputModality) {
 		return false
 	}
+	if imageSizeTier := normalizeAdvancedPricingImageSizeTier(segment.ImageSizeTier); imageSizeTier != "" && imageSizeTier != runtimeCtx.imageSizeTier {
+		return false
+	}
+	if toolUsageType := NormalizeAdvancedPricingTextToolUsageType(segment.ToolUsageType); toolUsageType != "" && toolUsageType != runtimeCtx.toolUsageType {
+		return false
+	}
+	if segment.ToolUsageCount != nil && runtimeCtx.toolUsageCount < *segment.ToolUsageCount {
+		return false
+	}
 	if segment.CacheRead != nil {
 		if runtimeCtx.cacheRead == nil || *segment.CacheRead != *runtimeCtx.cacheRead {
 			return false
@@ -954,13 +1139,18 @@ func buildAdvancedMediaRuleSnapshot(ruleType AdvancedRuleType, taskType string, 
 }
 
 func buildAdvancedPricingContextSnapshot(billingUnit string, segment AdvancedPriceRule, runtimeCtx advancedTextRuntimeContext) *types.AdvancedPricingContextSnapshot {
+	var toolUsageCount *int
+	if runtimeCtx.toolUsageCount > 0 {
+		toolUsageCount = cloneAdvancedIntPtr(&runtimeCtx.toolUsageCount)
+	}
 	return &types.AdvancedPricingContextSnapshot{
 		BillingUnit:      billingUnit,
 		InputModalities:  cloneAdvancedStringSlice(runtimeCtx.inputModalities),
 		OutputModalities: cloneAdvancedStringSlice(runtimeCtx.outputModalities),
-		ImageSizeTier:    normalizeAdvancedPricingComparableString(segment.ImageSizeTier),
-		ToolUsageType:    normalizeAdvancedPricingComparableString(segment.ToolUsageType),
-		ToolUsageCount:   cloneAdvancedIntPtr(segment.ToolUsageCount),
+		ImageSizeTier:    runtimeCtx.imageSizeTier,
+		ImageCount:       cloneAdvancedIntPtr(runtimeCtx.imageCount),
+		ToolUsageType:    runtimeCtx.toolUsageType,
+		ToolUsageCount:   toolUsageCount,
 		FreeQuota:        cloneAdvancedIntPtr(segment.FreeQuota),
 		OverageThreshold: cloneAdvancedIntPtr(segment.OverageThreshold),
 	}
@@ -991,6 +1181,15 @@ func buildAdvancedMatchSummary(segment AdvancedPriceRule, runtimeCtx advancedTex
 	}
 	if len(runtimeCtx.outputModalities) > 0 {
 		parts = append(parts, fmt.Sprintf("output_modalities=%s", strings.Join(runtimeCtx.outputModalities, ",")))
+	}
+	if runtimeCtx.imageSizeTier != "" {
+		parts = append(parts, fmt.Sprintf("image_size_tier=%s", runtimeCtx.imageSizeTier))
+	}
+	if runtimeCtx.toolUsageType != "" {
+		parts = append(parts, fmt.Sprintf("tool_usage_type=%s", runtimeCtx.toolUsageType))
+	}
+	if runtimeCtx.toolUsageCount > 0 {
+		parts = append(parts, fmt.Sprintf("tool_usage_count=%d", runtimeCtx.toolUsageCount))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -1268,21 +1467,25 @@ func ParseAdvancedPricingConfig(jsonStr string) (*AdvancedPricingConfig, error) 
 
 func normalizeAdvancedPricingRuleServiceTiers(rules map[string]AdvancedPricingRuleSet) {
 	for modelName, ruleSet := range rules {
-		if len(ruleSet.Segments) == 0 {
-			continue
-		}
-		normalizedSegments := make([]AdvancedPriceRule, len(ruleSet.Segments))
-		for index, segment := range ruleSet.Segments {
-			segment.ServiceTier = normalizeAdvancedPricingServiceTier(segment.ServiceTier)
-			segment.InputModality = normalizeAdvancedPricingComparableString(segment.InputModality)
-			segment.OutputModality = normalizeAdvancedPricingComparableString(segment.OutputModality)
-			segment.ImageSizeTier = normalizeAdvancedPricingComparableString(segment.ImageSizeTier)
-			segment.ToolUsageType = normalizeAdvancedPricingComparableString(segment.ToolUsageType)
-			normalizedSegments[index] = segment
-		}
-		ruleSet.Segments = normalizedSegments
+		normalizeAdvancedPricingRuleSetSegments(&ruleSet)
 		rules[modelName] = ruleSet
 	}
+}
+
+func normalizeAdvancedPricingRuleSetSegments(ruleSet *AdvancedPricingRuleSet) {
+	if ruleSet == nil || len(ruleSet.Segments) == 0 {
+		return
+	}
+	normalizedSegments := make([]AdvancedPriceRule, len(ruleSet.Segments))
+	for index, segment := range ruleSet.Segments {
+		segment.ServiceTier = normalizeAdvancedPricingServiceTier(segment.ServiceTier)
+		segment.InputModality = normalizeAdvancedPricingComparableString(segment.InputModality)
+		segment.OutputModality = normalizeAdvancedPricingComparableString(segment.OutputModality)
+		segment.ImageSizeTier = normalizeAdvancedPricingComparableString(segment.ImageSizeTier)
+		segment.ToolUsageType = NormalizeAdvancedPricingTextToolUsageType(segment.ToolUsageType)
+		normalizedSegments[index] = segment
+	}
+	ruleSet.Segments = normalizedSegments
 }
 
 func normalizeAdvancedPricingJSON(jsonStr string) string {
@@ -1438,7 +1641,10 @@ func hasTextCondition(segment AdvancedPriceRule) bool {
 		hasIntRange(segment.OutputMin, segment.OutputMax) ||
 		normalizeAdvancedPricingServiceTier(segment.ServiceTier) != "" ||
 		normalizeAdvancedPricingComparableString(segment.InputModality) != "" ||
-		normalizeAdvancedPricingComparableString(segment.OutputModality) != ""
+		normalizeAdvancedPricingComparableString(segment.OutputModality) != "" ||
+		normalizeAdvancedPricingImageSizeTier(segment.ImageSizeTier) != "" ||
+		NormalizeAdvancedPricingTextToolUsageType(segment.ToolUsageType) != "" ||
+		segment.ToolUsageCount != nil
 }
 
 func validateUnsupportedTextRuntimeFields(modelName string, segment AdvancedPriceRule) error {
@@ -1489,6 +1695,12 @@ func textSegmentsOverlap(left, right AdvancedPriceRule) bool {
 		return false
 	}
 	if normalizeAdvancedPricingComparableString(left.OutputModality) != normalizeAdvancedPricingComparableString(right.OutputModality) {
+		return false
+	}
+	if normalizeAdvancedPricingImageSizeTier(left.ImageSizeTier) != normalizeAdvancedPricingImageSizeTier(right.ImageSizeTier) {
+		return false
+	}
+	if NormalizeAdvancedPricingTextToolUsageType(left.ToolUsageType) != NormalizeAdvancedPricingTextToolUsageType(right.ToolUsageType) {
 		return false
 	}
 	if !boolPointerEqual(left.CacheRead, right.CacheRead) {

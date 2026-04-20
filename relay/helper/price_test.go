@@ -334,6 +334,393 @@ func TestModelPriceHelperMatchesAdvancedTextSegmentByModalityAndCapturesRuntimeC
 	require.Equal(t, []string{"audio"}, priceData.AdvancedPricingContext.OutputModalities)
 }
 
+func TestModelPriceHelperMatchesAdvancedTextSegmentByResponsesGoogleSearchUsageWithGroundingRule(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"responses-grounding-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"responses-grounding-model": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_1000_calls",
+			"segments": [
+				{
+					"priority": 10,
+					"input_price": 2
+				},
+				{
+					"priority": 20,
+					"tool_usage_type": "grounding",
+					"tool_usage_count": 2,
+					"input_price": 14
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "responses-grounding-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         &dto.OpenAIResponsesRequest{},
+		ResponsesUsageInfo: &relaycommon.ResponsesUsageInfo{
+			BuiltInTools: map[string]*relaycommon.BuildInToolInfo{
+				dto.BuildInToolWebSearchPreview: {
+					ToolName:          dto.BuildInToolWebSearchPreview,
+					CallCount:         3,
+					SearchContextSize: "medium",
+				},
+			},
+		},
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{})
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, 7.0, priceData.ModelRatio)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, types.AdvancedBillingUnitPer1000Calls, priceData.AdvancedRuleSnapshot.BillingUnit)
+	require.Equal(t, "google_search", priceData.AdvancedRuleSnapshot.ToolUsageType)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot.ThresholdSnapshot.ToolUsageCount)
+	require.Equal(t, 2, *priceData.AdvancedRuleSnapshot.ThresholdSnapshot.ToolUsageCount)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_type=google_search")
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_count=3")
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, types.AdvancedBillingUnitPer1000Calls, priceData.AdvancedPricingContext.BillingUnit)
+	require.Equal(t, "google_search", priceData.AdvancedPricingContext.ToolUsageType)
+	require.NotNil(t, priceData.AdvancedPricingContext.ToolUsageCount)
+	require.Equal(t, 3, *priceData.AdvancedPricingContext.ToolUsageCount)
+}
+
+func TestModelPriceHelperMatchesAdvancedTextSegmentByResponsesGoogleSearchUsageWithWebSearchRule(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"responses-web-search-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"responses-web-search-model": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_1000_calls",
+			"segments": [
+				{
+					"priority": 10,
+					"input_price": 2
+				},
+				{
+					"priority": 20,
+					"tool_usage_type": "web_search",
+					"tool_usage_count": 2,
+					"input_price": 14
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "responses-web-search-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         &dto.OpenAIResponsesRequest{},
+		ResponsesUsageInfo: &relaycommon.ResponsesUsageInfo{
+			BuiltInTools: map[string]*relaycommon.BuildInToolInfo{
+				dto.BuildInToolWebSearchPreview: {
+					ToolName:          dto.BuildInToolWebSearchPreview,
+					CallCount:         3,
+					SearchContextSize: "medium",
+				},
+			},
+		},
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{})
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, 7.0, priceData.ModelRatio)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "google_search", priceData.AdvancedRuleSnapshot.ToolUsageType)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_type=google_search")
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, "google_search", priceData.AdvancedPricingContext.ToolUsageType)
+}
+
+func TestModelPriceHelperMatchesAdvancedTextSegmentByClaudeGoogleSearchUsageWithGroundingRule(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"claude-grounding-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"claude-grounding-model": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_1000_calls",
+			"segments": [
+				{
+					"priority": 10,
+					"input_price": 2
+				},
+				{
+					"priority": 20,
+					"tool_usage_type": "grounding",
+					"tool_usage_count": 2,
+					"input_price": 14
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	c.Set("claude_web_search_requests", 2)
+	info := &relaycommon.RelayInfo{
+		RelayFormat:             types.RelayFormatClaude,
+		FinalRequestRelayFormat: types.RelayFormatClaude,
+		OriginModelName:         "claude-grounding-model",
+		UsingGroup:              "default",
+		UserGroup:               "default",
+		Request:                 &dto.ClaudeRequest{},
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{})
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, 7.0, priceData.ModelRatio)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "google_search", priceData.AdvancedRuleSnapshot.ToolUsageType)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_type=google_search")
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, "google_search", priceData.AdvancedPricingContext.ToolUsageType)
+	require.NotNil(t, priceData.AdvancedPricingContext.ToolUsageCount)
+	require.Equal(t, 2, *priceData.AdvancedPricingContext.ToolUsageCount)
+}
+
+func TestModelPriceHelperMatchesAdvancedTextSegmentPerSecondForGeminiLiveAudio(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gemini-3.1-flash-live-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gemini-3.1-flash-live-preview": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_second",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000000,
+					"input_modality": "audio",
+					"output_modality": "audio",
+					"input_price": 3,
+					"output_price": 12
+				}
+			]
+		}
+	}`))
+
+	message := dto.Message{Role: "user"}
+	message.SetMediaContent([]dto.MediaContent{
+		{
+			Type: dto.ContentTypeInputAudio,
+			InputAudio: &dto.MessageInputAudio{
+				Data:   "UklGRg==",
+				Format: "wav",
+			},
+		},
+	})
+
+	request := &dto.GeneralOpenAIRequest{
+		Model:    "gemini-3.1-flash-live-preview",
+		Messages: []dto.Message{message},
+		ExtraBody: []byte(`{
+			"google": {
+				"generation_config": {
+					"response_modalities": ["AUDIO"]
+				}
+			}
+		}`),
+	}
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3.1-flash-live-preview",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         request,
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, request.GetTokenCountMeta())
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, types.AdvancedBillingUnitPerSecond, priceData.AdvancedRuleSnapshot.BillingUnit)
+	require.Equal(t, "audio", priceData.AdvancedRuleSnapshot.InputModality)
+	require.Equal(t, "audio", priceData.AdvancedRuleSnapshot.OutputModality)
+	require.Equal(t, []string{"audio"}, priceData.AdvancedPricingContext.OutputModalities)
+}
+
+func TestModelPriceHelperMatchesAdvancedTextSegmentPerImageForGeminiImageGeneration(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gemini-3.1-flash-image-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gemini-3.1-flash-image-preview": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_image",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000000,
+					"output_modality": "image",
+					"input_price": 0.5,
+					"output_price": 3
+				}
+			]
+		}
+	}`))
+
+	request := &dto.GeneralOpenAIRequest{
+		Model:  "gemini-3.1-flash-image-preview",
+		Prompt: "Generate a stylized skyline illustration",
+		Size:   "1024x1024",
+	}
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3.1-flash-image-preview",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         request,
+		RequestURLPath:  "/v1/images/generations",
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 64, request.GetTokenCountMeta())
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, types.AdvancedBillingUnitPerImage, priceData.AdvancedRuleSnapshot.BillingUnit)
+	require.Equal(t, "image", priceData.AdvancedRuleSnapshot.OutputModality)
+	require.Equal(t, []string{"image"}, priceData.AdvancedPricingContext.OutputModalities)
+}
+
+func TestModelPriceHelperCapturesImageCountForChatBasedPerImageBilling(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gemini-3.1-flash-image-chat-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gemini-3.1-flash-image-chat-preview": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_image",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000000,
+					"output_modality": "image",
+					"image_size_tier": "2k",
+					"input_price": 0.5,
+					"output_price": 3
+				}
+			]
+		}
+	}`))
+
+	imageCount := 2
+	request := &dto.GeneralOpenAIRequest{
+		Model:      "gemini-3.1-flash-image-chat-preview",
+		Prompt:     "Generate two stylized skyline illustrations",
+		Size:       "2048x2048",
+		N:          &imageCount,
+		Modalities: []byte(`["image"]`),
+	}
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3.1-flash-image-chat-preview",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         request,
+		RequestURLPath:  "/v1/chat/completions",
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 64, request.GetTokenCountMeta())
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, types.AdvancedBillingUnitPerImage, priceData.AdvancedRuleSnapshot.BillingUnit)
+	require.Equal(t, "2k", priceData.AdvancedRuleSnapshot.ImageSizeTier)
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, "2k", priceData.AdvancedPricingContext.ImageSizeTier)
+	require.NotNil(t, priceData.AdvancedPricingContext.ImageCount)
+	require.Equal(t, 2, *priceData.AdvancedPricingContext.ImageCount)
+}
+
+func TestModelPriceHelperMatchesAdvancedTextSegmentByImageSizeTier(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gemini-3-pro-image-preview":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gemini-3-pro-image-preview": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_image",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000000,
+					"output_modality": "image",
+					"image_size_tier": "1k",
+					"input_price": 2,
+					"output_price": 120
+				},
+				{
+					"priority": 20,
+					"input_min": 0,
+					"input_max": 1000000,
+					"output_modality": "image",
+					"image_size_tier": "2k",
+					"input_price": 2,
+					"output_price": 134
+				},
+				{
+					"priority": 30,
+					"input_min": 0,
+					"input_max": 1000000,
+					"output_modality": "image",
+					"image_size_tier": "4k",
+					"input_price": 2,
+					"output_price": 240
+				}
+			]
+		}
+	}`))
+
+	request := &dto.GeneralOpenAIRequest{
+		Model:  "gemini-3-pro-image-preview",
+		Prompt: "Generate a photorealistic product render",
+		Size:   "2048x2048",
+	}
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-3-pro-image-preview",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         request,
+		RequestURLPath:  "/v1/images/generations",
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 64, request.GetTokenCountMeta())
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "2k", priceData.AdvancedRuleSnapshot.ImageSizeTier)
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, "2k", priceData.AdvancedPricingContext.ImageSizeTier)
+	require.Equal(t, 1.0, priceData.ModelRatio)
+	require.Equal(t, 67.0, priceData.CompletionRatio)
+}
+
 func TestModelPriceHelperHonorsExplicitPerTokenModeWhenPriceAndRatioBothExist(t *testing.T) {
 	restoreRatioSettings(t)
 

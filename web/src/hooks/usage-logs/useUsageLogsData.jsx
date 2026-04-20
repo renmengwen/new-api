@@ -56,6 +56,16 @@ const getAdvancedRuleSnapshot = (other) => {
   return snapshot && typeof snapshot === 'object' ? snapshot : null;
 };
 
+const getAdvancedPricingContext = (other) => {
+  const context = other?.advanced_pricing_context;
+  return context && typeof context === 'object' ? context : null;
+};
+
+const getAdvancedBillingUnit = (snapshot, other) => {
+  const context = getAdvancedPricingContext(other);
+  return String(context?.billing_unit || snapshot?.billing_unit || '').trim();
+};
+
 const getAdvancedRuleTypeLabel = (t, ruleType) => {
   switch (ruleType) {
     case 'text_segment':
@@ -78,9 +88,50 @@ const buildAdvancedConditionLines = (t, snapshot) => {
   return lines;
 };
 
+const buildAdvancedPricingContextLines = (other, snapshot) => {
+  const context = getAdvancedPricingContext(other);
+  if (!context) {
+    return [];
+  }
+
+  const lines = [];
+  const pushLine = (label, value) => {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+    lines.push(`${label}: ${value}`);
+  };
+
+  pushLine('billing_unit', context?.billing_unit || snapshot?.billing_unit);
+  pushLine('image_size_tier', context?.image_size_tier || snapshot?.image_size_tier);
+  pushLine('tool_usage_type', context?.tool_usage_type || snapshot?.tool_usage_type);
+  pushLine('tool_usage_count', context?.tool_usage_count);
+  pushLine('image_count', context?.image_count);
+  pushLine('live_duration_secs', context?.live_duration_secs);
+  pushLine('free_quota', context?.free_quota);
+  pushLine('overage_threshold', context?.overage_threshold);
+
+  return lines;
+};
+
 const buildAdvancedPriceSummary = (t, other, snapshot) => {
   const priceSnapshot = snapshot?.price_snapshot || {};
+  const billingUnit = getAdvancedBillingUnit(snapshot, other);
   const summary = [];
+
+  switch (billingUnit) {
+    case 'per_second':
+    case 'per_image':
+    case 'per_1000_calls': {
+      const unitPrice = resolveAdvancedNonTokenUnitPrice(snapshot, other);
+      if (unitPrice > 0) {
+        return `${t('单价摘要')}：${renderAdvancedPrice(unitPrice)} / ${billingUnit}`;
+      }
+      return `${t('单价摘要')}：${t('未记录')}`;
+    }
+    default:
+      break;
+  }
   if (priceSnapshot.input_price !== undefined) {
     summary.push(`${t('输入')} ${renderAdvancedPrice(priceSnapshot.input_price)} / 1M tokens`);
   }
@@ -134,6 +185,7 @@ const renderAdvancedBillingDetailsBase = (t, other) => {
       other?.advanced_rule_type || snapshot?.rule_type,
     )}`,
     ...buildAdvancedConditionLines(t, snapshot),
+    ...buildAdvancedPricingContextLines(other, snapshot),
     buildAdvancedPriceSummary(t, other, snapshot),
     ...buildAdvancedBillingBasis(t, null, other, snapshot),
   ];
@@ -149,6 +201,7 @@ const renderAdvancedBillingProcessBase = (t, log, other) => {
       other?.advanced_rule_type || snapshot?.rule_type,
     )}`,
     ...buildAdvancedConditionLines(t, snapshot),
+    ...buildAdvancedPricingContextLines(other, snapshot),
     buildAdvancedPriceSummary(t, other, snapshot),
     ...buildAdvancedBillingBasis(t, log, other, snapshot),
     `${t('分组倍率')}：${renderNumber(other?.group_ratio || 1)}x`,
@@ -186,6 +239,29 @@ const getAdvancedLegacyMediaUnitPrice = (snapshot) => {
   }
   const matched = matchSummary.match(/(?:^|,\s*)unit_price=([0-9]+(?:\.[0-9]+)?)/);
   return matched ? toAdvancedNumber(matched[1]) : null;
+};
+
+const resolveAdvancedNonTokenUnitPrice = (snapshot, other) => {
+  const billingUnit = getAdvancedBillingUnit(snapshot, other);
+  const priceSnapshot = getAdvancedPriceSnapshot(snapshot);
+
+  if (billingUnit === 'per_1000_calls') {
+    return (
+      toAdvancedNumber(priceSnapshot.input_price) ??
+      getAdvancedLegacyMediaUnitPrice(snapshot) ??
+      0
+    );
+  }
+
+  const snapshotTotal = [
+    priceSnapshot.input_price,
+    priceSnapshot.output_price,
+    priceSnapshot.cache_read_price,
+    priceSnapshot.cache_create_price,
+    priceSnapshot.cache_storage_price,
+  ].reduce((total, price) => total + (toAdvancedNumber(price) ?? 0), 0);
+
+  return snapshotTotal || getAdvancedLegacyMediaUnitPrice(snapshot) || 0;
 };
 
 const getAdvancedActualUsageTokens = (log, other) => {
@@ -317,6 +393,60 @@ const buildAdvancedExtraChargeLines = (t, log, other, snapshot) => {
   return lines;
 };
 
+const buildAdvancedNonTokenFormula = (
+  t,
+  other,
+  snapshot,
+  unitPrice,
+  groupRatio,
+  multiplier = 1,
+) => {
+  const context = getAdvancedPricingContext(other);
+  const billingUnit = getAdvancedBillingUnit(snapshot, other);
+  const effectiveUnitPrice = unitPrice * multiplier;
+
+  switch (billingUnit) {
+    case 'per_second': {
+      const liveDurationSecs = toAdvancedNumber(context?.live_duration_secs) ?? 0;
+      const totalAmount = liveDurationSecs * effectiveUnitPrice * groupRatio;
+      return [
+        `${t('实际计费用量')}：${renderNumber(liveDurationSecs)} per_second`,
+        `${t('最终计费公式')}：${renderNumber(liveDurationSecs)} per_second * ${renderAdvancedPrice(unitPrice)} * ${renderNumber(multiplier)} * ${t('分组倍率')} ${renderNumber(groupRatio)} = ${renderAdvancedPrice(totalAmount)}`,
+      ];
+    }
+    case 'per_image': {
+      const imageCount = toAdvancedNumber(context?.image_count) ?? 0;
+      const totalAmount = imageCount * effectiveUnitPrice * groupRatio;
+      return [
+        `${t('实际计费用量')}：${renderNumber(imageCount)} per_image`,
+        `${t('最终计费公式')}：${renderNumber(imageCount)} per_image * ${renderAdvancedPrice(unitPrice)} * ${renderNumber(multiplier)} * ${t('分组倍率')} ${renderNumber(groupRatio)} = ${renderAdvancedPrice(totalAmount)}`,
+      ];
+    }
+    case 'per_1000_calls': {
+      const toolUsageCount = toAdvancedNumber(context?.tool_usage_count) ?? 0;
+      const freeQuota =
+        toAdvancedNumber(context?.free_quota) ??
+        toAdvancedNumber(snapshot?.threshold_snapshot?.free_quota) ??
+        0;
+      const overageThreshold =
+        toAdvancedNumber(context?.overage_threshold) ??
+        toAdvancedNumber(snapshot?.threshold_snapshot?.overage_threshold) ??
+        1000;
+      const billableCalls = Math.max(toolUsageCount - freeQuota, 0);
+      const effectiveUsage =
+        overageThreshold > 0 ? billableCalls / overageThreshold : 0;
+      const totalAmount = effectiveUsage * effectiveUnitPrice * groupRatio;
+      return [
+        `${t('实际计费用量')}：tool_usage_count ${renderNumber(toolUsageCount)}`,
+        `${t('生效计费用量')}：max(${renderNumber(toolUsageCount)} - ${renderNumber(freeQuota)}, 0) / ${renderNumber(overageThreshold)} per_1000_calls = ${renderNumber(effectiveUsage)}`,
+        `${t('最终计费公式')}：${renderNumber(effectiveUsage)} per_1000_calls * ${renderAdvancedPrice(unitPrice)} * ${renderNumber(multiplier)} * ${t('分组倍率')} ${renderNumber(groupRatio)} = ${renderAdvancedPrice(totalAmount)}`,
+      ];
+    }
+    default:
+      return null;
+  }
+};
+
 const buildAdvancedTextSegmentFormula = (t, log, other, snapshot) => {
   const priceSnapshot = getAdvancedPriceSnapshot(snapshot);
   const groupRatio = getAdvancedGroupRatio(other);
@@ -332,6 +462,23 @@ const buildAdvancedTextSegmentFormula = (t, log, other, snapshot) => {
       ? inputPrice * Number(other.completion_ratio)
       : 0);
   const extraItems = buildAdvancedExtraChargeItems(t, other, snapshot);
+  const billingUnit = getAdvancedBillingUnit(snapshot, other);
+  const multiplier =
+    toAdvancedNumber(snapshot?.threshold_snapshot?.draft_coefficient) ??
+    toAdvancedNumber(other?.draft_coefficient) ??
+    1;
+  const nonTokenUnitPrice = resolveAdvancedNonTokenUnitPrice(snapshot, other);
+  const nonTokenFormula = buildAdvancedNonTokenFormula(
+    t,
+    other,
+    snapshot,
+    nonTokenUnitPrice,
+    groupRatio,
+    multiplier,
+  );
+  if (nonTokenFormula) {
+    return nonTokenFormula;
+  }
 
   const baseParts = [];
   let baseAmount = 0;

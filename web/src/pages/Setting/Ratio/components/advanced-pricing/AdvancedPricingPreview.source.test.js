@@ -1,4 +1,4 @@
-/*
+﻿/*
 Copyright (C) 2025 QuantumNous
 
 This program is free software: you can redistribute it and/or modify
@@ -77,6 +77,15 @@ test('advanced pricing preview wires modality, image tier, and tool usage scaffo
   assert.match(previewSource, /freeQuota/);
   assert.match(previewSource, /overageThreshold/);
   assert.match(previewSource, /cacheStoragePrice/);
+});
+
+test('advanced pricing preview exposes billing-unit specific preview inputs and summaries for non-token units', () => {
+  assert.match(previewSource, /onPreviewInputChange\?\.\('liveDurationSecs', value\)/);
+  assert.match(previewSource, /onPreviewInputChange\?\.\('imageCount', value\)/);
+  assert.match(previewSource, /previewResult\?\.priceSummary\?\.billingUnit/);
+  assert.match(previewSource, /toolUsageType/);
+  assert.match(previewSource, /toolUsageCount/);
+  assert.match(previewSource, /imageSizeTier/);
 });
 
 test('advanced pricing preview localizes save preview and media task summary copy for the chinese admin ui', () => {
