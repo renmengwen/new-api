@@ -43,4 +43,12 @@ test('usage log render helpers treat zero model_price with positive model_ratio 
     renderSource,
     /export function renderAudioModelPrice\([\s\S]*?modelPrice = normalizeModelPriceForLog\(modelPrice, modelRatio\);/,
   );
+  assert.match(
+    renderSource,
+    /export function renderLogContent\([\s\S]*?modelPrice = normalizeModelPriceForLog\(modelPrice, modelRatio\);/,
+  );
+  assert.match(
+    renderSource,
+    /export function renderClaudeLogContent\([\s\S]*?modelPrice = normalizeModelPriceForLog\(modelPrice, modelRatio\);/,
+  );
 });

@@ -2108,6 +2108,7 @@ export function renderLogContent(
   fileSearchCallCount = 0,
   displayMode = 'price',
 ) {
+  modelPrice = normalizeModelPriceForLog(modelPrice, modelRatio);
   const {
     ratio,
     label: ratioLabel,
@@ -2975,6 +2976,7 @@ export function renderClaudeLogContent(
   cacheCreationRatio1h = 1.0,
   displayMode = 'price',
 ) {
+  modelPrice = normalizeModelPriceForLog(modelPrice, modelRatio);
   const { ratio: effectiveGroupRatio, label: ratioLabel } = getEffectiveRatio(
     groupRatio,
     user_group_ratio,
