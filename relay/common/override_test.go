@@ -1863,6 +1863,39 @@ func TestApplyParamOverrideWithRelayInfoSyncRuntimeHeaders(t *testing.T) {
 	}
 }
 
+func TestApplyParamOverrideWithRelayInfoTracksDeletedRuntimeHeaders(t *testing.T) {
+	info := &RelayInfo{
+		ChannelMeta: &ChannelMeta{
+			ParamOverride: map[string]interface{}{
+				"operations": []interface{}{
+					map[string]interface{}{
+						"mode": "delete_header",
+						"path": "anthropic-beta",
+					},
+				},
+			},
+			HeadersOverride: map[string]interface{}{
+				"anthropic-beta": "advanced-tool-use-2025-11-20",
+			},
+		},
+	}
+
+	_, err := ApplyParamOverrideWithRelayInfo([]byte(`{"temperature":0.7}`), info)
+	if err != nil {
+		t.Fatalf("ApplyParamOverrideWithRelayInfo returned error: %v", err)
+	}
+
+	if !info.UseRuntimeHeadersOverride {
+		t.Fatalf("expected runtime header override to be enabled")
+	}
+	if _, exists := info.RuntimeHeadersOverride["anthropic-beta"]; exists {
+		t.Fatalf("expected anthropic-beta header to be removed from runtime override")
+	}
+	if !info.RuntimeDeletedHeaders["anthropic-beta"] {
+		t.Fatalf("expected anthropic-beta to be tracked as explicitly deleted")
+	}
+}
+
 func TestApplyParamOverrideWithRelayInfoMixedLegacyAndOperations(t *testing.T) {
 	info := &RelayInfo{
 		RequestHeaders: map[string]string{

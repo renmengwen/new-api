@@ -287,6 +287,28 @@ func applyHeaderOverrideToRequest(req *http.Request, headerOverride map[string]s
 	}
 }
 
+func ApplyDeletedHeadersToHeader(header *http.Header, info *common.RelayInfo) {
+	if header == nil || info == nil || len(info.RuntimeDeletedHeaders) == 0 {
+		return
+	}
+	for key, deleted := range info.RuntimeDeletedHeaders {
+		if !deleted {
+			continue
+		}
+		header.Del(key)
+	}
+}
+
+func applyDeletedHeadersToRequest(req *http.Request, info *common.RelayInfo) {
+	if req == nil {
+		return
+	}
+	ApplyDeletedHeadersToHeader(&req.Header, info)
+	if common.IsRuntimeHeaderDeleted(info, "host") {
+		req.Host = ""
+	}
+}
+
 func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	fullRequestURL, err := a.GetRequestURL(info)
 	if err != nil {
@@ -311,6 +333,7 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, err
 	}
 	applyHeaderOverrideToRequest(req, headerOverride)
+	applyDeletedHeadersToRequest(req, info)
 	resp, err := doRequest(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
@@ -344,6 +367,7 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 		return nil, err
 	}
 	applyHeaderOverrideToRequest(req, headerOverride)
+	applyDeletedHeadersToRequest(req, info)
 	resp, err := doRequest(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
@@ -371,6 +395,7 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		targetHeader.Set(key, value)
 	}
 	targetHeader.Set("Content-Type", c.Request.Header.Get("Content-Type"))
+	ApplyDeletedHeadersToHeader(&targetHeader, info)
 	targetConn, _, err := websocket.DefaultDialer.Dial(fullRequestURL, targetHeader)
 	if err != nil {
 		return nil, fmt.Errorf("dial failed to %s: %w", fullRequestURL, err)

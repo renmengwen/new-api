@@ -21,6 +21,7 @@ var negativeIndexRegexp = regexp.MustCompile(`\.(-\d+)`)
 const (
 	paramOverrideContextRequestHeaders = "request_headers"
 	paramOverrideContextHeaderOverride = "header_override"
+	paramOverrideContextDeletedHeaders = "deleted_headers"
 	paramOverrideContextAuditRecorder  = "__param_override_audit_recorder"
 )
 
@@ -424,6 +425,17 @@ func GetEffectiveHeaderOverride(info *RelayInfo) map[string]interface{} {
 		return sanitizeHeaderOverrideMap(info.RuntimeHeadersOverride)
 	}
 	return sanitizeHeaderOverrideMap(getHeaderOverrideMap(info))
+}
+
+func IsRuntimeHeaderDeleted(info *RelayInfo, headerName string) bool {
+	if info == nil || len(info.RuntimeDeletedHeaders) == 0 {
+		return false
+	}
+	normalized := normalizeHeaderContextKey(headerName)
+	if normalized == "" {
+		return false
+	}
+	return info.RuntimeDeletedHeaders[normalized]
 }
 
 func tryParseOperations(paramOverride map[string]interface{}) ([]ParamOperation, bool) {
@@ -1029,6 +1041,7 @@ func setHeaderOverrideInContext(context map[string]interface{}, headerName strin
 		if existing, ok := rawHeaders[headerName]; ok {
 			existingValue := strings.TrimSpace(fmt.Sprintf("%v", existing))
 			if existingValue != "" {
+				clearDeletedHeaderInContext(context, headerName)
 				return nil
 			}
 		}
@@ -1040,9 +1053,11 @@ func setHeaderOverrideInContext(context map[string]interface{}, headerName strin
 	}
 	if !hasValue {
 		delete(rawHeaders, headerName)
+		markDeletedHeaderInContext(context, headerName)
 		return nil
 	}
 
+	clearDeletedHeaderInContext(context, headerName)
 	rawHeaders[headerName] = headerValue
 	return nil
 }
@@ -1216,7 +1231,78 @@ func deleteHeaderOverrideInContext(context map[string]interface{}, headerName st
 	}
 	rawHeaders := ensureMapKeyInContext(context, paramOverrideContextHeaderOverride)
 	delete(rawHeaders, headerName)
+	markDeletedHeaderInContext(context, headerName)
 	return nil
+}
+
+func markDeletedHeaderInContext(context map[string]interface{}, headerName string) {
+	headerName = normalizeHeaderContextKey(headerName)
+	if context == nil || headerName == "" {
+		return
+	}
+	deleted := ensureDeletedHeadersInContext(context)
+	deleted[headerName] = true
+}
+
+func clearDeletedHeaderInContext(context map[string]interface{}, headerName string) {
+	headerName = normalizeHeaderContextKey(headerName)
+	if context == nil || headerName == "" {
+		return
+	}
+	deleted := ensureDeletedHeadersInContext(context)
+	delete(deleted, headerName)
+}
+
+func ensureDeletedHeadersInContext(context map[string]interface{}) map[string]bool {
+	if context == nil {
+		return map[string]bool{}
+	}
+	if existing, ok := context[paramOverrideContextDeletedHeaders]; ok {
+		switch typed := existing.(type) {
+		case map[string]bool:
+			return typed
+		case map[string]interface{}:
+			sanitized := sanitizeDeletedHeaderSet(typed)
+			context[paramOverrideContextDeletedHeaders] = sanitized
+			return sanitized
+		}
+	}
+	created := make(map[string]bool)
+	context[paramOverrideContextDeletedHeaders] = created
+	return created
+}
+
+func sanitizeDeletedHeaderSet(raw interface{}) map[string]bool {
+	if raw == nil {
+		return map[string]bool{}
+	}
+	target := make(map[string]bool)
+	switch typed := raw.(type) {
+	case map[string]bool:
+		for key, deleted := range typed {
+			if !deleted {
+				continue
+			}
+			normalized := normalizeHeaderContextKey(key)
+			if normalized == "" {
+				continue
+			}
+			target[normalized] = true
+		}
+	case map[string]interface{}:
+		for key, value := range typed {
+			deleted, ok := value.(bool)
+			if !ok || !deleted {
+				continue
+			}
+			normalized := normalizeHeaderContextKey(key)
+			if normalized == "" {
+				continue
+			}
+			target[normalized] = true
+		}
+	}
+	return target
 }
 
 func parseHeaderPassThroughNames(value interface{}) ([]string, error) {
@@ -1488,6 +1574,7 @@ func syncRuntimeHeaderOverrideFromContext(info *RelayInfo, context map[string]in
 	}
 	info.RuntimeHeadersOverride = sanitizeHeaderOverrideMap(rawMap)
 	info.UseRuntimeHeadersOverride = true
+	info.RuntimeDeletedHeaders = sanitizeDeletedHeaderSet(context[paramOverrideContextDeletedHeaders])
 }
 
 func moveValue(jsonStr, fromPath, toPath string) (string, error) {
@@ -2025,6 +2112,9 @@ func BuildParamOverrideContext(info *RelayInfo) map[string]interface{} {
 
 	headerOverrideSource := GetEffectiveHeaderOverride(info)
 	ctx[paramOverrideContextHeaderOverride] = sanitizeHeaderOverrideMap(headerOverrideSource)
+	if len(info.RuntimeDeletedHeaders) > 0 {
+		ctx[paramOverrideContextDeletedHeaders] = sanitizeDeletedHeaderSet(info.RuntimeDeletedHeaders)
+	}
 
 	ctx["retry_index"] = info.RetryIndex
 	ctx["is_retry"] = info.RetryIndex > 0
