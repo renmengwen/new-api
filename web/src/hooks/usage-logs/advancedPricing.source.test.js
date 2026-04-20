@@ -147,3 +147,52 @@ test('advanced billing helpers keep coexistence extras instead of swallowing leg
     /const buildAdvancedMediaTaskFormula = \(t, log, other, snapshot\) => \{[\s\S]*getAdvancedActualUsageTokens\(log, other\)/,
   );
 });
+
+test('advanced billing helpers read structured advanced pricing context and switch formulas by billing unit', () => {
+  assert.match(
+    hookSource,
+    /const getAdvancedPricingContext = \(other\) => \{/,
+  );
+  assert.match(hookSource, /advanced_pricing_context/);
+  assert.match(hookSource, /live_duration_secs/);
+  assert.match(hookSource, /image_count/);
+  assert.match(hookSource, /tool_usage_type/);
+  assert.match(hookSource, /tool_usage_count/);
+  assert.match(hookSource, /per_second/);
+  assert.match(hookSource, /per_image/);
+  assert.match(hookSource, /per_1000_calls/);
+  assert.match(hookSource, /switch \(billingUnit\)/);
+  assert.match(hookSource, /free_quota/);
+});
+
+test('advanced non-token billing strings stay readable in UTF-8 source', () => {
+  assert.doesNotMatch(
+    hookSource,
+    /鍗曚环鎽樿|瀹為檯璁|鏈€缁堣|鐢熸晥璁|鍒嗙粍鍊嶇巼/,
+  );
+  assert.match(hookSource, /单价摘要/);
+  assert.match(hookSource, /实际计费用量/);
+  assert.match(hookSource, /生效计费用量/);
+  assert.match(hookSource, /最终计费公式/);
+  assert.match(hookSource, /分组倍率/);
+});
+
+test('advanced non-token unit price helper matches settlement inputs and keeps draft coefficient in formula', () => {
+  assert.match(
+    hookSource,
+    /const resolveAdvancedNonTokenUnitPrice = \(snapshot, other\) => \{/,
+  );
+  assert.match(hookSource, /priceSnapshot\.cache_storage_price/);
+  assert.match(
+    hookSource,
+    /buildAdvancedPriceSummary[\s\S]*resolveAdvancedNonTokenUnitPrice\(snapshot,\s*other\)/,
+  );
+  assert.match(
+    hookSource,
+    /const buildAdvancedTextSegmentFormula = \(t, log, other, snapshot\) => \{[\s\S]*resolveAdvancedNonTokenUnitPrice\(snapshot,\s*other\)/,
+  );
+  assert.match(
+    hookSource,
+    /const nonTokenFormula = buildAdvancedNonTokenFormula\(\s*[\s\S]*?nonTokenUnitPrice,\s*[\s\S]*?groupRatio,\s*[\s\S]*?multiplier,\s*[\s\S]*?\);/,
+  );
+});

@@ -92,6 +92,9 @@ func appendAdvancedPriceDataInfo(other map[string]interface{}, priceData types.P
 	if priceData.AdvancedRuleSnapshot != nil {
 		other["advanced_rule"] = priceData.AdvancedRuleSnapshot
 	}
+	if priceData.AdvancedPricingContext != nil {
+		other["advanced_pricing_context"] = priceData.AdvancedPricingContext
+	}
 }
 
 func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
