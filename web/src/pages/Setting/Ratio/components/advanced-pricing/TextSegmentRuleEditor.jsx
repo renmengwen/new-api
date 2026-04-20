@@ -145,7 +145,7 @@ const TEXT_SEGMENT_FIELDS = [
   },
   {
     field: 'toolUsageType',
-    label: 'Tool Usage',
+    label: '工具调用类型',
     placeholder: '例如 google_search',
   },
   {
@@ -156,19 +156,19 @@ const TEXT_SEGMENT_FIELDS = [
   },
   {
     field: 'toolOveragePrice',
-    label: 'Tool Overage Price',
-    placeholder: 'Optional overage unit price',
+    label: '超额单价',
+    placeholder: '可选，超额部分单价',
     regex: DECIMAL_INPUT_REGEX,
   },
   {
     field: 'freeQuota',
-    label: 'Free Quota',
+    label: '免费额度',
     placeholder: '可选',
     regex: INTEGER_INPUT_REGEX,
   },
   {
     field: 'overageThreshold',
-    label: 'Overage Threshold',
+    label: '超额阈值',
     placeholder: '可选',
     regex: INTEGER_INPUT_REGEX,
   },

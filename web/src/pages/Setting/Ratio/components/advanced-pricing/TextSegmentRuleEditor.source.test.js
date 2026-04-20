@@ -27,7 +27,10 @@ const source = fs.readFileSync(
 );
 
 test('text segment rule editor keeps the preview input state, reset, and binding chain for image size tier and tool usage count', () => {
-  assert.match(source, /const TEXT_SEGMENT_PREVIEW_NUMERIC_FIELDS = new Set\(\[[\s\S]*'toolUsageCount'[\s\S]*\]\);/);
+  assert.match(
+    source,
+    /const TEXT_SEGMENT_PREVIEW_NUMERIC_FIELDS = new Set\(\[[\s\S]*'toolUsageCount'[\s\S]*\]\);/,
+  );
   assert.match(source, /sheetPreviewInput, setSheetPreviewInput/);
   assert.match(source, /imageSizeTier: ''/);
   assert.match(source, /toolUsageCount: ''/);
@@ -38,22 +41,34 @@ test('text segment rule editor keeps the preview input state, reset, and binding
   assert.match(source, /field: 'toolOveragePrice'/);
 });
 
-test('text segment rule editor uses readable UTF-8 Chinese labels and placeholders for the new preview-related fields', () => {
+test('text segment rule editor uses readable UTF-8 Chinese labels for advanced pricing fields', () => {
   assert.match(
     source,
     /field: 'imageSizeTier'[\s\S]*label: '图像档位'[\s\S]*placeholder: '例如 hd \/ 2k \/ 4k'/,
   );
   assert.match(
     source,
+    /field: 'toolUsageType'[\s\S]*label: '工具调用类型'[\s\S]*placeholder: '例如 google_search'/,
+  );
+  assert.match(
+    source,
     /field: 'toolUsageCount'[\s\S]*label: '工具调用次数'[\s\S]*placeholder: '选填，填写整数值'/,
   );
+  assert.match(
+    source,
+    /field: 'toolOveragePrice'[\s\S]*label: '超额单价'[\s\S]*placeholder: '可选，超额部分单价'/,
+  );
+  assert.match(source, /field: 'freeQuota'[\s\S]*label: '免费额度'/);
+  assert.match(source, /field: 'overageThreshold'[\s\S]*label: '超额阈值'/);
   assert.match(source, /t\('图像档位'\)/);
   assert.match(source, /t\('工具调用次数'\)/);
   assert.match(source, /t\('例如 hd \/ 2k \/ 4k'\)/);
   assert.match(source, /t\('例如 3（整数）'\)/);
-  assert.doesNotMatch(source, /鍥惧儚妗ｄ綅/);
-  assert.doesNotMatch(source, /渚嬪 hd \/ 2k/);
   assert.doesNotMatch(source, /Tool Usage Count/);
+  assert.doesNotMatch(source, /Tool Usage/);
+  assert.doesNotMatch(source, /Tool Overage Price/);
+  assert.doesNotMatch(source, /Free Quota/);
+  assert.doesNotMatch(source, /Overage Threshold/);
 });
 
 test('text segment rule editor still uses Semi top-level TextArea export instead of Input.TextArea', () => {
