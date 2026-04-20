@@ -146,3 +146,10 @@ test('media task rule editor uses Semi top-level TextArea export instead of Inpu
   );
   assert.doesNotMatch(source, /Input\.TextArea/);
 });
+
+test('media task rule editor renders JSON blocks through the shared collapsible JSON component', () => {
+  assert.match(source, /import CollapsibleJsonBlock from '\.\/CollapsibleJsonBlock';/);
+  assert.match(source, /<CollapsibleJsonBlock title=\{t\('保存后规则 JSON'\)\}>/);
+  assert.match(source, /<CollapsibleJsonBlock title=\{t\('生成的规则 JSON'\)\}>/);
+  assert.match(source, /<CollapsibleJsonBlock title=\{t\('命中规则 JSON'\)\}>/);
+});

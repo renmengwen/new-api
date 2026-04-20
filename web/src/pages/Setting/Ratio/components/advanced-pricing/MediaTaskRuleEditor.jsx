@@ -34,6 +34,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { IconDelete, IconEdit, IconPlus } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
+import CollapsibleJsonBlock from './CollapsibleJsonBlock';
 import {
   MEDIA_TASK_RULE_TYPE,
   buildMediaTaskConditionSummary,
@@ -575,20 +576,21 @@ export default function MediaTaskRuleEditor({
             marginTop: 16,
             background: 'var(--semi-color-fill-0)',
           }}
-          title={t('保存后规则 JSON')}
         >
-          <pre
-            style={{
-              margin: 0,
-              padding: 12,
-              borderRadius: 8,
-              background: 'var(--semi-color-fill-1)',
-              width: '100%',
-              overflowX: 'auto',
-            }}
-          >
-            {JSON.stringify(serializedConfig.segments || [], null, 2)}
-          </pre>
+          <CollapsibleJsonBlock title={t('保存后规则 JSON')}>
+            <pre
+              style={{
+                margin: 0,
+                padding: 12,
+                borderRadius: 8,
+                background: 'var(--semi-color-fill-1)',
+                width: '100%',
+                overflowX: 'auto',
+              }}
+            >
+              {JSON.stringify(serializedConfig.segments || [], null, 2)}
+            </pre>
+          </CollapsibleJsonBlock>
         </Card>
       </Card>
 
@@ -714,21 +716,20 @@ export default function MediaTaskRuleEditor({
           </div>
 
           <div style={{ width: '100%' }}>
-            <div className='mb-1 font-medium text-gray-700'>
-              {t('生成的规则 JSON')}
-            </div>
-            <pre
-              style={{
-                margin: 0,
-                padding: 12,
-                borderRadius: 8,
-                background: 'var(--semi-color-fill-1)',
-                width: '100%',
-                overflowX: 'auto',
-              }}
-            >
-              {JSON.stringify(serializeMediaTaskRule(draftRule), null, 2)}
-            </pre>
+            <CollapsibleJsonBlock title={t('生成的规则 JSON')}>
+              <pre
+                style={{
+                  margin: 0,
+                  padding: 12,
+                  borderRadius: 8,
+                  background: 'var(--semi-color-fill-1)',
+                  width: '100%',
+                  overflowX: 'auto',
+                }}
+              >
+                {JSON.stringify(serializeMediaTaskRule(draftRule), null, 2)}
+              </pre>
+            </CollapsibleJsonBlock>
           </div>
 
           {draftErrors.length > 0 ? (
@@ -1036,27 +1037,26 @@ export default function MediaTaskRuleEditor({
               </div>
 
               <div style={{ width: '100%' }}>
-                <div className='mb-1 font-medium text-gray-700'>
-                  {t('命中规则 JSON')}
-                </div>
-                <pre
-                  style={{
-                    margin: 0,
-                    padding: 12,
-                    borderRadius: 8,
-                    background: 'var(--semi-color-fill-1)',
-                    width: '100%',
-                    overflowX: 'auto',
-                  }}
-                >
-                  {JSON.stringify(
-                    previewResult?.matchedRule
-                      ? serializeMediaTaskRule(previewResult.matchedRule)
-                      : null,
-                    null,
-                    2,
-                  )}
-                </pre>
+                <CollapsibleJsonBlock title={t('命中规则 JSON')}>
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: 12,
+                      borderRadius: 8,
+                      background: 'var(--semi-color-fill-1)',
+                      width: '100%',
+                      overflowX: 'auto',
+                    }}
+                  >
+                    {JSON.stringify(
+                      previewResult?.matchedRule
+                        ? serializeMediaTaskRule(previewResult.matchedRule)
+                        : null,
+                      null,
+                      2,
+                    )}
+                  </pre>
+                </CollapsibleJsonBlock>
               </div>
             </Space>
           </Card>

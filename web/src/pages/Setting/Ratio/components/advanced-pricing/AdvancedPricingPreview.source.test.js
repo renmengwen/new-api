@@ -131,3 +131,18 @@ test('advanced pricing preview localizes effective mode labels instead of exposi
   assert.match(previewSource, /t\('固定按次'\)/);
   assert.match(previewSource, /t\('固定按量'\)/);
 });
+
+test('advanced pricing preview renders save and matched JSON through the shared collapsible JSON component', () => {
+  assert.match(
+    previewSource,
+    /import CollapsibleJsonBlock from '\.\/CollapsibleJsonBlock';/,
+  );
+  assert.match(
+    previewSource,
+    /<CollapsibleJsonBlock title=\{t\('配置预览'\)\}>/,
+  );
+  assert.match(
+    previewSource,
+    /<CollapsibleJsonBlock title=\{t\('命中规则 JSON'\)\}>/,
+  );
+});

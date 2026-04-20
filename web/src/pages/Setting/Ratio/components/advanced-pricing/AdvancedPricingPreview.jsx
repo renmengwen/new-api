@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Card, Empty, Input, Radio, RadioGroup, Space, Tag } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
+import CollapsibleJsonBlock from './CollapsibleJsonBlock';
 import {
   ADVANCED_PRICING_MODE_ADVANCED,
   FIXED_BILLING_MODE_PER_REQUEST,
@@ -180,21 +181,22 @@ export default function AdvancedPricingPreview({
         </div>
 
         <div style={{ width: '100%' }}>
-          <div className='mb-1 font-medium text-gray-700'>{t('配置预览')}</div>
-          <pre
-            style={{
-              margin: 0,
-              padding: 16,
-              borderRadius: 12,
-              background: 'var(--semi-color-fill-1)',
-              border: '1px solid var(--semi-color-border)',
-              overflowX: 'auto',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {savePreviewConfigJson}
-          </pre>
+          <CollapsibleJsonBlock title={t('配置预览')}>
+            <pre
+              style={{
+                margin: 0,
+                padding: 16,
+                borderRadius: 12,
+                background: 'var(--semi-color-fill-1)',
+                border: '1px solid var(--semi-color-border)',
+                overflowX: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {savePreviewConfigJson}
+            </pre>
+          </CollapsibleJsonBlock>
         </div>
       </Space>
     </Card>
@@ -270,23 +272,22 @@ export default function AdvancedPricingPreview({
       </Card>
 
       <div style={{ width: '100%' }}>
-        <div className='mb-1 font-medium text-gray-700'>
-          {t('命中规则 JSON')}
-        </div>
-        <pre
-          style={{
-            margin: 0,
-            padding: 16,
-            borderRadius: 12,
-            background: 'var(--semi-color-fill-0)',
-            border: '1px solid var(--semi-color-border)',
-            overflowX: 'auto',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-          }}
-        >
-          {JSON.stringify(matchedSegmentPreview, null, 2)}
-        </pre>
+        <CollapsibleJsonBlock title={t('命中规则 JSON')}>
+          <pre
+            style={{
+              margin: 0,
+              padding: 16,
+              borderRadius: 12,
+              background: 'var(--semi-color-fill-0)',
+              border: '1px solid var(--semi-color-border)',
+              overflowX: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            {JSON.stringify(matchedSegmentPreview, null, 2)}
+          </pre>
+        </CollapsibleJsonBlock>
       </div>
     </>
   );

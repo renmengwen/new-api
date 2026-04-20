@@ -34,6 +34,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { IconDelete, IconEdit, IconPlus } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
+import CollapsibleJsonBlock from './CollapsibleJsonBlock';
 import {
   buildTextSegmentConditionSummary,
   buildTextSegmentPreview,
@@ -437,26 +438,27 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
             marginTop: 16,
             background: 'var(--semi-color-fill-0)',
           }}
-          title={t('当前规则 JSON')}
         >
-          <pre
-            style={{
-              margin: 0,
-              padding: 12,
-              borderRadius: 8,
-              background: 'var(--semi-color-fill-1)',
-              width: '100%',
-              overflowX: 'auto',
-            }}
-          >
-            {JSON.stringify(
-              sortedRules
-                .filter((rule) => rule?.enabled !== false)
-                .map((rule) => serializeTextSegmentRule(rule)),
-              null,
-              2,
-            )}
-          </pre>
+          <CollapsibleJsonBlock title={t('当前规则 JSON')}>
+            <pre
+              style={{
+                margin: 0,
+                padding: 12,
+                borderRadius: 8,
+                background: 'var(--semi-color-fill-1)',
+                width: '100%',
+                overflowX: 'auto',
+              }}
+            >
+              {JSON.stringify(
+                sortedRules
+                  .filter((rule) => rule?.enabled !== false)
+                  .map((rule) => serializeTextSegmentRule(rule)),
+                null,
+                2,
+              )}
+            </pre>
+          </CollapsibleJsonBlock>
         </Card>
       </Card>
 
@@ -535,21 +537,20 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
           </div>
 
           <div style={{ width: '100%' }}>
-            <div className='mb-1 font-medium text-gray-700'>
-              {t('生成的规则 JSON')}
-            </div>
-            <pre
-              style={{
-                margin: 0,
-                padding: 12,
-                borderRadius: 8,
-                background: 'var(--semi-color-fill-1)',
-                width: '100%',
-                overflowX: 'auto',
-              }}
-            >
-              {JSON.stringify(serializeTextSegmentRule(draftRule), null, 2)}
-            </pre>
+            <CollapsibleJsonBlock title={t('生成的规则 JSON')}>
+              <pre
+                style={{
+                  margin: 0,
+                  padding: 12,
+                  borderRadius: 8,
+                  background: 'var(--semi-color-fill-1)',
+                  width: '100%',
+                  overflowX: 'auto',
+                }}
+              >
+                {JSON.stringify(serializeTextSegmentRule(draftRule), null, 2)}
+              </pre>
+            </CollapsibleJsonBlock>
           </div>
 
           {draftErrors.length > 0 ? (
@@ -775,27 +776,26 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
               </div>
 
               <div style={{ width: '100%' }}>
-                <div className='mb-1 font-medium text-gray-700'>
-                  {t('命中规则 JSON')}
-                </div>
-                <pre
-                  style={{
-                    margin: 0,
-                    padding: 12,
-                    borderRadius: 8,
-                    background: 'var(--semi-color-fill-1)',
-                    width: '100%',
-                    overflowX: 'auto',
-                  }}
-                >
-                  {JSON.stringify(
-                    sheetPreviewResult?.matchedRule
-                      ? serializeTextSegmentRule(sheetPreviewResult.matchedRule)
-                      : null,
-                    null,
-                    2,
-                  )}
-                </pre>
+                <CollapsibleJsonBlock title={t('命中规则 JSON')}>
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: 12,
+                      borderRadius: 8,
+                      background: 'var(--semi-color-fill-1)',
+                      width: '100%',
+                      overflowX: 'auto',
+                    }}
+                  >
+                    {JSON.stringify(
+                      sheetPreviewResult?.matchedRule
+                        ? serializeTextSegmentRule(sheetPreviewResult.matchedRule)
+                        : null,
+                      null,
+                      2,
+                    )}
+                  </pre>
+                </CollapsibleJsonBlock>
               </div>
             </Space>
           </Card>
@@ -953,20 +953,21 @@ export default function TextSegmentRuleEditor({
             marginTop: 16,
             background: 'var(--semi-color-fill-0)',
           }}
-          title={t('保存后配置 JSON')}
         >
-          <pre
-            style={{
-              margin: 0,
-              padding: 12,
-              borderRadius: 8,
-              background: 'var(--semi-color-fill-1)',
-              width: '100%',
-              overflowX: 'auto',
-            }}
-          >
-            {JSON.stringify(serializedConfig, null, 2)}
-          </pre>
+          <CollapsibleJsonBlock title={t('保存后配置 JSON')}>
+            <pre
+              style={{
+                margin: 0,
+                padding: 12,
+                borderRadius: 8,
+                background: 'var(--semi-color-fill-1)',
+                width: '100%',
+                overflowX: 'auto',
+              }}
+            >
+              {JSON.stringify(serializedConfig, null, 2)}
+            </pre>
+          </CollapsibleJsonBlock>
         </Card>
       </Card>
     </Space>

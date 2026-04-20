@@ -79,3 +79,11 @@ test('text segment rule editor still uses Semi top-level TextArea export instead
   assert.doesNotMatch(source, /const \{ TextArea \} = Input;/);
   assert.doesNotMatch(source, /Input\.TextArea/);
 });
+
+test('text segment rule editor renders JSON blocks through the shared collapsible JSON component', () => {
+  assert.match(source, /import CollapsibleJsonBlock from '\.\/CollapsibleJsonBlock';/);
+  assert.match(source, /<CollapsibleJsonBlock title=\{t\('当前规则 JSON'\)\}>/);
+  assert.match(source, /<CollapsibleJsonBlock title=\{t\('生成的规则 JSON'\)\}>/);
+  assert.match(source, /<CollapsibleJsonBlock title=\{t\('命中规则 JSON'\)\}>/);
+  assert.match(source, /<CollapsibleJsonBlock title=\{t\('保存后配置 JSON'\)\}>/);
+});
