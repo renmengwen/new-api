@@ -894,6 +894,79 @@ func TestCalculateAdvancedNonTokenQuotaUsesFreeQuotaAndThresholdForPer1000Calls(
 	require.True(t, quota.Equal(decimal.NewFromInt(14).Mul(decimal.NewFromFloat(common.QuotaPerUnit))))
 }
 
+func TestCalculateTextQuotaSummaryToolOverageUsesDedicatedPriceBeyondFreeQuota(t *testing.T) {
+	restoreTextQuotaRatioSettings(t)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"responses-grounding-overage-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"responses-grounding-overage-model": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_1000_calls",
+			"segments": [
+				{
+					"priority": 10,
+					"input_price": 2
+				},
+				{
+					"priority": 20,
+					"tool_usage_type": "grounding",
+					"tool_usage_count": 1,
+					"free_quota": 5000,
+					"overage_threshold": 1000,
+					"input_price": 2,
+					"tool_overage_price": 14
+				}
+			]
+		}
+	}`))
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "responses-grounding-overage-model",
+		Request: &dto.OpenAIResponsesRequest{
+			Model: "responses-grounding-overage-model",
+		},
+		ResponsesUsageInfo: &relaycommon.ResponsesUsageInfo{
+			BuiltInTools: map[string]*relaycommon.BuildInToolInfo{
+				dto.BuildInToolWebSearchPreview: {
+					ToolName:          dto.BuildInToolWebSearchPreview,
+					CallCount:         6200,
+					SearchContextSize: "medium",
+				},
+			},
+		},
+		PriceData: types.PriceData{
+			BillingMode:     types.BillingModePerToken,
+			ModelRatio:      6,
+			CompletionRatio: 2.5,
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     10,
+		CompletionTokens: 0,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	expectedQuota := decimal.NewFromFloat(16.8).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).Round(0)
+	require.Equal(t, int(expectedQuota.IntPart()), summary.Quota)
+	require.Equal(t, types.BillingModeAdvanced, relayInfo.PriceData.BillingMode)
+	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext)
+	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext.FreeQuota)
+	require.Equal(t, 5000, *relayInfo.PriceData.AdvancedPricingContext.FreeQuota)
+	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext.OverageThreshold)
+	require.Equal(t, 1000, *relayInfo.PriceData.AdvancedPricingContext.OverageThreshold)
+
+	contextJSON, err := common.Marshal(relayInfo.PriceData.AdvancedPricingContext)
+	require.NoError(t, err)
+	require.Contains(t, string(contextJSON), `"tool_overage_price":14`)
+}
+
 func TestCalculateTextQuotaSummarySettlementSkipsLegacyWebSearchQuotaWhenAdvancedPer1000CallsMatchesGroundingAlias(t *testing.T) {
 	restoreTextQuotaRatioSettings(t)
 	gin.SetMode(gin.TestMode)

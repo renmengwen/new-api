@@ -77,6 +77,7 @@ type AdvancedPriceRule struct {
 	CacheReadPrice    *float64 `json:"cache_read_price,omitempty"`
 	CacheCreatePrice  *float64 `json:"cache_create_price,omitempty"`
 	CacheStoragePrice *float64 `json:"cache_storage_price,omitempty"`
+	ToolOveragePrice  *float64 `json:"tool_overage_price,omitempty"`
 
 	ImageSizeTier    string `json:"image_size_tier,omitempty"`
 	ToolUsageType    string `json:"tool_usage_type,omitempty"`
@@ -386,6 +387,8 @@ func NormalizeAdvancedPricingTextToolUsageType(value string) string {
 	switch normalized {
 	case "web_search", "google_search", "grounding":
 		return "google_search"
+	case "maps", "google_maps":
+		return "google_maps"
 	default:
 		return normalized
 	}
@@ -1103,6 +1106,7 @@ func buildAdvancedRuleSnapshot(ruleType AdvancedRuleType, billingUnit string, se
 			CacheReadPrice:    cloneAdvancedFloatPtr(segment.CacheReadPrice),
 			CacheCreatePrice:  cloneAdvancedFloatPtr(segment.CacheCreatePrice),
 			CacheStoragePrice: cloneAdvancedFloatPtr(segment.CacheStoragePrice),
+			ToolOveragePrice:  resolveAdvancedToolOveragePrice(billingUnit, segment.InputPrice, segment.ToolOveragePrice),
 		},
 		ThresholdSnapshot: types.AdvancedRuleThresholdSnapshot{
 			InputMin:         cloneAdvancedIntPtr(segment.InputMin),
@@ -1127,7 +1131,8 @@ func buildAdvancedMediaRuleSnapshot(ruleType AdvancedRuleType, taskType string, 
 		ImageSizeTier: normalizeAdvancedPricingComparableString(segment.ImageSizeTier),
 		ToolUsageType: normalizeAdvancedPricingComparableString(segment.ToolUsageType),
 		PriceSnapshot: types.AdvancedRulePriceSnapshot{
-			InputPrice: cloneAdvancedFloatPtr(segment.UnitPrice),
+			InputPrice:       cloneAdvancedFloatPtr(segment.UnitPrice),
+			ToolOveragePrice: resolveAdvancedToolOveragePrice(billingUnit, segment.UnitPrice, segment.ToolOveragePrice),
 		},
 		ThresholdSnapshot: types.AdvancedRuleThresholdSnapshot{
 			MinTokens:        cloneAdvancedIntPtr(segment.MinTokens),
@@ -1153,6 +1158,7 @@ func buildAdvancedPricingContextSnapshot(billingUnit string, segment AdvancedPri
 		ToolUsageCount:   toolUsageCount,
 		FreeQuota:        cloneAdvancedIntPtr(segment.FreeQuota),
 		OverageThreshold: cloneAdvancedIntPtr(segment.OverageThreshold),
+		ToolOveragePrice: resolveAdvancedToolOveragePrice(billingUnit, segment.InputPrice, segment.ToolOveragePrice),
 	}
 }
 
@@ -1164,6 +1170,7 @@ func buildAdvancedMediaPricingContextSnapshot(billingUnit string, segment Advanc
 		ToolUsageCount:   cloneAdvancedIntPtr(segment.ToolUsageCount),
 		FreeQuota:        cloneAdvancedIntPtr(segment.FreeQuota),
 		OverageThreshold: cloneAdvancedIntPtr(segment.OverageThreshold),
+		ToolOveragePrice: resolveAdvancedToolOveragePrice(billingUnit, segment.UnitPrice, segment.ToolOveragePrice),
 	}
 }
 
@@ -1323,6 +1330,16 @@ func cloneAdvancedFloatPtr(v *float64) *float64 {
 	}
 	cloned := *v
 	return &cloned
+}
+
+func resolveAdvancedToolOveragePrice(billingUnit string, fallbackPrice *float64, overagePrice *float64) *float64 {
+	if overagePrice != nil {
+		return cloneAdvancedFloatPtr(overagePrice)
+	}
+	if billingUnit != types.AdvancedBillingUnitPer1000Calls {
+		return nil
+	}
+	return cloneAdvancedFloatPtr(fallbackPrice)
 }
 
 func cloneAdvancedStringSlice(values []string) []string {
@@ -1653,6 +1670,9 @@ func validateUnsupportedTextRuntimeFields(modelName string, segment AdvancedPric
 	}
 	if segment.CacheStoragePrice != nil && *segment.CacheStoragePrice < 0 {
 		return fmt.Errorf("model %s text segment cache_storage_price cannot be negative", modelName)
+	}
+	if segment.ToolOveragePrice != nil && *segment.ToolOveragePrice < 0 {
+		return fmt.Errorf("model %s text segment tool_overage_price cannot be negative", modelName)
 	}
 	if segment.ToolUsageCount != nil && *segment.ToolUsageCount < 0 {
 		return fmt.Errorf("model %s text segment tool_usage_count cannot be negative", modelName)

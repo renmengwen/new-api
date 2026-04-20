@@ -355,8 +355,8 @@ func buildAdvancedPricingRuntimeContext(c *gin.Context, info *relaycommon.RelayI
 
 func resolveAdvancedTextToolUsage(c *gin.Context, info *relaycommon.RelayInfo) (string, int) {
 	if info != nil && info.ResponsesUsageInfo != nil && info.ResponsesUsageInfo.BuiltInTools != nil {
-		if webSearchTool, exists := info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview]; exists && webSearchTool != nil && webSearchTool.CallCount > 0 {
-			return ratio_setting.NormalizeAdvancedPricingTextToolUsageType("web_search"), webSearchTool.CallCount
+		if toolUsageType, toolUsageCount := resolveAdvancedResponsesToolUsage(info.ResponsesUsageInfo.BuiltInTools); toolUsageType != "" {
+			return toolUsageType, toolUsageCount
 		}
 	}
 	if info != nil && strings.HasSuffix(strings.TrimSpace(info.OriginModelName), "search-preview") {
@@ -368,6 +368,39 @@ func resolveAdvancedTextToolUsage(c *gin.Context, info *relaycommon.RelayInfo) (
 		}
 	}
 	return "", 0
+}
+
+func resolveAdvancedResponsesToolUsage(builtInTools map[string]*relaycommon.BuildInToolInfo) (string, int) {
+	if webSearchTool, exists := builtInTools[dto.BuildInToolWebSearchPreview]; exists && webSearchTool != nil && webSearchTool.CallCount > 0 {
+		return ratio_setting.NormalizeAdvancedPricingTextToolUsageType("web_search"), webSearchTool.CallCount
+	}
+
+	for toolName, tool := range builtInTools {
+		if normalizedToolUsageType, callCount, ok := normalizeAdvancedResponsesToolUsage(toolName, tool); ok && normalizedToolUsageType == "google_maps" {
+			return normalizedToolUsageType, callCount
+		}
+	}
+	for toolName, tool := range builtInTools {
+		if normalizedToolUsageType, callCount, ok := normalizeAdvancedResponsesToolUsage(toolName, tool); ok && normalizedToolUsageType == "google_search" {
+			return normalizedToolUsageType, callCount
+		}
+	}
+	return "", 0
+}
+
+func normalizeAdvancedResponsesToolUsage(toolName string, tool *relaycommon.BuildInToolInfo) (string, int, bool) {
+	if tool == nil || tool.CallCount <= 0 {
+		return "", 0, false
+	}
+	candidateName := strings.TrimSpace(tool.ToolName)
+	if candidateName == "" {
+		candidateName = toolName
+	}
+	normalizedToolUsageType := ratio_setting.NormalizeAdvancedPricingTextToolUsageType(candidateName)
+	if normalizedToolUsageType == "" {
+		return "", 0, false
+	}
+	return normalizedToolUsageType, tool.CallCount, true
 }
 
 func attachAdvancedTextRuntimeContext(info *relaycommon.RelayInfo, priceData types.PriceData) types.PriceData {

@@ -23,6 +23,7 @@ type AdvancedRulePriceSnapshot struct {
 	CacheReadPrice    *float64 `json:"cache_read_price,omitempty"`
 	CacheCreatePrice  *float64 `json:"cache_create_price,omitempty"`
 	CacheStoragePrice *float64 `json:"cache_storage_price,omitempty"`
+	ToolOveragePrice  *float64 `json:"tool_overage_price,omitempty"`
 }
 
 type AdvancedRuleThresholdSnapshot struct {
@@ -73,6 +74,7 @@ type AdvancedPricingContextSnapshot struct {
 	ToolUsageCount   *int     `json:"tool_usage_count,omitempty"`
 	FreeQuota        *int     `json:"free_quota,omitempty"`
 	OverageThreshold *int     `json:"overage_threshold,omitempty"`
+	ToolOveragePrice *float64 `json:"tool_overage_price,omitempty"`
 }
 
 type GroupRatioInfo struct {
