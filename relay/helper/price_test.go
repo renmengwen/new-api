@@ -1109,6 +1109,59 @@ func TestModelPriceHelperPerCallReturnsAdvancedMediaTaskPriceDataWhenRuleMatches
 	require.Greater(t, priceData.Quota, 0)
 }
 
+func TestModelPriceHelperPerCallMatchesAdvancedMediaTaskWhenMetadataUsesRatioKey(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"task-advanced-media-ratio-key-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"task-advanced-media-ratio-key-model": {
+			"rule_type": "media_task",
+			"task_type": "video_generation",
+			"segments": [
+				{
+					"priority": 10,
+					"input_video": true,
+					"resolution": "720p",
+					"aspect_ratio": "16:9",
+					"output_duration_min": 5,
+					"output_duration_max": 5,
+					"input_video_duration_min": 2,
+					"input_video_duration_max": 15,
+					"unit_price": 8.8
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	c.Set("task_request", relaycommon.TaskSubmitReq{
+		Duration: 5,
+		Metadata: map[string]interface{}{
+			"input_video":          true,
+			"input_video_duration": 3,
+			"resolution":           "720p",
+			"ratio":                "16:9",
+		},
+	})
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "task-advanced-media-ratio-key-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+	}
+	info.TaskRelayInfo = &relaycommon.TaskRelayInfo{Action: constant.TaskActionGenerate}
+
+	priceData, err := ModelPriceHelperPerCall(c, info)
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, types.AdvancedRuleTypeMediaTask, priceData.AdvancedRuleType)
+	require.True(t, priceData.UsePrice)
+	require.Equal(t, 8.8, priceData.ModelPrice)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "aspect_ratio=16:9")
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "input_video=true")
+}
+
 func TestModelPriceHelperPerCallReturnsErrorWhenAdvancedMediaTaskDoesNotMatch(t *testing.T) {
 	restoreRatioSettings(t)
 

@@ -498,7 +498,7 @@ func buildAdvancedPricingTaskContext(c *gin.Context, info *relaycommon.RelayInfo
 		RawAction:          strings.TrimSpace(rawAction),
 		InferenceMode:      normalizeAdvancedTaskString(firstTaskString(taskReq.Mode, taskMetadataString(taskReq.Metadata, "inference_mode", "inferenceMode"))),
 		Resolution:         normalizeAdvancedTaskString(firstTaskString(taskMetadataString(taskReq.Metadata, "resolution", "Resolution"), deriveTaskResolution(taskReq.Size))),
-		AspectRatio:        normalizeAdvancedTaskString(firstTaskString(taskMetadataString(taskReq.Metadata, "aspect_ratio", "aspectRatio"), deriveTaskAspectRatio(taskReq.Size))),
+		AspectRatio:        normalizeAdvancedTaskString(firstTaskString(taskMetadataString(taskReq.Metadata, "aspect_ratio", "aspectRatio", "ratio"), deriveTaskAspectRatio(taskReq.Size))),
 		OutputDuration:     resolveTaskOutputDuration(taskReq),
 		InputVideoDuration: taskMetadataIntValue(taskReq.Metadata, "input_video_duration", "inputVideoDuration"),
 	}

@@ -82,7 +82,7 @@ curl -X POST "{{base_url}}/v1/video/generations" \
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---:|---|
 | `ratio` | string | 否 | 画面比例，如 `16:9` |
-| `aspect_ratio` | string | 否 | 画面比例，如 `16:9`。**启用高级定价规则匹配时，建议优先传这个字段** |
+| `aspect_ratio` | string | 否 | 画面比例，如 `16:9`。**启用高级定价规则匹配时建议传；当前匹配同时兼容 `aspect_ratio` 与 `ratio`** |
 | `duration` | int | 否 | 视频时长，单位秒 |
 | `watermark` | bool | 否 | 是否添加水印 |
 | `generate_audio` | bool | 否 | 是否生成音频，模型相关 |
@@ -101,13 +101,13 @@ curl -X POST "{{base_url}}/v1/video/generations" \
 
 - 建议同时传：
   - `size`
-  - `metadata.aspect_ratio`
+  - `metadata.aspect_ratio` 或 `metadata.ratio`
   - `metadata.resolution`
   - `metadata.duration`
 - 如果要命中“输入含视频”规则：
   - 必须显式传 `metadata.input_video=true`
   - 并显式传 `metadata.input_video_duration`
-- 当前高级定价匹配**不读取** `metadata.ratio` 来做宽高比判断，建议统一使用 `metadata.aspect_ratio`
+- 当前高级定价匹配会优先读取 `metadata.aspect_ratio`，同时兼容 `metadata.ratio`；为减少歧义，仍建议统一使用 `metadata.aspect_ratio`
 
 示例：
 
