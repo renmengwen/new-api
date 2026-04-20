@@ -1210,13 +1210,9 @@ func TestModelPriceHelperPerCallDoesNotMatchAdvancedMediaTaskWhenCanonicalTaskTy
 	}
 	info.TaskRelayInfo = &relaycommon.TaskRelayInfo{Action: constant.TaskActionGenerate}
 
-	priceData, err := ModelPriceHelperPerCall(c, info)
-	require.NoError(t, err)
-
-	require.Equal(t, types.BillingModePerRequest, priceData.BillingMode)
-	require.True(t, priceData.UsePrice)
-	require.Equal(t, 0.3, priceData.ModelPrice)
-	require.Nil(t, priceData.AdvancedRuleSnapshot)
+	_, err := ModelPriceHelperPerCall(c, info)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "advanced pricing did not match any active rule")
 }
 
 func TestModelPriceHelperPerCallMatchesAdvancedMediaTaskWhenLegacyRawActionTaskTypeConfigured(t *testing.T) {
