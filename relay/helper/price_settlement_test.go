@@ -110,3 +110,76 @@ func TestRefreshTextPriceDataForSettlementSkipsCurrentAdvancedMediaTaskConfig(t 
 	require.Equal(t, types.PriceData{}, priceData)
 	require.Equal(t, before, info.PriceData)
 }
+
+func TestRefreshTextPriceDataForSettlementReusesExistingAdvancedTextSnapshotWhenCurrentRulesNoLongerMatch(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"stale-advanced-text-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"stale-advanced-text-model": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"output_min": 1000,
+					"output_max": 2000,
+					"input_price": 9,
+					"output_price": 9
+				}
+			]
+		}
+	}`))
+
+	inputPrice := 14.0
+	toolUsageCount := 3
+	freeQuota := 1000
+	overageThreshold := 500
+	existingPriceData := types.PriceData{
+		BillingMode:      types.BillingModeAdvanced,
+		AdvancedRuleType: types.AdvancedRuleTypeTextSegment,
+		ModelRatio:       7,
+		CompletionRatio:  1,
+		GroupRatioInfo: types.GroupRatioInfo{
+			GroupRatio:        2,
+			GroupSpecialRatio: 2,
+			HasSpecialRatio:   true,
+		},
+		AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{
+			RuleType:      types.AdvancedRuleTypeTextSegment,
+			MatchSummary:  "priority=20, output_tokens=20, tool_usage_type=google_search",
+			BillingUnit:   types.AdvancedBillingUnitPer1000Calls,
+			ToolUsageType: "google_search",
+			PriceSnapshot: types.AdvancedRulePriceSnapshot{
+				InputPrice: &inputPrice,
+			},
+			ThresholdSnapshot: types.AdvancedRuleThresholdSnapshot{
+				FreeQuota:        &freeQuota,
+				OverageThreshold: &overageThreshold,
+			},
+		},
+		AdvancedPricingContext: &types.AdvancedPricingContextSnapshot{
+			BillingUnit:      types.AdvancedBillingUnitPer1000Calls,
+			ToolUsageType:    "google_search",
+			ToolUsageCount:   &toolUsageCount,
+			FreeQuota:        &freeQuota,
+			OverageThreshold: &overageThreshold,
+		},
+	}
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "stale-advanced-text-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request: &dto.OpenAIResponsesRequest{
+			ServiceTier: "default",
+		},
+		PriceData: existingPriceData,
+	}
+
+	priceData, ok, err := RefreshTextPriceDataForSettlement(c, info, 20, 50)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, existingPriceData, priceData)
+	require.Equal(t, existingPriceData, info.PriceData)
+}

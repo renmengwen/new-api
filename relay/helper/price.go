@@ -90,6 +90,9 @@ func RefreshTextPriceDataForSettlement(c *gin.Context, info *relaycommon.RelayIn
 
 	staleAdvancedTextPricing := info.PriceData.BillingMode == types.BillingModeAdvanced &&
 		info.PriceData.AdvancedRuleType == types.AdvancedRuleTypeTextSegment
+	if staleAdvancedTextPricing && hasReusableAdvancedTextSettlementPriceData(info.PriceData) {
+		return info.PriceData, true, nil
+	}
 	currentConfiguredAdvancedTextPricing := false
 	if ratio_setting.GetEffectiveBillingMode(info.OriginModelName) == ratio_setting.BillingModeAdvanced {
 		if ruleSet, ok := ratio_setting.GetAdvancedPricingRuleSet(info.OriginModelName); ok && ruleSet.RuleType == ratio_setting.RuleTypeTextSegment {
@@ -111,6 +114,10 @@ func RefreshTextPriceDataForSettlement(c *gin.Context, info *relaycommon.RelayIn
 	priceData.GroupRatioInfo = originalGroupRatioInfo
 	priceData.OtherRatios = info.PriceData.OtherRatios
 	return priceData, true, nil
+}
+
+func hasReusableAdvancedTextSettlementPriceData(priceData types.PriceData) bool {
+	return priceData.AdvancedRuleSnapshot != nil && priceData.AdvancedPricingContext != nil
 }
 
 func finalizeAdvancedPriceData(modelName string, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo types.GroupRatioInfo, priceData types.PriceData) types.PriceData {
