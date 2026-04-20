@@ -35,6 +35,7 @@ test('text segment rule editor keeps the preview input state, reset, and binding
   assert.match(source, /previewInput\?\.toolUsageCount/);
   assert.match(source, /handlePreviewInputChange\('imageSizeTier', value\)/);
   assert.match(source, /handlePreviewInputChange\('toolUsageCount', value\)/);
+  assert.match(source, /field: 'toolOveragePrice'/);
 });
 
 test('text segment rule editor uses readable UTF-8 Chinese labels and placeholders for the new preview-related fields', () => {
