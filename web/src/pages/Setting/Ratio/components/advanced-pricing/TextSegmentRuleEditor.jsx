@@ -32,7 +32,7 @@ import {
   TextArea,
   Typography,
 } from '@douyinfe/semi-ui';
-import { IconDelete, IconEdit, IconPlus } from '@douyinfe/semi-icons';
+import { IconCopy, IconDelete, IconEdit, IconPlus } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import CollapsibleJsonBlock from './CollapsibleJsonBlock';
 import {
@@ -227,6 +227,29 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
     setSideSheetVisible(true);
   };
 
+  const getNextPriority = () =>
+    String(
+      sortedRules.reduce((maxValue, rule) => {
+        const priorityValue = Number(rule?.priority);
+        return Number.isFinite(priorityValue) && priorityValue > maxValue
+          ? priorityValue
+          : maxValue;
+      }, 0) + 1,
+    );
+
+  const openCopySideSheet = (rule) => {
+    setEditingRuleId('');
+    setDraftRule(
+      normalizeTextSegmentRule({
+        ...rule,
+        id: createEmptyTextSegmentRule(Date.now()).id,
+        priority: getNextPriority(),
+      }),
+    );
+    setDraftErrors([]);
+    setSideSheetVisible(true);
+  };
+
   const buildNextRules = (candidateRule) =>
     editingRuleId
       ? sortedRules.map((rule) =>
@@ -373,6 +396,14 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
             </Button>
             <Button
               size='small'
+              type='tertiary'
+              icon={<IconCopy />}
+              onClick={() => openCopySideSheet(record)}
+            >
+              {t('复制')}
+            </Button>
+            <Button
+              size='small'
               type='danger'
               icon={<IconDelete />}
               onClick={() => handleDeleteRule(record.id)}
@@ -383,7 +414,7 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
         ),
       },
     ],
-    [t],
+    [sortedRules, t],
   );
 
   return (

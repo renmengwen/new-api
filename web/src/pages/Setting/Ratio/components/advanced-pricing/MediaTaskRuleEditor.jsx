@@ -32,7 +32,7 @@ import {
   TextArea,
   Typography,
 } from '@douyinfe/semi-ui';
-import { IconDelete, IconEdit, IconPlus } from '@douyinfe/semi-icons';
+import { IconCopy, IconDelete, IconEdit, IconPlus } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import CollapsibleJsonBlock from './CollapsibleJsonBlock';
 import {
@@ -276,6 +276,29 @@ export default function MediaTaskRuleEditor({
     setSideSheetVisible(true);
   };
 
+  const getNextPriority = () =>
+    String(
+      sortedRules.reduce((maxValue, rule) => {
+        const priorityValue = Number(rule?.priority);
+        return Number.isFinite(priorityValue) && priorityValue > maxValue
+          ? priorityValue
+          : maxValue;
+      }, 0) + 1,
+    );
+
+  const openCopySideSheet = (rule) => {
+    setEditingRuleId('');
+    setDraftRule(
+      normalizeMediaTaskRule({
+        ...rule,
+        id: createEmptyMediaTaskRule(Date.now()).id,
+        priority: getNextPriority(),
+      }),
+    );
+    setDraftErrors([]);
+    setSideSheetVisible(true);
+  };
+
   const buildNextRules = (candidateRule) =>
     editingRuleId
       ? rules.map((rule) => (rule.id === editingRuleId ? candidateRule : rule))
@@ -412,6 +435,14 @@ export default function MediaTaskRuleEditor({
               onClick={() => openEditSideSheet(record)}
             >
               {t('编辑')}
+            </Button>
+            <Button
+              size='small'
+              type='tertiary'
+              icon={<IconCopy />}
+              onClick={() => openCopySideSheet(record)}
+            >
+              {t('复制')}
             </Button>
             <Button
               size='small'
