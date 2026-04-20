@@ -546,9 +546,7 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		syncTaskUsageToConsumeLog(ctx, task, taskResult)
 	}
 	if bc := task.PrivateData.BillingContext; taskUsesAdvancedMediaTaskBilling(bc) {
-		if taskResult != nil && taskResult.TotalTokens > 0 {
-			RecalculateTaskQuotaByAdvancedMediaTask(ctx, task, taskResult.TotalTokens)
-		}
+		RecalculateTaskQuotaByAdvancedMediaTask(ctx, task, taskResult)
 		return
 	}
 	// 0. 按次计费的任务不做差额结算

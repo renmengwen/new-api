@@ -1102,6 +1102,10 @@ func TestModelPriceHelperPerCallReturnsAdvancedMediaTaskPriceDataWhenRuleMatches
 	require.Equal(t, 194400, *priceData.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens)
 	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "task_type=video_generation")
 	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "raw_action=generate")
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, types.AdvancedBillingUnitPerMillionTokens, priceData.AdvancedPricingContext.BillingUnit)
+	require.NotNil(t, priceData.AdvancedPricingContext.LiveDurationSecs)
+	require.Equal(t, 5, *priceData.AdvancedPricingContext.LiveDurationSecs)
 	require.Greater(t, priceData.Quota, 0)
 }
 

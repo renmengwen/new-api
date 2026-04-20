@@ -320,7 +320,7 @@ func resolveAdvancedMediaTaskPriceData(ctx AdvancedPricingRuntimeContext, ruleSe
 		BillingMode:            types.BillingModeAdvanced,
 		AdvancedRuleType:       ruleSet.RuleType,
 		AdvancedRuleSnapshot:   buildAdvancedMediaRuleSnapshot(ruleSet.RuleType, ruleSet.TaskType, resolveAdvancedPricingBillingUnit(ruleSet.BillingUnit), segment, runtimeCtx, ctx.PromptTokens),
-		AdvancedPricingContext: buildAdvancedMediaPricingContextSnapshot(resolveAdvancedPricingBillingUnit(ruleSet.BillingUnit), segment),
+		AdvancedPricingContext: buildAdvancedMediaPricingContextSnapshot(resolveAdvancedPricingBillingUnit(ruleSet.BillingUnit), segment, runtimeCtx),
 		UsePrice:               true,
 	}, true, nil
 }
@@ -1162,10 +1162,15 @@ func buildAdvancedPricingContextSnapshot(billingUnit string, segment AdvancedPri
 	}
 }
 
-func buildAdvancedMediaPricingContextSnapshot(billingUnit string, segment AdvancedPriceRule) *types.AdvancedPricingContextSnapshot {
+func buildAdvancedMediaPricingContextSnapshot(billingUnit string, segment AdvancedPriceRule, runtimeCtx advancedMediaRuntimeContext) *types.AdvancedPricingContextSnapshot {
+	var liveDurationSecs *int
+	if runtimeCtx.outputDuration > 0 {
+		liveDurationSecs = cloneAdvancedIntPtr(&runtimeCtx.outputDuration)
+	}
 	return &types.AdvancedPricingContextSnapshot{
 		BillingUnit:      billingUnit,
 		ImageSizeTier:    normalizeAdvancedPricingComparableString(segment.ImageSizeTier),
+		LiveDurationSecs: liveDurationSecs,
 		ToolUsageType:    normalizeAdvancedPricingComparableString(segment.ToolUsageType),
 		ToolUsageCount:   cloneAdvancedIntPtr(segment.ToolUsageCount),
 		FreeQuota:        cloneAdvancedIntPtr(segment.FreeQuota),

@@ -112,17 +112,18 @@ type TaskPrivateData struct {
 
 // TaskBillingContext stores the billing snapshot captured at task submission time.
 type TaskBillingContext struct {
-	ModelPrice           float64                     `json:"model_price,omitempty"` // Model unit price.
-	GroupRatio           float64                     `json:"group_ratio,omitempty"` // Group ratio snapshot.
-	ModelRatio           float64                     `json:"model_ratio,omitempty"` // Model ratio snapshot.
-	GroupRatioCaptured   bool                        `json:"group_ratio_captured,omitempty"`
-	ModelRatioCaptured   bool                        `json:"model_ratio_captured,omitempty"`
-	OtherRatios          map[string]float64          `json:"other_ratios,omitempty"`      // Additional ratio snapshots.
-	OriginModelName      string                      `json:"origin_model_name,omitempty"` // Must be OriginModelName.
-	PerCallBilling       bool                        `json:"per_call_billing,omitempty"`  // Skip polling-time delta settlement.
-	BillingMode          types.BillingMode           `json:"billing_mode,omitempty"`
-	AdvancedRuleType     types.AdvancedRuleType      `json:"advanced_rule_type,omitempty"`
-	AdvancedRuleSnapshot *types.AdvancedRuleSnapshot `json:"advanced_rule,omitempty"`
+	ModelPrice             float64                               `json:"model_price,omitempty"` // Model unit price.
+	GroupRatio             float64                               `json:"group_ratio,omitempty"` // Group ratio snapshot.
+	ModelRatio             float64                               `json:"model_ratio,omitempty"` // Model ratio snapshot.
+	GroupRatioCaptured     bool                                  `json:"group_ratio_captured,omitempty"`
+	ModelRatioCaptured     bool                                  `json:"model_ratio_captured,omitempty"`
+	OtherRatios            map[string]float64                    `json:"other_ratios,omitempty"`      // Additional ratio snapshots.
+	OriginModelName        string                                `json:"origin_model_name,omitempty"` // Must be OriginModelName.
+	PerCallBilling         bool                                  `json:"per_call_billing,omitempty"`  // Skip polling-time delta settlement.
+	BillingMode            types.BillingMode                     `json:"billing_mode,omitempty"`
+	AdvancedRuleType       types.AdvancedRuleType                `json:"advanced_rule_type,omitempty"`
+	AdvancedRuleSnapshot   *types.AdvancedRuleSnapshot           `json:"advanced_rule,omitempty"`
+	AdvancedPricingContext *types.AdvancedPricingContextSnapshot `json:"advanced_pricing_context,omitempty"`
 }
 
 func (c *TaskBillingContext) HasCapturedModelRatio() bool {

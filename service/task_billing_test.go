@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -143,6 +145,65 @@ func makeTask(userId, channelId, quota, tokenId int, billingSource string, subsc
 			},
 		},
 	}
+}
+
+func injectPersistedAdvancedPricingContext(t *testing.T, task *model.Task, contextJSON string) {
+	t.Helper()
+
+	billingContextJSON, err := common.Marshal(task.PrivateData.BillingContext)
+	require.NoError(t, err)
+
+	billingContextBody := strings.TrimSuffix(string(billingContextJSON), "}")
+	if billingContextBody == "" {
+		billingContextBody = "{"
+	}
+	if billingContextBody != "{" {
+		billingContextBody += ","
+	}
+	billingContextBody += `"advanced_pricing_context":` + contextJSON + `}`
+
+	privateDataJSON := fmt.Sprintf(
+		`{"billing_source":%q,"subscription_id":%d,"token_id":%d,"billing_context":%s}`,
+		task.PrivateData.BillingSource,
+		task.PrivateData.SubscriptionId,
+		task.PrivateData.TokenId,
+		billingContextBody,
+	)
+
+	var persisted model.TaskPrivateData
+	require.NoError(t, common.UnmarshalJsonStr(privateDataJSON, &persisted))
+	task.PrivateData = persisted
+}
+
+func TestTaskBillingContextRoundTripPersistsAdvancedPricingContext(t *testing.T) {
+	durationSeconds := 6
+	imageCount := 2
+	raw, err := common.Marshal(model.TaskPrivateData{
+		BillingSource: BillingSourceWallet,
+		BillingContext: &model.TaskBillingContext{
+			BillingMode:        types.BillingModeAdvanced,
+			AdvancedRuleType:   types.AdvancedRuleTypeMediaTask,
+			OriginModelName:    "test-model",
+			AdvancedPricingContext: &types.AdvancedPricingContextSnapshot{
+				BillingUnit:      types.AdvancedBillingUnitPerSecond,
+				LiveDurationSecs: &durationSeconds,
+				ImageCount:       &imageCount,
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	var privateData model.TaskPrivateData
+	require.NoError(t, common.Unmarshal(raw, &privateData))
+	require.NotNil(t, privateData.BillingContext)
+	require.NotNil(t, privateData.BillingContext.AdvancedPricingContext)
+
+	snapshot := privateData.BillingContext.AdvancedPricingContext
+	require.Equal(t, types.AdvancedBillingUnitPerSecond, snapshot.BillingUnit)
+	require.NotNil(t, snapshot.LiveDurationSecs)
+	require.Equal(t, 6, *snapshot.LiveDurationSecs)
+	require.NotNil(t, snapshot.ImageCount)
+	require.Equal(t, 2, *snapshot.ImageCount)
 }
 
 // ---------------------------------------------------------------------------
@@ -897,6 +958,105 @@ func TestSettle_AdvancedMediaTaskWithoutTotalTokensKeepsPreConsumedQuota(t *test
 	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, 0, adaptor.adjustCalls)
 	assert.Equal(t, int64(0), countLogs(t))
+}
+
+func TestSettle_AdvancedMediaTaskPerSecondUsesPersistedContext(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 38, 38, 38
+	const initQuota, tokenRemain = 50000, 40000
+	const preConsumed = 2000
+	const unitPrice = 0.001
+	const durationSeconds = 6
+	const groupRatio = 1.5
+	expectedQuota := int(unitPrice * float64(durationSeconds) * groupRatio * common.QuotaPerUnit)
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-advanced-media-per-second", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.PerCallBilling = true
+	task.PrivateData.BillingContext.BillingMode = types.BillingModeAdvanced
+	task.PrivateData.BillingContext.AdvancedRuleType = types.AdvancedRuleTypeMediaTask
+	task.PrivateData.BillingContext.ModelPrice = unitPrice
+	task.PrivateData.BillingContext.GroupRatio = groupRatio
+	task.PrivateData.BillingContext.AdvancedRuleSnapshot = &types.AdvancedRuleSnapshot{
+		RuleType:     types.AdvancedRuleTypeMediaTask,
+		BillingUnit:  types.AdvancedBillingUnitPerSecond,
+		MatchSummary: "task_type=video_generation, output_duration=6",
+	}
+	injectPersistedAdvancedPricingContext(t, task, `{"billing_unit":"per_second","live_duration_secs":6}`)
+	require.True(t, taskUsesAdvancedMediaTaskBilling(task.PrivateData.BillingContext))
+	actualQuota, reason, ok := calculateTaskQuotaByAdvancedMediaTask(&relaycommon.TaskInfo{Status: model.TaskStatusSuccess}, task.PrivateData.BillingContext)
+	require.True(t, ok)
+	require.Equal(t, expectedQuota, actualQuota)
+	require.Contains(t, reason, "billing_unit=per_second")
+
+	adaptor := &mockAdaptor{adjustReturn: 0}
+	taskResult := &relaycommon.TaskInfo{Status: model.TaskStatusSuccess}
+
+	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+
+	assert.Equal(t, expectedQuota, task.Quota)
+	assert.Equal(t, initQuota-(expectedQuota-preConsumed), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain-(expectedQuota-preConsumed), getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, 0, adaptor.adjustCalls)
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeConsume, log.Type)
+	assert.Contains(t, log.Content, "per_second")
+}
+
+func TestSettle_AdvancedMediaTaskPerImageDefaultsToOneUnitWithoutStoredCount(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 39, 39, 39
+	const initQuota, tokenRemain = 30000, 20000
+	const preConsumed = 18000
+	const unitPrice = 0.003
+	const groupRatio = 2.0
+	expectedQuota := int(unitPrice * groupRatio * common.QuotaPerUnit)
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-advanced-media-per-image", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.PerCallBilling = true
+	task.PrivateData.BillingContext.BillingMode = types.BillingModeAdvanced
+	task.PrivateData.BillingContext.AdvancedRuleType = types.AdvancedRuleTypeMediaTask
+	task.PrivateData.BillingContext.ModelPrice = unitPrice
+	task.PrivateData.BillingContext.GroupRatio = groupRatio
+	task.PrivateData.BillingContext.AdvancedRuleSnapshot = &types.AdvancedRuleSnapshot{
+		RuleType:     types.AdvancedRuleTypeMediaTask,
+		BillingUnit:  types.AdvancedBillingUnitPerImage,
+		MatchSummary: "task_type=image_generation",
+	}
+	injectPersistedAdvancedPricingContext(t, task, `{"billing_unit":"per_image"}`)
+	require.True(t, taskUsesAdvancedMediaTaskBilling(task.PrivateData.BillingContext))
+	actualQuota, reason, ok := calculateTaskQuotaByAdvancedMediaTask(&relaycommon.TaskInfo{Status: model.TaskStatusSuccess}, task.PrivateData.BillingContext)
+	require.True(t, ok)
+	require.Equal(t, expectedQuota, actualQuota)
+	require.Contains(t, reason, "billing_unit=per_image")
+
+	adaptor := &mockAdaptor{adjustReturn: 0}
+	taskResult := &relaycommon.TaskInfo{Status: model.TaskStatusSuccess}
+
+	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+
+	assert.Equal(t, expectedQuota, task.Quota)
+	assert.Equal(t, initQuota+(preConsumed-expectedQuota), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+(preConsumed-expectedQuota), getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, 0, adaptor.adjustCalls)
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Contains(t, log.Content, "per_image")
 }
 
 func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {
