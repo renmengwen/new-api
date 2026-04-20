@@ -1205,6 +1205,19 @@ function getQuotaDisplayType() {
   return localStorage.getItem('quota_display_type') || 'USD';
 }
 
+function normalizeModelPriceForLog(modelPrice = -1, modelRatio = 0) {
+  const price = Number(modelPrice);
+  const ratio = Number(modelRatio);
+
+  if (!Number.isFinite(price)) {
+    return -1;
+  }
+  if (price === 0 && Number.isFinite(ratio) && ratio > 0) {
+    return -1;
+  }
+  return price;
+}
+
 function resolveBillingDisplayMode(displayMode, modelPrice = -1) {
   if (modelPrice !== -1) {
     return 'price';
@@ -1315,6 +1328,7 @@ function renderPriceSimpleCore({
   displayMode = 'price',
   outputMode = 'text',
 }) {
+  modelPrice = normalizeModelPriceForLog(modelPrice, modelRatio);
   const { ratio: effectiveGroupRatio, label: ratioLabel } = getEffectiveRatio(
     groupRatio,
     user_group_ratio,
@@ -1646,6 +1660,7 @@ export function renderModelPrice(
   imageGenerationCallPrice = 0,
   displayMode = 'price',
 ) {
+  modelPrice = normalizeModelPriceForLog(modelPrice, modelRatio);
   const { ratio: effectiveGroupRatio, label: ratioLabel } = getEffectiveRatio(
     groupRatio,
     user_group_ratio,
@@ -2265,6 +2280,7 @@ export function renderAudioModelPrice(
   cacheRatio = 1.0,
   displayMode = 'price',
 ) {
+  modelPrice = normalizeModelPriceForLog(modelPrice, modelRatio);
   const { ratio: effectiveGroupRatio, label: ratioLabel } = getEffectiveRatio(
     groupRatio,
     user_group_ratio,
@@ -2553,6 +2569,7 @@ export function renderClaudeModelPrice(
   cacheCreationRatio1h = 1.0,
   displayMode = 'price',
 ) {
+  modelPrice = normalizeModelPriceForLog(modelPrice, modelRatio);
   const { ratio: effectiveGroupRatio, label: ratioLabel } = getEffectiveRatio(
     groupRatio,
     user_group_ratio,
