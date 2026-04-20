@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -11,7 +12,9 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
@@ -39,6 +42,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	other["request_path"] = c.Request.URL.Path
 	other["model_price"] = info.PriceData.ModelPrice
 	other["group_ratio"] = info.PriceData.GroupRatioInfo.GroupRatio
+	appendTaskPriceDataAdvancedInfo(other, info.PriceData)
 	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
 		other["user_group_ratio"] = info.PriceData.GroupRatioInfo.GroupSpecialRatio
 	}
@@ -132,6 +136,7 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 	if bc := task.PrivateData.BillingContext; bc != nil {
 		other["model_price"] = bc.ModelPrice
 		other["group_ratio"] = bc.GroupRatio
+		appendTaskBillingContextAdvancedInfo(other, bc)
 		if len(bc.OtherRatios) > 0 {
 			for k, v := range bc.OtherRatios {
 				other[k] = v
@@ -146,12 +151,80 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 	return other
 }
 
+func appendTaskPriceDataAdvancedInfo(other map[string]interface{}, priceData types.PriceData) {
+	if other == nil || priceData.BillingMode != types.BillingModeAdvanced {
+		return
+	}
+	other["billing_mode"] = string(priceData.BillingMode)
+	if priceData.AdvancedRuleType != "" {
+		other["advanced_rule_type"] = string(priceData.AdvancedRuleType)
+	}
+	if priceData.AdvancedRuleSnapshot != nil {
+		other["advanced_rule"] = priceData.AdvancedRuleSnapshot
+	}
+}
+
+func appendTaskBillingContextAdvancedInfo(other map[string]interface{}, billingContext *model.TaskBillingContext) {
+	if other == nil || billingContext == nil || billingContext.BillingMode != types.BillingModeAdvanced {
+		return
+	}
+	other["billing_mode"] = string(billingContext.BillingMode)
+	if billingContext.AdvancedRuleType != "" {
+		other["advanced_rule_type"] = string(billingContext.AdvancedRuleType)
+	}
+	if billingContext.AdvancedRuleSnapshot != nil {
+		other["advanced_rule"] = billingContext.AdvancedRuleSnapshot
+	}
+	if billingContext.AdvancedPricingContext != nil {
+		other["advanced_pricing_context"] = billingContext.AdvancedPricingContext
+	}
+}
+
+func taskBillingAdvancedSummary(billingContext *model.TaskBillingContext) string {
+	if billingContext == nil || billingContext.BillingMode != types.BillingModeAdvanced || billingContext.AdvancedRuleSnapshot == nil {
+		return ""
+	}
+	ruleType := billingContext.AdvancedRuleType
+	if ruleType == "" {
+		ruleType = billingContext.AdvancedRuleSnapshot.RuleType
+	}
+	matchSummary := billingContext.AdvancedRuleSnapshot.MatchSummary
+	switch {
+	case ruleType != "" && matchSummary != "":
+		return fmt.Sprintf("advanced rule %s: %s", ruleType, matchSummary)
+	case ruleType != "":
+		return fmt.Sprintf("advanced rule %s", ruleType)
+	case matchSummary != "":
+		return fmt.Sprintf("advanced rule: %s", matchSummary)
+	default:
+		return "advanced rule"
+	}
+}
+
 // taskModelName 从 BillingContext 或 Properties 中获取模型名称。
 func taskModelName(task *model.Task) string {
 	if bc := task.PrivateData.BillingContext; bc != nil && bc.OriginModelName != "" {
 		return bc.OriginModelName
 	}
 	return task.Properties.OriginModelName
+}
+
+func syncTaskUsageToConsumeLog(ctx context.Context, task *model.Task, taskResult *relaycommon.TaskInfo) {
+	if taskResult == nil || taskResult.TotalTokens <= 0 {
+		return
+	}
+
+	completionTokens := taskResult.CompletionTokens
+	promptTokens := 0
+	if completionTokens <= 0 || completionTokens > taskResult.TotalTokens {
+		completionTokens = taskResult.TotalTokens
+	} else {
+		promptTokens = taskResult.TotalTokens - completionTokens
+	}
+
+	if err := model.UpdateConsumeLogTokensByRequestID(task.UserId, task.PrivateData.RequestId, promptTokens, completionTokens); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("回写任务 token 用量到原始消费日志失败 (task=%s, request_id=%s): %s", task.TaskID, task.PrivateData.RequestId, err.Error()))
+	}
 }
 
 // RefundTaskQuota 统一的任务失败退款逻辑。
@@ -191,8 +264,8 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 // RecalculateTaskQuota 通用的异步差额结算。
 // actualQuota 是任务完成后的实际应扣额度，与预扣额度 (task.Quota) 做差额结算。
 // reason 用于日志记录（例如 "token重算" 或 "adaptor调整"）。
-func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string) {
-	if actualQuota <= 0 {
+func recalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string, allowZero bool) {
+	if actualQuota < 0 || (!allowZero && actualQuota == 0) {
 		return
 	}
 	preConsumedQuota := task.Quota
@@ -236,13 +309,22 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	}
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
+	appendTaskBillingModeFromReason(other, task.PrivateData.BillingContext, reason)
 	//other["reason"] = reason
 	other["pre_consumed_quota"] = preConsumedQuota
 	other["actual_quota"] = actualQuota
+	logContent := reason
+	if summary := taskBillingAdvancedSummary(task.PrivateData.BillingContext); summary != "" {
+		if logContent == "" {
+			logContent = summary
+		} else {
+			logContent = fmt.Sprintf("%s | %s", reason, summary)
+		}
+	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:    task.UserId,
 		LogType:   logType,
-		Content:   reason,
+		Content:   logContent,
 		ChannelId: task.ChannelId,
 		ModelName: taskModelName(task),
 		Quota:     logQuota,
@@ -255,21 +337,124 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 // RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。
 // 当任务成功且返回了 totalTokens 时，根据模型倍率和分组倍率重新计算实际扣费额度，
 // 与预扣费的差额进行补扣或退还。支持钱包和订阅计费来源。
-func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens int) {
-	if totalTokens <= 0 {
+func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string) {
+	recalculateTaskQuota(ctx, task, actualQuota, reason, false)
+}
+
+func appendTaskBillingModeFromReason(other map[string]interface{}, billingContext *model.TaskBillingContext, reason string) {
+	if other == nil || billingContext == nil || billingContext.BillingMode == "" {
 		return
+	}
+	if _, exists := other["billing_mode"]; exists {
+		return
+	}
+	if !strings.Contains(reason, "billing_mode="+string(billingContext.BillingMode)) {
+		return
+	}
+	other["billing_mode"] = string(billingContext.BillingMode)
+}
+
+func taskUsesAdvancedMediaTaskBilling(billingContext *model.TaskBillingContext) bool {
+	if billingContext == nil || billingContext.BillingMode != types.BillingModeAdvanced {
+		return false
+	}
+	ruleType := billingContext.AdvancedRuleType
+	if ruleType == "" && billingContext.AdvancedRuleSnapshot != nil {
+		ruleType = billingContext.AdvancedRuleSnapshot.RuleType
+	}
+	return ruleType == types.AdvancedRuleTypeMediaTask
+}
+
+func resolveAdvancedMediaTaskMinTokens(billingContext *model.TaskBillingContext) int {
+	if billingContext == nil || billingContext.AdvancedRuleSnapshot == nil || billingContext.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens == nil {
+		return 0
+	}
+	return *billingContext.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens
+}
+
+func resolveAdvancedMediaTaskBillingUnit(billingContext *model.TaskBillingContext) string {
+	if billingContext != nil && billingContext.AdvancedPricingContext != nil {
+		if billingUnit := strings.TrimSpace(billingContext.AdvancedPricingContext.BillingUnit); billingUnit != "" {
+			return billingUnit
+		}
+	}
+	if billingContext != nil && billingContext.AdvancedRuleSnapshot != nil {
+		if billingUnit := strings.TrimSpace(billingContext.AdvancedRuleSnapshot.BillingUnit); billingUnit != "" {
+			return billingUnit
+		}
+	}
+	return types.AdvancedBillingUnitPerMillionTokens
+}
+
+func resolveAdvancedMediaTaskDurationSeconds(billingContext *model.TaskBillingContext) int {
+	if billingContext != nil && billingContext.AdvancedPricingContext != nil && billingContext.AdvancedPricingContext.LiveDurationSecs != nil {
+		if duration := *billingContext.AdvancedPricingContext.LiveDurationSecs; duration > 0 {
+			return duration
+		}
+	}
+	if billingContext != nil && billingContext.AdvancedRuleSnapshot != nil {
+		if duration := extractAdvancedMediaTaskSummaryInt(billingContext.AdvancedRuleSnapshot.MatchSummary, "output_duration"); duration > 0 {
+			return duration
+		}
+	}
+	return 0
+}
+
+func resolveAdvancedMediaTaskImageCount(billingContext *model.TaskBillingContext) (int, bool) {
+	if billingContext != nil && billingContext.AdvancedPricingContext != nil && billingContext.AdvancedPricingContext.ImageCount != nil {
+		if imageCount := *billingContext.AdvancedPricingContext.ImageCount; imageCount > 0 {
+			return imageCount, false
+		}
+	}
+	return 1, true
+}
+
+func extractAdvancedMediaTaskSummaryInt(summary string, key string) int {
+	prefix := key + "="
+	for _, part := range strings.Split(summary, ",") {
+		part = strings.TrimSpace(part)
+		if !strings.HasPrefix(part, prefix) {
+			continue
+		}
+		value, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(part, prefix)))
+		if err == nil {
+			return value
+		}
+	}
+	return 0
+}
+
+type taskTokenBillingRatios struct {
+	modelRatio         float64
+	groupRatio         float64
+	otherRatios        map[string]float64
+	billingMode        types.BillingMode
+	fromBillingContext bool
+}
+
+func resolveTaskTokenBillingRatios(task *model.Task) (taskTokenBillingRatios, bool) {
+	if task == nil {
+		return taskTokenBillingRatios{}, false
+	}
+	if bc := task.PrivateData.BillingContext; bc != nil &&
+		bc.BillingMode == types.BillingModePerToken &&
+		bc.HasCapturedModelRatio() &&
+		bc.HasCapturedGroupRatio() {
+		return taskTokenBillingRatios{
+			modelRatio:         bc.ModelRatio,
+			groupRatio:         bc.GroupRatio,
+			otherRatios:        bc.OtherRatios,
+			billingMode:        bc.BillingMode,
+			fromBillingContext: true,
+		}, true
 	}
 
 	modelName := taskModelName(task)
-
-	// 获取模型价格和倍率
 	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
-	// 只有配置了倍率(非固定价格)时才按 token 重新计费
-	if !hasRatioSetting || modelRatio <= 0 {
-		return
+	if !hasRatioSetting {
+		return taskTokenBillingRatios{}, false
 	}
 
-	// 获取用户和组的倍率信息
 	group := task.Group
 	if group == "" {
 		user, err := model.GetUserById(task.UserId, false)
@@ -278,22 +463,158 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		}
 	}
 	if group == "" {
-		return
+		return taskTokenBillingRatios{}, false
 	}
 
 	groupRatio := ratio_setting.GetGroupRatio(group)
-	userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
-
-	var finalGroupRatio float64
-	if hasUserGroupRatio {
-		finalGroupRatio = userGroupRatio
-	} else {
-		finalGroupRatio = groupRatio
+	if userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group); hasUserGroupRatio {
+		groupRatio = userGroupRatio
 	}
 
-	// 计算实际应扣费额度: totalTokens * modelRatio * groupRatio
-	actualQuota := int(float64(totalTokens) * modelRatio * finalGroupRatio)
+	return taskTokenBillingRatios{
+		modelRatio:  modelRatio,
+		groupRatio:  groupRatio,
+		billingMode: types.BillingModePerToken,
+	}, true
+}
 
-	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f", totalTokens, modelRatio, finalGroupRatio)
-	RecalculateTaskQuota(ctx, task, actualQuota, reason)
+func calculateTaskQuotaByTokenRatios(totalTokens int, ratios taskTokenBillingRatios) int {
+	quota := float64(totalTokens) * ratios.modelRatio * ratios.groupRatio
+	for _, ratio := range ratios.otherRatios {
+		if ratio > 0 && ratio != 1.0 {
+			quota *= ratio
+		}
+	}
+	return int(quota)
+}
+
+func calculateAdvancedMediaTaskNonTokenQuota(billingContext *model.TaskBillingContext, usageQuantity decimal.Decimal) int {
+	actualQuota := decimal.NewFromFloat(billingContext.ModelPrice).
+		Mul(usageQuantity).
+		Mul(decimal.NewFromFloat(billingContext.GroupRatio)).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
+		IntPart()
+	return int(actualQuota)
+}
+
+func calculateTaskQuotaByAdvancedMediaTask(taskResult *relaycommon.TaskInfo, billingContext *model.TaskBillingContext) (int, string, bool) {
+	if billingContext == nil || billingContext.ModelPrice < 0 {
+		return 0, "", false
+	}
+
+	billingUnit := resolveAdvancedMediaTaskBillingUnit(billingContext)
+	switch billingUnit {
+	case "", types.AdvancedBillingUnitPerMillionTokens:
+		totalTokens := 0
+		if taskResult != nil {
+			totalTokens = taskResult.TotalTokens
+		}
+		if totalTokens <= 0 {
+			return 0, "", false
+		}
+
+		effectiveTokens := totalTokens
+		minTokens := resolveAdvancedMediaTaskMinTokens(billingContext)
+		if minTokens > effectiveTokens {
+			effectiveTokens = minTokens
+		}
+
+		actualQuota := decimal.NewFromFloat(billingContext.ModelPrice).
+			Div(decimal.NewFromInt(1000000)).
+			Mul(decimal.NewFromInt(int64(effectiveTokens))).
+			Mul(decimal.NewFromFloat(billingContext.GroupRatio)).
+			Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
+			IntPart()
+		reason := fmt.Sprintf(
+			"advanced media task recalculation: total_tokens=%d, effective_tokens=%d, min_tokens=%d, unit_price=%.6f, group_ratio=%.2f, billing_unit=%s, billing_mode=%s",
+			totalTokens,
+			effectiveTokens,
+			minTokens,
+			billingContext.ModelPrice,
+			billingContext.GroupRatio,
+			types.AdvancedBillingUnitPerMillionTokens,
+			billingContext.BillingMode,
+		)
+		return int(actualQuota), reason, true
+	case types.AdvancedBillingUnitPerSecond:
+		durationSeconds := resolveAdvancedMediaTaskDurationSeconds(billingContext)
+		if durationSeconds <= 0 {
+			return 0, "", false
+		}
+		reason := fmt.Sprintf(
+			"advanced media task recalculation: billing_unit=%s, duration_seconds=%d, unit_price=%.6f, group_ratio=%.2f, billing_mode=%s",
+			billingUnit,
+			durationSeconds,
+			billingContext.ModelPrice,
+			billingContext.GroupRatio,
+			billingContext.BillingMode,
+		)
+		return calculateAdvancedMediaTaskNonTokenQuota(billingContext, decimal.NewFromInt(int64(durationSeconds))), reason, true
+	case types.AdvancedBillingUnitPerMinute:
+		durationSeconds := resolveAdvancedMediaTaskDurationSeconds(billingContext)
+		if durationSeconds <= 0 {
+			return 0, "", false
+		}
+		usageMinutes := decimal.NewFromInt(int64(durationSeconds)).Div(decimal.NewFromInt(60))
+		reason := fmt.Sprintf(
+			"advanced media task recalculation: billing_unit=%s, duration_seconds=%d, usage_minutes=%s, unit_price=%.6f, group_ratio=%.2f, billing_mode=%s",
+			billingUnit,
+			durationSeconds,
+			usageMinutes.String(),
+			billingContext.ModelPrice,
+			billingContext.GroupRatio,
+			billingContext.BillingMode,
+		)
+		return calculateAdvancedMediaTaskNonTokenQuota(billingContext, usageMinutes), reason, true
+	case types.AdvancedBillingUnitPerImage:
+		imageCount, defaulted := resolveAdvancedMediaTaskImageCount(billingContext)
+		reason := fmt.Sprintf(
+			"advanced media task recalculation: billing_unit=%s, image_count=%d, defaulted=%t, unit_price=%.6f, group_ratio=%.2f, billing_mode=%s",
+			billingUnit,
+			imageCount,
+			defaulted,
+			billingContext.ModelPrice,
+			billingContext.GroupRatio,
+			billingContext.BillingMode,
+		)
+		return calculateAdvancedMediaTaskNonTokenQuota(billingContext, decimal.NewFromInt(int64(imageCount))), reason, true
+	default:
+		return 0, "", false
+	}
+}
+
+func RecalculateTaskQuotaByAdvancedMediaTask(ctx context.Context, task *model.Task, taskResult *relaycommon.TaskInfo) {
+	if task == nil {
+		return
+	}
+
+	billingContext := task.PrivateData.BillingContext
+	if !taskUsesAdvancedMediaTaskBilling(billingContext) {
+		return
+	}
+
+	actualQuota, reason, ok := calculateTaskQuotaByAdvancedMediaTask(taskResult, billingContext)
+	if !ok {
+		return
+	}
+
+	recalculateTaskQuota(ctx, task, actualQuota, reason, true)
+}
+
+func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens int) {
+	if totalTokens <= 0 {
+		return
+	}
+
+	ratios, ok := resolveTaskTokenBillingRatios(task)
+	if !ok {
+		return
+	}
+
+	resolvedActualQuota := calculateTaskQuotaByTokenRatios(totalTokens, ratios)
+	resolvedReason := fmt.Sprintf("token recalculation: tokens=%d, modelRatio=%.2f, groupRatio=%.2f", totalTokens, ratios.modelRatio, ratios.groupRatio)
+	if ratios.fromBillingContext {
+		resolvedReason = fmt.Sprintf("%s, billing_mode=%s", resolvedReason, ratios.billingMode)
+	}
+	recalculateTaskQuota(ctx, task, resolvedActualQuota, resolvedReason, true)
 }

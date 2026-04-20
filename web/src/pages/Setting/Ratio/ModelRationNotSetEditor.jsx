@@ -21,35 +21,52 @@ import React, { useEffect, useState } from 'react';
 import { API, showError } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 import ModelPricingEditor from './components/ModelPricingEditor';
+import { buildFallbackEnabledModelNames } from './enabledModelCandidates';
 
 export default function ModelRatioNotSetEditor(props) {
   const { t } = useTranslation();
   const [enabledModels, setEnabledModels] = useState([]);
+  const [shouldUseFallbackEnabledModels, setShouldUseFallbackEnabledModels] =
+    useState(false);
+  const resolvedEnabledModels = shouldUseFallbackEnabledModels
+    ? buildFallbackEnabledModelNames({
+        options: props.options,
+        initialModelName: props.initialModelName,
+      })
+    : enabledModels;
 
   const getAllEnabledModels = async () => {
+    const fallbackEnabledModels = buildFallbackEnabledModelNames({
+      options: props.options,
+      initialModelName: props.initialModelName,
+    });
     try {
       const res = await API.get('/api/channel/models_enabled');
       const { success, message, data } = res.data;
       if (success) {
+        setShouldUseFallbackEnabledModels(false);
         setEnabledModels(data);
       } else {
+        setShouldUseFallbackEnabledModels(true);
+        setEnabledModels(fallbackEnabledModels);
         showError(message);
       }
     } catch (error) {
+      setShouldUseFallbackEnabledModels(true);
+      setEnabledModels(fallbackEnabledModels);
       console.error(t('获取启用模型失败:'), error);
       showError(t('获取启用模型失败'));
     }
   };
 
   useEffect(() => {
-    // 获取所有启用的模型
     getAllEnabledModels();
-  }, []);
+  }, [props.initialModelName, props.options, t]);
   return (
     <ModelPricingEditor
       options={props.options}
       refresh={props.refresh}
-      candidateModelNames={enabledModels}
+      candidateModelNames={resolvedEnabledModels}
       filterMode='unset'
       allowAddModel={false}
       allowDeleteModel={false}

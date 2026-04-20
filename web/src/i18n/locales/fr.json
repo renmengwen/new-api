@@ -3321,6 +3321,16 @@
     "从剪贴板粘贴配置": "Coller la config",
     "剪贴板中未检测到连接信息": "Aucune info de connexion trouvée dans le presse-papiers",
     "连接信息已填入": "Informations de connexion appliquées",
-    "无法读取剪贴板": "Impossible de lire le presse-papiers"
+    "无法读取剪贴板": "Impossible de lire le presse-papiers",
+    "总 Token": "Tokens totaux",
+    "暂无 token 数据": "Aucune donnée de token",
+    "Top 用户使用金额": "Top utilisateurs par dépenses",
+    "Top 用户 Token 总量": "Top utilisateurs par total de tokens",
+    "按日费用": "Coût quotidien",
+    "自然周同比待接入": "WoW sur semaine calendaire en attente",
+    "自然周同比 新增": "WoW sur semaine calendaire : nouveau",
+    "自然周同比 -": "WoW sur semaine calendaire -",
+    "自然周同比": "WoW sur semaine calendaire",
+    "自然周同比仅在近7天展示": "Le WoW sur semaine calendaire s'affiche uniquement sur les 7 derniers jours"
   }
 }

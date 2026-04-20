@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useState } from 'react';
 import { API } from '../../helpers';
+import { hasPermissionAction, isRootPermissionUser } from './permissionAccess.js';
 import {
   isPermissionSidebarModuleAllowed,
   isPermissionSidebarSectionAllowed,
@@ -55,14 +56,28 @@ export const useUserPermissions = () => {
     loadPermissions();
   }, []);
 
+  const storedUser = (() => {
+    try {
+      const raw = localStorage.getItem('user');
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      return null;
+    }
+  })();
+
+  const rootFallbackUser = permissions || storedUser
+    ? {
+        role: storedUser?.role,
+        user_type: storedUser?.user_type,
+      }
+    : null;
+
   const hasSidebarSettingsPermission = () => {
-    return permissions?.sidebar_settings === true;
+    return permissions?.sidebar_settings === true || isRootPermissionUser(permissions, rootFallbackUser);
   };
 
   const hasActionPermission = (resourceKey, actionKey) => {
-    const actions = permissions?.actions;
-    if (!actions) return false;
-    return actions[`${resourceKey}.${actionKey}`] === true;
+    return hasPermissionAction(permissions, resourceKey, actionKey, rootFallbackUser);
   };
 
   const hasAnyActionPermission = (requiredActions = []) => {

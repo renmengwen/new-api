@@ -1,10 +1,15 @@
 package doubao
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -123,4 +128,52 @@ func TestConvertToRequestPayloadUsesExplicitImageRoles(t *testing.T) {
 	require.Equal(t, "last_frame", payload.Content[2].Role)
 	require.NotNil(t, payload.Content[2].ImageURL)
 	require.Equal(t, "https://example.com/last-frame.png", payload.Content[2].ImageURL.URL)
+}
+
+func TestValidateRequestAndSetActionMarksPromptOnlySeedanceAsTextGenerate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", strings.NewReader(`{
+		"model": "doubao-seedance-2-0-260128",
+		"prompt": "text to video prompt",
+		"size": "1280x720",
+		"duration": 5,
+		"metadata": {
+			"aspect_ratio": "16:9",
+			"resolution": "720p",
+			"input_video": false
+		}
+	}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+	adaptor := &TaskAdaptor{}
+
+	taskErr := adaptor.ValidateRequestAndSetAction(c, info)
+	require.Nil(t, taskErr)
+	require.Equal(t, constant.TaskActionTextGenerate, info.Action)
+}
+
+func TestValidateRequestAndSetActionMarksReferenceInputsAsGenerate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", strings.NewReader(`{
+		"model": "doubao-seedance-2-0-260128",
+		"prompt": "reference video prompt",
+		"metadata": {
+			"videos": ["https://example.com/reference.mp4"]
+		}
+	}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+	adaptor := &TaskAdaptor{}
+
+	taskErr := adaptor.ValidateRequestAndSetAction(c, info)
+	require.Nil(t, taskErr)
+	require.Equal(t, constant.TaskActionGenerate, info.Action)
 }

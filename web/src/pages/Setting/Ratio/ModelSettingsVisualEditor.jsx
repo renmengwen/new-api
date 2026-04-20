@@ -22,16 +22,29 @@ import { Spin } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { API, showError } from '../../../helpers';
 import ModelPricingEditor from './components/ModelPricingEditor';
+import { buildFallbackEnabledModelNames } from './enabledModelCandidates';
 
 export default function ModelSettingsVisualEditor(props) {
   const { t } = useTranslation();
   const [enabledModels, setEnabledModels] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [shouldUseFallbackEnabledModels, setShouldUseFallbackEnabledModels] =
+    useState(false);
+  const resolvedEnabledModels = shouldUseFallbackEnabledModels
+    ? buildFallbackEnabledModelNames({
+        options: props.options,
+        initialModelName: props.initialModelName,
+      })
+    : enabledModels;
 
   useEffect(() => {
     let active = true;
 
     const loadEnabledModels = async () => {
+      const fallbackEnabledModels = buildFallbackEnabledModelNames({
+        options: props.options,
+        initialModelName: props.initialModelName,
+      });
       setLoading(true);
       try {
         const res = await API.get('/api/channel/models_enabled');
@@ -40,18 +53,21 @@ export default function ModelSettingsVisualEditor(props) {
           return;
         }
         if (success) {
+          setShouldUseFallbackEnabledModels(false);
           setEnabledModels(Array.isArray(data) ? data : []);
         } else {
+          setShouldUseFallbackEnabledModels(true);
+          setEnabledModels(fallbackEnabledModels);
           showError(message);
-          setEnabledModels([]);
         }
       } catch (error) {
         if (!active) {
           return;
         }
+        setShouldUseFallbackEnabledModels(true);
+        setEnabledModels(fallbackEnabledModels);
         console.error(t('获取启用模型失败:'), error);
         showError(t('获取启用模型失败'));
-        setEnabledModels([]);
       } finally {
         if (active) {
           setLoading(false);
@@ -64,7 +80,7 @@ export default function ModelSettingsVisualEditor(props) {
     return () => {
       active = false;
     };
-  }, [t]);
+  }, [props.initialModelName, props.options, t]);
 
   if (loading) {
     return (
@@ -78,9 +94,12 @@ export default function ModelSettingsVisualEditor(props) {
     <ModelPricingEditor
       options={props.options}
       refresh={props.refresh}
-      candidateModelNames={enabledModels}
+      candidateModelNames={resolvedEnabledModels}
       filterMode='enabled'
+      initialSelectedModelName={props.initialModelName}
+      initialSelectionVersion={props.initialModelSelectionKey}
       allowAddModel={false}
+      onEditAdvancedRules={(model) => props.onOpenAdvancedPricingRules?.(model)}
       listDescription={t(
         '此页面仅显示渠道管理中已配置且已启用的模型，未启用模型的价格配置会继续保留。',
       )}

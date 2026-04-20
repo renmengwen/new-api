@@ -19,6 +19,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -187,20 +188,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
 	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
 	//    ResolveOriginTask 可能已在 remix 路径中预设了 OtherRatios，此处合并。
-	if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
-		for k, v := range estimatedRatios {
-			info.PriceData.AddOtherRatio(k, v)
-		}
-	}
-
-	// 6. 将 OtherRatios 应用到基础额度
-	if !common.StringsContains(constant.TaskPricePatches, modelName) {
-		for _, ra := range info.PriceData.OtherRatios {
-			if ra != 1.0 {
-				info.PriceData.Quota = int(float64(info.PriceData.Quota) * ra)
-			}
-		}
-	}
+	applyEstimatedTaskOtherRatios(info, modelName, adaptor.EstimateBilling(c, info))
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
 	if info.Billing == nil && !info.PriceData.FreeModel {
@@ -241,13 +229,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 
 	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios
-	finalQuota := info.PriceData.Quota
-	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); len(adjustedRatios) > 0 {
-		// 基于调整后的 ratios 重新计算 quota
-		finalQuota = recalcQuotaFromRatios(info, adjustedRatios)
-		info.PriceData.OtherRatios = adjustedRatios
-		info.PriceData.Quota = finalQuota
-	}
+	finalQuota := applyAdjustedTaskOtherRatios(info, adaptor.AdjustBillingOnSubmit(info, taskData))
 
 	return &TaskSubmitResult{
 		UpstreamTaskID: upstreamTaskID,
@@ -255,6 +237,44 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		Platform:       platform,
 		Quota:          finalQuota,
 	}, nil
+}
+
+func shouldBypassLegacyTaskOtherRatios(priceData types.PriceData) bool {
+	return priceData.BillingMode == types.BillingModeAdvanced &&
+		priceData.AdvancedRuleType == types.AdvancedRuleTypeMediaTask
+}
+
+func applyEstimatedTaskOtherRatios(info *relaycommon.RelayInfo, modelName string, estimatedRatios map[string]float64) {
+	baseQuota := info.PriceData.Quota
+	for k, v := range estimatedRatios {
+		info.PriceData.AddOtherRatio(k, v)
+	}
+	if shouldBypassLegacyTaskOtherRatios(info.PriceData) {
+		info.PriceData.Quota = baseQuota
+		info.PriceData.OtherRatios = nil
+		return
+	}
+	if !common.StringsContains(constant.TaskPricePatches, modelName) {
+		for _, ra := range info.PriceData.OtherRatios {
+			if ra != 1.0 {
+				info.PriceData.Quota = int(float64(info.PriceData.Quota) * ra)
+			}
+		}
+	}
+}
+
+func applyAdjustedTaskOtherRatios(info *relaycommon.RelayInfo, adjustedRatios map[string]float64) int {
+	finalQuota := info.PriceData.Quota
+	if shouldBypassLegacyTaskOtherRatios(info.PriceData) {
+		info.PriceData.OtherRatios = nil
+		return finalQuota
+	}
+	if len(adjustedRatios) > 0 {
+		finalQuota = recalcQuotaFromRatios(info, adjustedRatios)
+		info.PriceData.OtherRatios = adjustedRatios
+		info.PriceData.Quota = finalQuota
+	}
+	return finalQuota
 }
 
 // recalcQuotaFromRatios 根据 adjustedRatios 重新计算 quota。

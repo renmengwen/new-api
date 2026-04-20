@@ -114,8 +114,30 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
-	// Accept only POST /v1/video/generations as "generate" action.
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
+	if err := relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate); err != nil {
+		return err
+	}
+
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return service.TaskErrorWrapper(err, "get_task_request_failed", http.StatusBadRequest)
+	}
+
+	action := constant.TaskActionTextGenerate
+	if metadataAction, ok := req.Metadata["action"]; ok {
+		if parsedAction, ok := metadataAction.(string); ok && strings.TrimSpace(parsedAction) != "" {
+			action = parsedAction
+		}
+	} else if req.HasImage() ||
+		hasSeedanceReferenceURLs(req.Metadata["videos"]) ||
+		hasSeedanceReferenceURLs(req.Metadata["video_url"]) ||
+		hasSeedanceReferenceURLs(req.Metadata["audios"]) ||
+		hasSeedanceReferenceURLs(req.Metadata["audio_url"]) {
+		action = constant.TaskActionGenerate
+	}
+
+	info.Action = action
+	return nil
 }
 
 // BuildRequestURL constructs the upstream URL.

@@ -22,6 +22,7 @@ import { Card, Spin, Tabs } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 
 import GroupRatioSettings from '../../pages/Setting/Ratio/GroupRatioSettings';
+import AdvancedPricingRulesPage from '../../pages/Setting/Ratio/AdvancedPricingRulesPage';
 import ModelRatioSettings from '../../pages/Setting/Ratio/ModelRatioSettings';
 import ModelSettingsVisualEditor from '../../pages/Setting/Ratio/ModelSettingsVisualEditor';
 import ModelRatioNotSetEditor from '../../pages/Setting/Ratio/ModelRationNotSetEditor';
@@ -31,6 +32,11 @@ import { API, showError, toBoolean } from '../../helpers';
 
 const RatioSetting = () => {
   const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState('visual');
+  const [pendingAdvancedPricingModelName, setPendingAdvancedPricingModelName] = useState('');
+  const [advancedPricingInitialModelSelectionKey, setAdvancedPricingInitialModelSelectionKey] = useState(0);
+  const [pendingPricingModelName, setPendingPricingModelName] = useState('');
+  const [pricingInitialModelSelectionKey, setPricingInitialModelSelectionKey] = useState(0);
 
   let [inputs, setInputs] = useState({
     ModelPrice: '',
@@ -93,11 +99,27 @@ const RatioSetting = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleTabChange = (itemKey) => {
+    setActiveTab(itemKey);
+  };
+
+  const handleOpenAdvancedPricingRules = (model) => {
+    setPendingAdvancedPricingModelName(model?.name || '');
+    setAdvancedPricingInitialModelSelectionKey((previous) => previous + 1);
+    setActiveTab('advanced_pricing');
+  };
+
+  const handleBackToPricing = (modelName) => {
+    setPendingPricingModelName(modelName || '');
+    setPricingInitialModelSelectionKey((previous) => previous + 1);
+    setActiveTab('visual');
+  };
+
   return (
     <Spin spinning={loading} size='large'>
       {/* 模型倍率设置以及价格编辑器 */}
       <Card style={{ marginTop: '10px' }}>
-        <Tabs type='card' defaultActiveKey='visual'>
+        <Tabs type='card' activeKey={activeTab} onChange={handleTabChange}>
           <Tabs.TabPane tab={t('模型倍率设置')} itemKey='model'>
             <ModelRatioSettings options={inputs} refresh={onRefresh} />
           </Tabs.TabPane>
@@ -105,7 +127,22 @@ const RatioSetting = () => {
             <GroupRatioSettings options={inputs} refresh={onRefresh} />
           </Tabs.TabPane>
           <Tabs.TabPane tab={t('价格设置')} itemKey='visual'>
-            <ModelSettingsVisualEditor options={inputs} refresh={onRefresh} />
+            <ModelSettingsVisualEditor
+              options={inputs}
+              refresh={onRefresh}
+              initialModelName={pendingPricingModelName}
+              initialModelSelectionKey={pricingInitialModelSelectionKey}
+              onOpenAdvancedPricingRules={handleOpenAdvancedPricingRules}
+            />
+          </Tabs.TabPane>
+          <Tabs.TabPane tab={t('高级定价规则')} itemKey='advanced_pricing'>
+            <AdvancedPricingRulesPage
+              options={inputs}
+              refresh={onRefresh}
+              initialModelName={pendingAdvancedPricingModelName}
+              initialModelSelectionKey={advancedPricingInitialModelSelectionKey}
+              onBackToPricing={handleBackToPricing}
+            />
           </Tabs.TabPane>
           <Tabs.TabPane tab={t('未设置价格模型')} itemKey='unset_models'>
             <ModelRatioNotSetEditor options={inputs} refresh={onRefresh} />

@@ -536,11 +536,19 @@ func truncateBase64(s string) string {
 }
 
 // settleTaskBillingOnComplete 任务完成时的统一计费调整。
-// 优先级：1. adaptor.AdjustBillingOnComplete 返回正数 → 使用 adaptor 计算的额度
-//
-//  2. taskResult.TotalTokens > 0 → 按 token 重算
-//  3. 都不满足 → 保持预扣额度不变
+// 优先级：
+//  1. advanced media_task dedicated 结算
+//  2. adaptor.AdjustBillingOnComplete 返回正数 → 使用 adaptor 计算的额度
+//  3. taskResult.TotalTokens > 0 → 按 token 重算
+//  4. 都不满足 → 保持预扣额度不变
 func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo) {
+	if taskResult != nil && taskResult.TotalTokens > 0 {
+		syncTaskUsageToConsumeLog(ctx, task, taskResult)
+	}
+	if bc := task.PrivateData.BillingContext; taskUsesAdvancedMediaTaskBilling(bc) {
+		RecalculateTaskQuotaByAdvancedMediaTask(ctx, task, taskResult)
+		return
+	}
 	// 0. 按次计费的任务不做差额结算
 	if bc := task.PrivateData.BillingContext; bc != nil && bc.PerCallBilling {
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次计费，跳过差额结算", task.TaskID))

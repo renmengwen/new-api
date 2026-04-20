@@ -47,7 +47,7 @@ func GetUsageLogExportUseTimeLabel(log *model.Log) string {
 
 func GetUsageLogExportCostLabel(log *model.Log, requestedQuotaDisplayType string) string {
 	quotaDisplayType := normalizeUsageLogQuotaDisplayType(requestedQuotaDisplayType)
-	quotaText := formatUsageLogQuota(log.Quota, quotaDisplayType, 6)
+	quotaText := formatQuotaForDisplay(int64(log.Quota), quotaDisplayType, 6)
 	other := parseUsageLogOther(log.Other)
 	if usageLogOtherString(other, "billing_source") != "subscription" {
 		return quotaText
@@ -56,6 +56,14 @@ func GetUsageLogExportCostLabel(log *model.Log, requestedQuotaDisplayType string
 		return "由订阅抵扣（等价额度：" + quotaText + "）"
 	}
 	return "由订阅抵扣（等价金额：" + quotaText + "）"
+}
+
+func FormatAnalyticsExportCostLabel(quota int64, requestedQuotaDisplayType string) string {
+	quotaDisplayType := normalizeUsageLogQuotaDisplayType(requestedQuotaDisplayType)
+	if quotaDisplayType == operation_setting.QuotaDisplayTypeTokens {
+		return formatCompactQuota(quota)
+	}
+	return formatQuotaForDisplay(quota, quotaDisplayType, 2)
 }
 
 func normalizeUsageLogQuotaDisplayType(requestedQuotaDisplayType string) string {
@@ -71,9 +79,9 @@ func normalizeUsageLogQuotaDisplayType(requestedQuotaDisplayType string) string 
 	}
 }
 
-func formatUsageLogQuota(quota int, quotaDisplayType string, digits int) string {
+func formatQuotaForDisplay(quota int64, quotaDisplayType string, digits int) string {
 	if quotaDisplayType == operation_setting.QuotaDisplayTypeTokens || common.QuotaPerUnit <= 0 {
-		return strconv.Itoa(quota)
+		return strconv.FormatInt(quota, 10)
 	}
 
 	amount := float64(quota) / common.QuotaPerUnit
@@ -89,6 +97,8 @@ func formatUsageLogQuota(quota int, quotaDisplayType string, digits int) string 
 		}
 		if generalSetting.CustomCurrencySymbol != "" {
 			symbol = generalSetting.CustomCurrencySymbol
+		} else {
+			symbol = "¤"
 		}
 	}
 
@@ -100,6 +110,19 @@ func formatUsageLogQuota(quota int, quotaDisplayType string, digits int) string 
 		}
 	}
 	return symbol + fixedAmount
+}
+
+func formatCompactQuota(quota int64) string {
+	switch {
+	case quota >= 1000000000:
+		return strconv.FormatFloat(float64(quota)/1000000000, 'f', 1, 64) + "B"
+	case quota >= 1000000:
+		return strconv.FormatFloat(float64(quota)/1000000, 'f', 1, 64) + "M"
+	case quota >= 10000:
+		return strconv.FormatFloat(float64(quota)/1000, 'f', 1, 64) + "k"
+	default:
+		return strconv.FormatInt(quota, 10)
+	}
 }
 
 func parseUsageLogOther(otherJSON string) map[string]any {

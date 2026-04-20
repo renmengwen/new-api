@@ -43,6 +43,7 @@ const routerMap = {
   'user-permissions': '/console/user-permissions',
   'quota-ledger': '/console/quota-ledger',
   'audit-logs': '/console/audit-logs',
+  'operations-analytics': '/console/operations-analytics',
   subscription: '/console/subscription',
   log: '/console/log',
   midjourney: '/console/midjourney',
@@ -211,6 +212,11 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('审计日志'),
         itemKey: 'audit-logs',
         to: '/console/audit-logs',
+      },
+      {
+        text: t('运营分析台'),
+        itemKey: 'operations-analytics',
+        to: '/console/operations-analytics',
       },
       {
         text: t('系统设置'),

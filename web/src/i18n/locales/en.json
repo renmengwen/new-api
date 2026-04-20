@@ -3365,6 +3365,16 @@
     "从剪贴板粘贴配置": "Paste Config",
     "剪贴板中未检测到连接信息": "No connection info found in clipboard",
     "连接信息已填入": "Connection info applied",
-    "无法读取剪贴板": "Cannot read clipboard"
+    "无法读取剪贴板": "Cannot read clipboard",
+    "总 Token": "Total Tokens",
+    "暂无 token 数据": "No token data",
+    "Top 用户使用金额": "Top Users by Spend",
+    "Top 用户 Token 总量": "Top Users by Total Tokens",
+    "按日费用": "Daily Cost",
+    "自然周同比待接入": "Calendar-week WoW pending",
+    "自然周同比 新增": "Calendar-week WoW: New",
+    "自然周同比 -": "Calendar-week WoW -",
+    "自然周同比": "Calendar-week WoW",
+    "自然周同比仅在近7天展示": "Calendar-week WoW is only shown for the last 7 days"
   }
 }

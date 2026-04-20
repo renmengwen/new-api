@@ -26,8 +26,13 @@ export const resolveInitialVisibleModelNames = ({
   isBasePricingUnset,
 }) => {
   if (filterMode === 'unset') {
+    const enabledNames = toNameSet(candidateModelNames);
     return nextModels
-      .filter((model) => isBasePricingUnset(model))
+      .filter(
+        (model) =>
+          isBasePricingUnset(model) &&
+          (!candidateModelNames.length || enabledNames.has(model.name)),
+      )
       .map((model) => model.name);
   }
 
@@ -48,8 +53,11 @@ export const resolveVisibleModels = ({
   initialVisibleModelNames = [],
 }) => {
   if (filterMode === 'unset') {
-    return models.filter((model) =>
-      initialVisibleModelNames.includes(model.name),
+    const enabledNames = toNameSet(candidateModelNames);
+    return models.filter(
+      (model) =>
+        initialVisibleModelNames.includes(model.name) &&
+        (!candidateModelNames.length || enabledNames.has(model.name)),
     );
   }
 

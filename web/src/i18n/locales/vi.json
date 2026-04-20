@@ -3872,6 +3872,16 @@
     "从剪贴板粘贴配置": "Dán cấu hình",
     "剪贴板中未检测到连接信息": "Không tìm thấy thông tin kết nối trong bộ nhớ tạm",
     "连接信息已填入": "Đã áp dụng thông tin kết nối",
-    "无法读取剪贴板": "Không thể đọc bộ nhớ tạm"
+    "无法读取剪贴板": "Không thể đọc bộ nhớ tạm",
+    "总 Token": "Tổng Token",
+    "暂无 token 数据": "Chưa có dữ liệu token",
+    "Top 用户使用金额": "Top người dùng theo chi tiêu",
+    "Top 用户 Token 总量": "Top người dùng theo tổng Token",
+    "按日费用": "Chi phí theo ngày",
+    "自然周同比待接入": "WoW theo tuần dương lịch đang chờ tích hợp",
+    "自然周同比 新增": "WoW theo tuần dương lịch: mới",
+    "自然周同比 -": "WoW theo tuần dương lịch -",
+    "自然周同比": "WoW theo tuần dương lịch",
+    "自然周同比仅在近7天展示": "WoW theo tuần dương lịch chỉ hiển thị trong 7 ngày gần nhất"
   }
 }
