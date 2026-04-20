@@ -74,6 +74,7 @@ test('advanced pricing preview wires modality, image tier, and tool usage scaffo
   assert.match(previewSource, /onPreviewInputChange\?\.\('imageSizeTier', value\)/);
   assert.match(previewSource, /onPreviewInputChange\?\.\('toolUsageType', value\)/);
   assert.match(previewSource, /onPreviewInputChange\?\.\('toolUsageCount', value\)/);
+  assert.match(previewSource, /toolOveragePrice/);
   assert.match(previewSource, /freeQuota/);
   assert.match(previewSource, /overageThreshold/);
   assert.match(previewSource, /cacheStoragePrice/);

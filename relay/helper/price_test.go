@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -393,6 +394,79 @@ func TestModelPriceHelperMatchesAdvancedTextSegmentByResponsesGoogleSearchUsageW
 	require.Equal(t, 3, *priceData.AdvancedPricingContext.ToolUsageCount)
 }
 
+func TestModelPriceHelper_MatchesGroundingRuleCarriesDedicatedToolOveragePrice(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"responses-grounding-overage-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"responses-grounding-overage-model": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_1000_calls",
+			"segments": [
+				{
+					"priority": 10,
+					"input_price": 2
+				},
+				{
+					"priority": 20,
+					"tool_usage_type": "grounding",
+					"tool_usage_count": 2,
+					"free_quota": 1000,
+					"overage_threshold": 500,
+					"input_price": 2,
+					"tool_overage_price": 14
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "responses-grounding-overage-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         &dto.OpenAIResponsesRequest{},
+		ResponsesUsageInfo: &relaycommon.ResponsesUsageInfo{
+			BuiltInTools: map[string]*relaycommon.BuildInToolInfo{
+				dto.BuildInToolWebSearchPreview: {
+					ToolName:          dto.BuildInToolWebSearchPreview,
+					CallCount:         3,
+					SearchContextSize: "medium",
+				},
+			},
+		},
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{})
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "google_search", priceData.AdvancedRuleSnapshot.ToolUsageType)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_type=google_search")
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_count=3")
+	require.NotNil(t, priceData.AdvancedRuleSnapshot.ThresholdSnapshot.FreeQuota)
+	require.Equal(t, 1000, *priceData.AdvancedRuleSnapshot.ThresholdSnapshot.FreeQuota)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot.ThresholdSnapshot.OverageThreshold)
+	require.Equal(t, 500, *priceData.AdvancedRuleSnapshot.ThresholdSnapshot.OverageThreshold)
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, "google_search", priceData.AdvancedPricingContext.ToolUsageType)
+	require.NotNil(t, priceData.AdvancedPricingContext.ToolUsageCount)
+	require.Equal(t, 3, *priceData.AdvancedPricingContext.ToolUsageCount)
+	require.NotNil(t, priceData.AdvancedPricingContext.FreeQuota)
+	require.Equal(t, 1000, *priceData.AdvancedPricingContext.FreeQuota)
+	require.NotNil(t, priceData.AdvancedPricingContext.OverageThreshold)
+	require.Equal(t, 500, *priceData.AdvancedPricingContext.OverageThreshold)
+
+	snapshotJSON, err := common.Marshal(priceData.AdvancedRuleSnapshot)
+	require.NoError(t, err)
+	require.Contains(t, string(snapshotJSON), `"tool_overage_price":14`)
+
+	contextJSON, err := common.Marshal(priceData.AdvancedPricingContext)
+	require.NoError(t, err)
+	require.Contains(t, string(contextJSON), `"tool_overage_price":14`)
+}
+
 func TestModelPriceHelperMatchesAdvancedTextSegmentByResponsesGoogleSearchUsageWithWebSearchRule(t *testing.T) {
 	restoreRatioSettings(t)
 
@@ -491,6 +565,59 @@ func TestModelPriceHelperMatchesAdvancedTextSegmentByClaudeGoogleSearchUsageWith
 	require.Equal(t, "google_search", priceData.AdvancedPricingContext.ToolUsageType)
 	require.NotNil(t, priceData.AdvancedPricingContext.ToolUsageCount)
 	require.Equal(t, 2, *priceData.AdvancedPricingContext.ToolUsageCount)
+}
+
+func TestModelPriceHelperMatchesAdvancedTextSegmentByResponsesGoogleMapsUsage(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"responses-google-maps-model":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"responses-google-maps-model": {
+			"rule_type": "text_segment",
+			"billing_unit": "per_1000_calls",
+			"segments": [
+				{
+					"priority": 10,
+					"input_price": 1
+				},
+				{
+					"priority": 20,
+					"tool_usage_type": "google_maps",
+					"tool_usage_count": 2,
+					"input_price": 5
+				}
+			]
+		}
+	}`))
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "responses-google-maps-model",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         &dto.OpenAIResponsesRequest{},
+		ResponsesUsageInfo: &relaycommon.ResponsesUsageInfo{
+			BuiltInTools: map[string]*relaycommon.BuildInToolInfo{
+				"google_maps": {
+					ToolName:  "google_maps",
+					CallCount: 3,
+				},
+			},
+		},
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 128, &types.TokenCountMeta{})
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.NotNil(t, priceData.AdvancedRuleSnapshot)
+	require.Equal(t, "google_maps", priceData.AdvancedRuleSnapshot.ToolUsageType)
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_type=google_maps")
+	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "tool_usage_count=3")
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, "google_maps", priceData.AdvancedPricingContext.ToolUsageType)
+	require.NotNil(t, priceData.AdvancedPricingContext.ToolUsageCount)
+	require.Equal(t, 3, *priceData.AdvancedPricingContext.ToolUsageCount)
 }
 
 func TestModelPriceHelperMatchesAdvancedTextSegmentPerSecondForGeminiLiveAudio(t *testing.T) {
@@ -975,6 +1102,10 @@ func TestModelPriceHelperPerCallReturnsAdvancedMediaTaskPriceDataWhenRuleMatches
 	require.Equal(t, 194400, *priceData.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens)
 	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "task_type=video_generation")
 	require.Contains(t, priceData.AdvancedRuleSnapshot.MatchSummary, "raw_action=generate")
+	require.NotNil(t, priceData.AdvancedPricingContext)
+	require.Equal(t, types.AdvancedBillingUnitPerMillionTokens, priceData.AdvancedPricingContext.BillingUnit)
+	require.NotNil(t, priceData.AdvancedPricingContext.LiveDurationSecs)
+	require.Equal(t, 5, *priceData.AdvancedPricingContext.LiveDurationSecs)
 	require.Greater(t, priceData.Quota, 0)
 }
 
@@ -1079,13 +1210,9 @@ func TestModelPriceHelperPerCallDoesNotMatchAdvancedMediaTaskWhenCanonicalTaskTy
 	}
 	info.TaskRelayInfo = &relaycommon.TaskRelayInfo{Action: constant.TaskActionGenerate}
 
-	priceData, err := ModelPriceHelperPerCall(c, info)
-	require.NoError(t, err)
-
-	require.Equal(t, types.BillingModePerRequest, priceData.BillingMode)
-	require.True(t, priceData.UsePrice)
-	require.Equal(t, 0.3, priceData.ModelPrice)
-	require.Nil(t, priceData.AdvancedRuleSnapshot)
+	_, err := ModelPriceHelperPerCall(c, info)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "advanced pricing did not match any active rule")
 }
 
 func TestModelPriceHelperPerCallMatchesAdvancedMediaTaskWhenLegacyRawActionTaskTypeConfigured(t *testing.T) {

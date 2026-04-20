@@ -206,6 +206,12 @@ export default function MediaTaskRuleEditor({
         regex: INTEGER_INPUT_REGEX,
       },
       {
+        field: 'toolOveragePrice',
+        label: t('超额单价'),
+        placeholder: t('选填'),
+        regex: DECIMAL_INPUT_REGEX,
+      },
+      {
         field: 'freeQuota',
         label: t('免费额度'),
         placeholder: t('可选'),

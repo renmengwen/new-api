@@ -189,6 +189,11 @@ test('advanced non-token unit price helper matches settlement inputs and keeps d
     /const resolveAdvancedNonTokenUnitPrice = \(snapshot, other\) => \{/,
   );
   assert.match(hookSource, /priceSnapshot\.cache_storage_price/);
+  assert.match(hookSource, /priceSnapshot\.tool_overage_price/);
+  assert.match(
+    hookSource,
+    /if \(billingUnit === 'per_1000_calls'\) \{\s*return \(\s*toAdvancedNumber\(priceSnapshot\.tool_overage_price\) \?\?\s*toAdvancedNumber\(priceSnapshot\.input_price\) \?\?/,
+  );
   assert.match(
     hookSource,
     /buildAdvancedPriceSummary[\s\S]*resolveAdvancedNonTokenUnitPrice\(snapshot,\s*other\)/,

@@ -260,6 +260,7 @@ export const createEmptyTextSegmentRule = (seed = Date.now()) => ({
   imageSizeTier: '',
   toolUsageType: '',
   toolUsageCount: '',
+  toolOveragePrice: '',
   freeQuota: '',
   overageThreshold: '',
 });
@@ -296,6 +297,7 @@ const TEXT_SEGMENT_RULE_EDITOR_ONLY_KEYS = new Set([
   'imageSizeTier',
   'toolUsageType',
   'toolUsageCount',
+  'toolOveragePrice',
   'freeQuota',
   'overageThreshold',
 ]);
@@ -370,6 +372,9 @@ export const normalizeTextSegmentRule = (rule, index = 0) => ({
   toolUsageCount: normalizeNumericField(
     rule?.toolUsageCount ?? rule?.tool_usage_count,
   ),
+  toolOveragePrice: normalizeNumericField(
+    rule?.toolOveragePrice ?? rule?.tool_overage_price,
+  ),
   freeQuota: normalizeNumericField(rule?.freeQuota ?? rule?.free_quota),
   overageThreshold: normalizeNumericField(
     rule?.overageThreshold ?? rule?.overage_threshold,
@@ -425,6 +430,7 @@ export const createEmptyMediaTaskRule = (seed = Date.now()) => ({
   draftCoefficient: '',
   toolUsageType: '',
   toolUsageCount: '',
+  toolOveragePrice: '',
   freeQuota: '',
   overageThreshold: '',
   remark: '',
@@ -478,6 +484,9 @@ export const normalizeMediaTaskRule = (rule, index = 0) => ({
   ),
   toolUsageCount: normalizeNumericField(
     rule?.toolUsageCount ?? rule?.tool_usage_count,
+  ),
+  toolOveragePrice: normalizeNumericField(
+    rule?.toolOveragePrice ?? rule?.tool_overage_price,
   ),
   freeQuota: normalizeNumericField(rule?.freeQuota ?? rule?.free_quota),
   overageThreshold: normalizeNumericField(
@@ -717,6 +726,7 @@ export const serializeMediaTaskRule = (rule) => {
   const unitPrice = toNullableNumber(normalizedRule.unitPrice);
   const minTokens = toNullableNumber(normalizedRule.minTokens);
   const toolUsageCount = toNullableNumber(normalizedRule.toolUsageCount);
+  const toolOveragePrice = toNullableNumber(normalizedRule.toolOveragePrice);
   const audio = toBooleanRuleValue(normalizedRule.audio);
   const inputVideo = toBooleanRuleValue(normalizedRule.inputVideo);
   const draft = toBooleanRuleValue(normalizedRule.draft);
@@ -779,6 +789,9 @@ export const serializeMediaTaskRule = (rule) => {
   }
   if (toolUsageCount !== null) {
     serializedRule.tool_usage_count = toolUsageCount;
+  }
+  if (toolOveragePrice !== null) {
+    serializedRule.tool_overage_price = toolOveragePrice;
   }
   const freeQuota = toNullableNumber(normalizedRule.freeQuota);
   if (freeQuota !== null) {
@@ -868,6 +881,11 @@ export const serializeTextSegmentRule = (rule) => {
     serializedRule,
     'tool_usage_count',
     normalizedRule.toolUsageCount,
+  );
+  setSerializedNumberField(
+    serializedRule,
+    'tool_overage_price',
+    normalizedRule.toolOveragePrice,
   );
   setSerializedNumberField(serializedRule, 'free_quota', normalizedRule.freeQuota);
   setSerializedNumberField(
@@ -1291,6 +1309,7 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
         imageSizeTier: '',
         toolUsageType: '',
         toolUsageCount: '',
+        toolOveragePrice: '',
         imageCount: '',
         liveDurationSecs: '',
         freeQuota: '',
@@ -1310,8 +1329,11 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
     toNullableNumber(
       matchedRule?.overageThreshold ?? matchedRule?.overage_threshold,
     ) ?? 1000;
+  const toolOveragePrice =
+    toNullableNumber(matchedRule?.toolOveragePrice ?? matchedRule?.tool_overage_price) ??
+    inputPrice;
   const unitPrice =
-    billingUnit === 'per_1000_calls' ? inputPrice : inputPrice + outputPrice;
+    billingUnit === 'per_1000_calls' ? toolOveragePrice : inputPrice + outputPrice;
   const perTokenTotalCost =
     (inputTokens * inputPrice + outputTokens * outputPrice) / MILLION;
   const matchedSegmentPreview = serializeTextSegmentRule(matchedRule);
@@ -1367,6 +1389,9 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
       imageSizeTier: previewImageSizeTier,
       toolUsageType: previewToolUsageType,
       toolUsageCount: formatNumber(previewInput?.toolUsageCount),
+      toolOveragePrice: formatNumber(
+        matchedRule?.toolOveragePrice ?? matchedRule?.tool_overage_price,
+      ),
       imageCount: formatNumber(previewImageCount),
       liveDurationSecs: formatNumber(previewLiveDuration),
       freeQuota: formatNumber(matchedRule?.freeQuota),
@@ -1401,6 +1426,7 @@ export const buildMediaTaskPreview = (rules = [], previewInput = {}) => {
         imageSizeTier: '',
         toolUsageType: '',
         toolUsageCount: '',
+        toolOveragePrice: '',
         imageCount: '',
         liveDurationSecs: '',
         freeQuota: '',
@@ -1436,6 +1462,10 @@ export const buildMediaTaskPreview = (rules = [], previewInput = {}) => {
     ) ?? 1000;
   const overageUnits =
     Math.max(previewToolUsageCount - freeQuota, 0) / overageThreshold;
+  const toolOveragePrice =
+    toNullableNumber(
+      matchedRule?.toolOveragePrice ?? matchedRule?.tool_overage_price,
+    ) ?? unitPrice;
   let formulaSummary =
     minTokens > 0
       ? `max(${formatNumber(usageTotalTokens)}, ${formatNumber(minTokens)}) × ${formatNumber(unitPrice)} × ${formatNumber(effectiveDraftCoefficient)} / 1,000,000`
@@ -1472,12 +1502,12 @@ export const buildMediaTaskPreview = (rules = [], previewInput = {}) => {
       formulaSummary = buildPer1000CallsFormulaSummary(
         previewToolUsageCount,
         freeQuota,
-        unitPrice,
+        toolOveragePrice,
         effectiveDraftCoefficient,
         overageThreshold,
       );
       resolvedEstimatedCost =
-        overageUnits * unitPrice * effectiveDraftCoefficient;
+        overageUnits * toolOveragePrice * effectiveDraftCoefficient;
       processSummary = `tool_usage_count ${formatNumber(previewToolUsageCount)}, free_quota ${formatNumber(freeQuota)}, overage_threshold ${formatNumber(overageThreshold)}: ${formulaSummary} = ${formatNumber(resolvedEstimatedCost)}`;
       break;
     default:
@@ -1507,6 +1537,9 @@ export const buildMediaTaskPreview = (rules = [], previewInput = {}) => {
         previewInput?.toolUsageType,
       ).trim(),
       toolUsageCount: formatNumber(previewInput?.toolUsageCount),
+      toolOveragePrice: formatNumber(
+        matchedRule?.toolOveragePrice ?? matchedRule?.tool_overage_price,
+      ),
       imageCount: formatNumber(previewImageCount),
       liveDurationSecs: formatNumber(previewLiveDuration),
       freeQuota: formatNumber(matchedRule?.freeQuota),

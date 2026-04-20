@@ -73,6 +73,7 @@ test('media task rule editor renders modality, image tier, billing unit, and too
   assert.match(source, /field: 'imageSizeTier'/);
   assert.match(source, /field: 'toolUsageType'/);
   assert.match(source, /field: 'toolUsageCount'/);
+  assert.match(source, /field: 'toolOveragePrice'/);
   assert.match(source, /field: 'freeQuota'/);
   assert.match(source, /field: 'overageThreshold'/);
 });

@@ -730,6 +730,35 @@ test('buildTextSegmentPreview switches to per-1000-calls preview copy and shows 
   assert.equal(preview.priceSummary.freeQuota, '1000');
 });
 
+test('buildTextSegmentPreview per-1000-calls preview prefers tool overage price over input price', () => {
+  const preview = buildTextSegmentPreview(
+    [
+      {
+        id: 'segment-grounding-tool-overage-price',
+        enabled: true,
+        priority: 1,
+        billingUnit: 'per_1000_calls',
+        toolUsageType: 'google_search',
+        toolUsageCount: '1000',
+        freeQuota: '100',
+        overageThreshold: '1000',
+        inputPrice: '35',
+        toolOveragePrice: '7',
+        outputPrice: '999',
+      },
+    ],
+    {
+      toolUsageType: 'google_search',
+      toolUsageCount: '1200',
+    },
+  );
+
+  assert.equal(preview.matchedRule?.id, 'segment-grounding-tool-overage-price');
+  assert.match(preview.formulaSummary, /7/);
+  assert.doesNotMatch(preview.formulaSummary, /35/);
+  assert.doesNotMatch(preview.formulaSummary, /999/);
+});
+
 test('buildTextSegmentPreview per-1000-calls preview keeps input price as the unit price', () => {
   const preview = buildTextSegmentPreview(
     [
@@ -1184,6 +1213,7 @@ test('normalizeAdvancedPricingConfig round-trips text image tier and tool usage 
         output_modality: 'text',
         image_size_tier: 'hd',
         tool_usage_count: 1000,
+        tool_overage_price: 9.9,
         input_price: 1.2,
       },
     ],
@@ -1193,6 +1223,7 @@ test('normalizeAdvancedPricingConfig round-trips text image tier and tool usage 
 
   assert.equal(normalizedConfig.rules[0].imageSizeTier, 'hd');
   assert.equal(normalizedConfig.rules[0].toolUsageCount, '1000');
+  assert.equal(normalizedConfig.rules[0].toolOveragePrice, '9.9');
   assert.deepEqual(serializeAdvancedPricingConfig(normalizedConfig), canonicalConfig);
 });
 

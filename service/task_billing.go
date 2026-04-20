@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -173,6 +174,9 @@ func appendTaskBillingContextAdvancedInfo(other map[string]interface{}, billingC
 	}
 	if billingContext.AdvancedRuleSnapshot != nil {
 		other["advanced_rule"] = billingContext.AdvancedRuleSnapshot
+	}
+	if billingContext.AdvancedPricingContext != nil {
+		other["advanced_pricing_context"] = billingContext.AdvancedPricingContext
 	}
 }
 
@@ -368,6 +372,58 @@ func resolveAdvancedMediaTaskMinTokens(billingContext *model.TaskBillingContext)
 	return *billingContext.AdvancedRuleSnapshot.ThresholdSnapshot.MinTokens
 }
 
+func resolveAdvancedMediaTaskBillingUnit(billingContext *model.TaskBillingContext) string {
+	if billingContext != nil && billingContext.AdvancedPricingContext != nil {
+		if billingUnit := strings.TrimSpace(billingContext.AdvancedPricingContext.BillingUnit); billingUnit != "" {
+			return billingUnit
+		}
+	}
+	if billingContext != nil && billingContext.AdvancedRuleSnapshot != nil {
+		if billingUnit := strings.TrimSpace(billingContext.AdvancedRuleSnapshot.BillingUnit); billingUnit != "" {
+			return billingUnit
+		}
+	}
+	return types.AdvancedBillingUnitPerMillionTokens
+}
+
+func resolveAdvancedMediaTaskDurationSeconds(billingContext *model.TaskBillingContext) int {
+	if billingContext != nil && billingContext.AdvancedPricingContext != nil && billingContext.AdvancedPricingContext.LiveDurationSecs != nil {
+		if duration := *billingContext.AdvancedPricingContext.LiveDurationSecs; duration > 0 {
+			return duration
+		}
+	}
+	if billingContext != nil && billingContext.AdvancedRuleSnapshot != nil {
+		if duration := extractAdvancedMediaTaskSummaryInt(billingContext.AdvancedRuleSnapshot.MatchSummary, "output_duration"); duration > 0 {
+			return duration
+		}
+	}
+	return 0
+}
+
+func resolveAdvancedMediaTaskImageCount(billingContext *model.TaskBillingContext) (int, bool) {
+	if billingContext != nil && billingContext.AdvancedPricingContext != nil && billingContext.AdvancedPricingContext.ImageCount != nil {
+		if imageCount := *billingContext.AdvancedPricingContext.ImageCount; imageCount > 0 {
+			return imageCount, false
+		}
+	}
+	return 1, true
+}
+
+func extractAdvancedMediaTaskSummaryInt(summary string, key string) int {
+	prefix := key + "="
+	for _, part := range strings.Split(summary, ",") {
+		part = strings.TrimSpace(part)
+		if !strings.HasPrefix(part, prefix) {
+			continue
+		}
+		value, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(part, prefix)))
+		if err == nil {
+			return value
+		}
+	}
+	return 0
+}
+
 type taskTokenBillingRatios struct {
 	modelRatio         float64
 	groupRatio         float64
@@ -432,27 +488,103 @@ func calculateTaskQuotaByTokenRatios(totalTokens int, ratios taskTokenBillingRat
 	return int(quota)
 }
 
-func calculateTaskQuotaByAdvancedMediaTask(totalTokens int, billingContext *model.TaskBillingContext) (int, int, bool) {
-	if totalTokens <= 0 || billingContext == nil || billingContext.ModelPrice < 0 {
-		return 0, 0, false
-	}
-
-	effectiveTokens := totalTokens
-	if minTokens := resolveAdvancedMediaTaskMinTokens(billingContext); minTokens > effectiveTokens {
-		effectiveTokens = minTokens
-	}
-
+func calculateAdvancedMediaTaskNonTokenQuota(billingContext *model.TaskBillingContext, usageQuantity decimal.Decimal) int {
 	actualQuota := decimal.NewFromFloat(billingContext.ModelPrice).
-		Div(decimal.NewFromInt(1000000)).
-		Mul(decimal.NewFromInt(int64(effectiveTokens))).
+		Mul(usageQuantity).
 		Mul(decimal.NewFromFloat(billingContext.GroupRatio)).
 		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
 		IntPart()
-	return int(actualQuota), effectiveTokens, true
+	return int(actualQuota)
 }
 
-func RecalculateTaskQuotaByAdvancedMediaTask(ctx context.Context, task *model.Task, totalTokens int) {
-	if totalTokens <= 0 || task == nil {
+func calculateTaskQuotaByAdvancedMediaTask(taskResult *relaycommon.TaskInfo, billingContext *model.TaskBillingContext) (int, string, bool) {
+	if billingContext == nil || billingContext.ModelPrice < 0 {
+		return 0, "", false
+	}
+
+	billingUnit := resolveAdvancedMediaTaskBillingUnit(billingContext)
+	switch billingUnit {
+	case "", types.AdvancedBillingUnitPerMillionTokens:
+		totalTokens := 0
+		if taskResult != nil {
+			totalTokens = taskResult.TotalTokens
+		}
+		if totalTokens <= 0 {
+			return 0, "", false
+		}
+
+		effectiveTokens := totalTokens
+		minTokens := resolveAdvancedMediaTaskMinTokens(billingContext)
+		if minTokens > effectiveTokens {
+			effectiveTokens = minTokens
+		}
+
+		actualQuota := decimal.NewFromFloat(billingContext.ModelPrice).
+			Div(decimal.NewFromInt(1000000)).
+			Mul(decimal.NewFromInt(int64(effectiveTokens))).
+			Mul(decimal.NewFromFloat(billingContext.GroupRatio)).
+			Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
+			IntPart()
+		reason := fmt.Sprintf(
+			"advanced media task recalculation: total_tokens=%d, effective_tokens=%d, min_tokens=%d, unit_price=%.6f, group_ratio=%.2f, billing_unit=%s, billing_mode=%s",
+			totalTokens,
+			effectiveTokens,
+			minTokens,
+			billingContext.ModelPrice,
+			billingContext.GroupRatio,
+			types.AdvancedBillingUnitPerMillionTokens,
+			billingContext.BillingMode,
+		)
+		return int(actualQuota), reason, true
+	case types.AdvancedBillingUnitPerSecond:
+		durationSeconds := resolveAdvancedMediaTaskDurationSeconds(billingContext)
+		if durationSeconds <= 0 {
+			return 0, "", false
+		}
+		reason := fmt.Sprintf(
+			"advanced media task recalculation: billing_unit=%s, duration_seconds=%d, unit_price=%.6f, group_ratio=%.2f, billing_mode=%s",
+			billingUnit,
+			durationSeconds,
+			billingContext.ModelPrice,
+			billingContext.GroupRatio,
+			billingContext.BillingMode,
+		)
+		return calculateAdvancedMediaTaskNonTokenQuota(billingContext, decimal.NewFromInt(int64(durationSeconds))), reason, true
+	case types.AdvancedBillingUnitPerMinute:
+		durationSeconds := resolveAdvancedMediaTaskDurationSeconds(billingContext)
+		if durationSeconds <= 0 {
+			return 0, "", false
+		}
+		usageMinutes := decimal.NewFromInt(int64(durationSeconds)).Div(decimal.NewFromInt(60))
+		reason := fmt.Sprintf(
+			"advanced media task recalculation: billing_unit=%s, duration_seconds=%d, usage_minutes=%s, unit_price=%.6f, group_ratio=%.2f, billing_mode=%s",
+			billingUnit,
+			durationSeconds,
+			usageMinutes.String(),
+			billingContext.ModelPrice,
+			billingContext.GroupRatio,
+			billingContext.BillingMode,
+		)
+		return calculateAdvancedMediaTaskNonTokenQuota(billingContext, usageMinutes), reason, true
+	case types.AdvancedBillingUnitPerImage:
+		imageCount, defaulted := resolveAdvancedMediaTaskImageCount(billingContext)
+		reason := fmt.Sprintf(
+			"advanced media task recalculation: billing_unit=%s, image_count=%d, defaulted=%t, unit_price=%.6f, group_ratio=%.2f, billing_mode=%s",
+			billingUnit,
+			imageCount,
+			defaulted,
+			billingContext.ModelPrice,
+			billingContext.GroupRatio,
+			billingContext.BillingMode,
+		)
+		return calculateAdvancedMediaTaskNonTokenQuota(billingContext, decimal.NewFromInt(int64(imageCount))), reason, true
+	default:
+		return 0, "", false
+	}
+}
+
+func RecalculateTaskQuotaByAdvancedMediaTask(ctx context.Context, task *model.Task, taskResult *relaycommon.TaskInfo) {
+	if task == nil {
 		return
 	}
 
@@ -461,21 +593,11 @@ func RecalculateTaskQuotaByAdvancedMediaTask(ctx context.Context, task *model.Ta
 		return
 	}
 
-	actualQuota, effectiveTokens, ok := calculateTaskQuotaByAdvancedMediaTask(totalTokens, billingContext)
+	actualQuota, reason, ok := calculateTaskQuotaByAdvancedMediaTask(taskResult, billingContext)
 	if !ok {
 		return
 	}
 
-	minTokens := resolveAdvancedMediaTaskMinTokens(billingContext)
-	reason := fmt.Sprintf(
-		"advanced media task recalculation: total_tokens=%d, effective_tokens=%d, min_tokens=%d, unit_price=%.6f, group_ratio=%.2f, billing_mode=%s",
-		totalTokens,
-		effectiveTokens,
-		minTokens,
-		billingContext.ModelPrice,
-		billingContext.GroupRatio,
-		billingContext.BillingMode,
-	)
 	recalculateTaskQuota(ctx, task, actualQuota, reason, true)
 }
 

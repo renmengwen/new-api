@@ -429,6 +429,9 @@ func calculateAdvancedNonTokenUnitPriceTotal(snapshot *types.AdvancedRuleSnapsho
 	}
 
 	if billingUnit == types.AdvancedBillingUnitPer1000Calls {
+		if snapshot.PriceSnapshot.ToolOveragePrice != nil {
+			return decimal.NewFromFloat(*snapshot.PriceSnapshot.ToolOveragePrice)
+		}
 		if snapshot.PriceSnapshot.InputPrice == nil {
 			return decimal.Zero
 		}

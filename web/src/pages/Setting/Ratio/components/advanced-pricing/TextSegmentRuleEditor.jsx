@@ -155,6 +155,12 @@ const TEXT_SEGMENT_FIELDS = [
     regex: INTEGER_INPUT_REGEX,
   },
   {
+    field: 'toolOveragePrice',
+    label: 'Tool Overage Price',
+    placeholder: 'Optional overage unit price',
+    regex: DECIMAL_INPUT_REGEX,
+  },
+  {
     field: 'freeQuota',
     label: 'Free Quota',
     placeholder: '可选',

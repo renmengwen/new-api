@@ -52,6 +52,7 @@ const TEXT_SEGMENT_PREVIEW_SCAFFOLD_FIELDS = [
   { key: 'imageSizeTier', label: '图片档位' },
   { key: 'toolUsageType', label: '工具调用类型' },
   { key: 'toolUsageCount', label: '工具调用次数' },
+  { key: 'toolOveragePrice', label: '超额单价' },
   { key: 'imageCount', label: '图片数量' },
   { key: 'liveDurationSecs', label: '时长（秒）' },
   { key: 'freeQuota', label: '免费额度' },
@@ -63,6 +64,7 @@ const MEDIA_TASK_PREVIEW_SCAFFOLD_FIELDS = [
   { key: 'imageSizeTier', label: '图片档位' },
   { key: 'toolUsageType', label: '工具调用类型' },
   { key: 'toolUsageCount', label: '工具调用次数' },
+  { key: 'toolOveragePrice', label: '超额单价' },
   { key: 'imageCount', label: '图片数量' },
   { key: 'liveDurationSecs', label: '时长（秒）' },
   { key: 'freeQuota', label: '免费额度' },
@@ -133,6 +135,7 @@ export default function AdvancedPricingPreview({
   mediaTaskPreviewLabels.imageSizeTier = t('图片档位');
   mediaTaskPreviewLabels.toolUsageType = t('工具调用类型');
   mediaTaskPreviewLabels.toolUsageCount = t('工具调用次数');
+  mediaTaskPreviewLabels.toolOveragePrice = t('超额单价');
   mediaTaskPreviewLabels.imageCount = t('图片数量');
   mediaTaskPreviewLabels.liveDurationSecs = t('时长（秒）');
   mediaTaskPreviewLabels.freeQuota = t('免费额度');

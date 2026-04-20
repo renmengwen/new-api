@@ -247,6 +247,7 @@ const resolveAdvancedNonTokenUnitPrice = (snapshot, other) => {
 
   if (billingUnit === 'per_1000_calls') {
     return (
+      toAdvancedNumber(priceSnapshot.tool_overage_price) ??
       toAdvancedNumber(priceSnapshot.input_price) ??
       getAdvancedLegacyMediaUnitPrice(snapshot) ??
       0
