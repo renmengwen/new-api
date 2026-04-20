@@ -185,12 +185,19 @@
 - 输出长度区间
 - 服务层级
 - 缓存相关价格
+- 非 token 计费单位：`per_second`、`per_image`
+- 图片输出档位：`image_size_tier`
+- 工具调用语义：`grounding / web_search / google_search` 归一按 `google_search` 命中
+- 工具附加费口径：`free_quota / tool_overage_price`，即免费额度后的超额部分按工具超额单价结算
 - 批处理 / 优先级 / 其他文本类条件
 
 典型场景：
 
 - `输入长度 [0,32] / (32,128] / (128,256]`
 - 某些模型再按输出长度进一步分层
+- Gemini Live 按秒计费
+- Gemini 图片生成按张计费，并按 `image_size_tier` 区分档位
+- grounding / web_search 请求按统一的 `google_search` 语义命中工具调用规则
 
 ### 7.2 媒体任务规则
 
@@ -252,6 +259,14 @@
 
 显示保存后该模型会写入哪些规则数据，以及当前模型的规则摘要。
 
+预览区需要直接按命中的真实 `billing_unit` 展示公式与日志摘要：
+
+- `per_second` 按秒数展示
+- `per_image` 按图片张数展示
+- `per_1000_calls` 按 `tool_usage_count`、`free_quota` 与超额单价展示
+
+不再统一伪装成 token 公式。
+
 ---
 
 ## 9. 运行时结算规则
@@ -284,6 +299,13 @@
 
 并根据请求/任务实际条件命中对应规则后完成结算。
 
+当前已落地的高级规则运行时能力包括：
+
+- 文本高级规则已可按 `per_second`、`per_image`、`per_1000_calls` 结算
+- 文本高级规则命中时已可采集并写入 `image_size_tier`
+- `grounding`、`web_search`、`google_search` 在运行时统一按 `google_search` 语义参与匹配与计费
+- 工具调用类规则已支持 `free_quota / tool_overage_price` 口径；当前超额单价仍由命中规则中的单价字段承载，而不是单独拆出独立配置页字段
+
 ---
 
 ## 10. 使用日志与账务说明要求
@@ -309,6 +331,14 @@
 - 固定按次：按现有固定按次说明生成
 - 高级规则：按命中规则生成说明
 
+其中高级规则说明必须按真实 `billing_unit` 输出：
+
+- `per_second`：说明实际计费秒数与按秒公式
+- `per_image`：说明实际计费图片数与按张公式
+- `per_1000_calls`：说明 `tool_usage_count`、`free_quota`、`tool_overage_price`、超额阈值与超额部分公式
+
+不得把上述三类口径回退成统一的 token 公式。
+
 ### 10.3 示例
 
 文本分段规则命中后，使用日志应能说明：
@@ -325,6 +355,12 @@
 - 任务 usage / total_tokens
 - 单价来源
 - 最终计费公式
+
+如果命中的是工具调用附加费规则，还应能说明：
+
+- `tool_usage_type` 已按 `google_search` 语义归一
+- `free_quota` 以内不计费、超出后如何折算
+- 超额部分使用的 `tool_overage_price` 来源
 
 ---
 
@@ -371,6 +407,13 @@
 - 火山视频任务模型
 
 后续再扩展到更多模型。
+
+当前仍未完整解决的能力边界：
+
+- 同一模型内按输入模态与输出模态分别给出完全独立价表，仍属于后续增强
+- 部分 Live / Image 场景更复杂的输出档位、按秒细分与多段阶梯价，当前仅覆盖已落地的基础 `per_second` / `per_image` 口径
+- 长期 `cache_storage` 的按小时或更长周期计费口径尚未在运行时完整结算
+- 完整 grounding 免费层、RPD 与更外层搜索生态口径仍未完全纳入统一高级规则体系
 
 ---
 
