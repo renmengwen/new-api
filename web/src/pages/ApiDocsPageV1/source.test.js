@@ -208,6 +208,22 @@ test('sidebar defaults and admin settings enable console docs by default', () =>
   );
 });
 
+test('legacy sidebar admin configs still gain console docs when loaded in settings', async () => {
+  assert.match(useSidebarSource, /export const mergeAdminConfig = \(savedConfig\) => \{/);
+  assert.match(
+    useSidebarSource,
+    /merged\[sectionKey\] = \{ \.\.\.merged\[sectionKey\], \.\.\.sectionConfig \};/,
+  );
+  assert.match(
+    settingsSidebarModulesAdminSource,
+    /import \{ mergeAdminConfig \} from '\.\.\/\.\.\/\.\.\/hooks\/common\/useSidebar';/,
+  );
+  assert.match(
+    settingsSidebarModulesAdminSource,
+    /const modules = JSON\.parse\(props\.options\.SidebarModulesAdmin\);\s*setSidebarModulesAdmin\(mergeAdminConfig\(modules\)\);/,
+  );
+});
+
 test('render helper maps docs to the BookOpen icon', () => {
   assert.match(renderHelperSource, /BookOpen,/);
   assert.match(

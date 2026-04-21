@@ -30,6 +30,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { API, showSuccess, showError } from '../../../helpers';
 import { StatusContext } from '../../../context/Status';
+import { mergeAdminConfig } from '../../../hooks/common/useSidebar';
 
 const { Text } = Typography;
 
@@ -176,7 +177,7 @@ export default function SettingsSidebarModulesAdmin(props) {
     if (props.options && props.options.SidebarModulesAdmin) {
       try {
         const modules = JSON.parse(props.options.SidebarModulesAdmin);
-        setSidebarModulesAdmin(modules);
+        setSidebarModulesAdmin(mergeAdminConfig(modules));
       } catch (error) {
         // 使用默认配置
         const defaultModules = {
