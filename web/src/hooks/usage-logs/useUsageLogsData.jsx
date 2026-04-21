@@ -26,6 +26,7 @@ import {
   downloadExcelBlob,
   getTodayStartTimestamp,
   isAdmin,
+  isAgentUser,
   showError,
   showInfo,
   showSuccess,
@@ -43,6 +44,7 @@ import {
 } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+import { useUserPermissions } from '../common/useUserPermissions';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
 import { getLogsColumns } from '../../components/table/usage-logs/UsageLogsColumnDefs';
 import {
@@ -613,7 +615,23 @@ export const useLogsData = () => {
   const [logType, setLogType] = useState(0);
 
   // User and admin
-  const isAdminUser = isAdmin();
+  const { loading: permissionLoading, hasActionPermission } =
+    useUserPermissions();
+  const canReadScopedUsageLogs = hasActionPermission(
+    'quota_management',
+    'ledger_read',
+  );
+  const canReadScopedUsageLogSummary = hasActionPermission(
+    'quota_management',
+    'read_summary',
+  );
+  const isAdminUser = isAdmin() || (isAgentUser() && canReadScopedUsageLogs);
+  const canUseScopedUsageLogStat =
+    isAdmin() || (isAgentUser() && canReadScopedUsageLogSummary);
+  const canShowUserInfo = isAdmin();
+  const canShowChannelAffinityUsageCache = isAdmin();
+  const shouldWaitForAgentPermissions =
+    isAgentUser() && !isAdmin() && permissionLoading;
   // Role-specific storage key to prevent different roles from overwriting each other
   const STORAGE_KEY = isAdminUser
     ? 'logs-table-columns-admin'
@@ -834,7 +852,7 @@ export const useLogsData = () => {
     }
     setLoadingStat(true);
     try {
-      if (isAdminUser) {
+      if (canUseScopedUsageLogStat) {
         await getLogStat(query);
       } else {
         await getLogSelfStat(query);
@@ -849,7 +867,7 @@ export const useLogsData = () => {
 
   // User info function
   const showUserInfoFunc = async (userId) => {
-    if (!isAdminUser) {
+    if (!canShowUserInfo) {
       return;
     }
     const res = await API.get(`/api/user/${userId}`);
@@ -863,6 +881,9 @@ export const useLogsData = () => {
   };
 
   const openChannelAffinityUsageCacheModal = (affinity) => {
+    if (!canShowChannelAffinityUsageCache) {
+      return;
+    }
     const a = affinity || {};
     setChannelAffinityUsageCacheTarget({
       rule_name: a.rule_name || a.reason || '',
@@ -1337,6 +1358,7 @@ export const useLogsData = () => {
       copyText,
       showUserInfoFunc,
       openChannelAffinityUsageCacheModal,
+      canShowChannelAffinityUsageCache,
       isAdminUser,
       billingDisplayMode,
     });
@@ -1393,6 +1415,9 @@ export const useLogsData = () => {
 
   // Initialize data
   useEffect(() => {
+    if (shouldWaitForAgentPermissions) {
+      return;
+    }
     const localPageSize =
       parseInt(localStorage.getItem('page-size')) || ITEMS_PER_PAGE;
     setPageSize(localPageSize);
@@ -1401,14 +1426,15 @@ export const useLogsData = () => {
       .catch((reason) => {
         showError(reason);
       });
-  }, []);
+  }, [shouldWaitForAgentPermissions, isAdminUser]);
 
   // Initialize statistics when formApi is available
   useEffect(() => {
-    if (formApi) {
-      handleEyeClick(committedQuery);
+    if (!formApi || shouldWaitForAgentPermissions) {
+      return;
     }
-  }, [formApi]);
+    handleEyeClick(committedQuery);
+  }, [formApi, shouldWaitForAgentPermissions, canUseScopedUsageLogStat]);
 
   // Check if any record has expandable content
   const hasExpandableRows = () => {

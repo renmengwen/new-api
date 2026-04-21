@@ -393,6 +393,15 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	return logs, total, err
 }
 
+func BuildAllLogsQuery(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string) *gorm.DB {
+	ensureLogExportQueryColumnsInitialized()
+	return buildAllLogsQuery(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId)
+}
+
+func FindAllLogsByQuery(tx *gorm.DB, startIdx int, num int) (logs []*Log, err error) {
+	return findAllLogs(tx, startIdx, num)
+}
+
 const logSearchCountLimit = 10000
 
 func buildUserLogsQuery(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string) (tx *gorm.DB, err error) {

@@ -962,12 +962,142 @@ func TestExportQuotaLedgerAgentOnlyExportsSelfAndManagedRows(t *testing.T) {
 	requireStrictlyDescendingIDs(t, exportedIDs)
 }
 
+func TestExportAdminUsageLogsScopesAgentRows(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+
+	agent := testListExportUser(9401, "usage_export_agent", "Usage Export Agent", common.RoleCommonUser, model.UserTypeAgent)
+	ownedUser := testListExportUser(9402, "usage_export_owned", "Usage Export Owned", common.RoleCommonUser, model.UserTypeEndUser)
+	unownedUser := testListExportUser(9403, "usage_export_unowned", "Usage Export Unowned", common.RoleCommonUser, model.UserTypeEndUser)
+	ownedUser.ParentAgentId = agent.Id
+	require.NoError(t, db.Create(&[]model.User{agent, ownedUser, unownedUser}).Error)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   ownedUser.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	ownedToken := model.Token{
+		UserId:      ownedUser.Id,
+		Key:         "usage-export-owned-token-key",
+		Status:      common.TokenStatusEnabled,
+		Name:        "usage-export-owned-token",
+		CreatedTime: 1813000000,
+		Group:       "default",
+	}
+	require.NoError(t, db.Create(&ownedToken).Error)
+
+	require.NoError(t, db.Create(&[]model.Log{
+		{
+			UserId:    agent.Id,
+			Username:  agent.Username,
+			CreatedAt: 1813000001,
+			Type:      model.LogTypeConsume,
+			Content:   "agent export log",
+			TokenName: "agent-export-token",
+			ModelName: "agent-model",
+			Group:     "default",
+		},
+		{
+			UserId:    ownedUser.Id,
+			Username:  ownedUser.Username,
+			CreatedAt: 1813000002,
+			Type:      model.LogTypeConsume,
+			Content:   "owned export log",
+			TokenName: "owned-export-token",
+			ModelName: "owned-model",
+			Group:     "default",
+		},
+		{
+			UserId:    unownedUser.Id,
+			Username:  unownedUser.Username,
+			CreatedAt: 1813000003,
+			Type:      model.LogTypeConsume,
+			Content:   "unowned export log",
+			TokenName: "unowned-export-token",
+			ModelName: "unowned-model",
+			Group:     "default",
+		},
+		{
+			UserId:    unownedUser.Id,
+			Username:  unownedUser.Username,
+			CreatedAt: 1813000004,
+			Type:      model.LogTypeConsume,
+			Content:   "borrowed managed token export log",
+			TokenId:   ownedToken.Id,
+			TokenName: ownedToken.Name,
+			ModelName: "borrowed-model",
+			Group:     "default",
+		},
+	}).Error)
+
+	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/log/export", map[string]any{
+		"type":        model.LogTypeConsume,
+		"column_keys": []string{"username", "details"},
+		"limit":       10,
+	}, agent.Id, agent.Role)
+	ctx.Set("username", agent.Username)
+
+	ExportAllLogs(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	rows, err := workbook.GetRows(workbook.GetSheetName(0))
+	require.NoError(t, err)
+	require.Len(t, rows, 4)
+	require.Equal(t, []string{"用户", "详情"}, rows[0])
+	require.Equal(t, unownedUser.Username, rows[1][0])
+	require.Equal(t, "borrowed managed token export log", rows[1][1])
+	require.Equal(t, ownedUser.Username, rows[2][0])
+	require.Equal(t, "owned export log", rows[2][1])
+	require.Equal(t, agent.Username, rows[3][0])
+	require.Equal(t, "agent export log", rows[3][1])
+}
+
+func TestExportAdminUsageLogsRequiresLedgerReadPermissionForAgent(t *testing.T) {
+	db := setupListExcelExportTestDB(t)
+
+	agent := testListExportUser(9411, "usage_export_agent_deny", "Usage Export Agent Deny", common.RoleCommonUser, model.UserTypeAgent)
+	require.NoError(t, db.Create(&agent).Error)
+	grantPermissionActions(t, db, agent.Id, model.UserTypeAgent,
+		permissionGrant{Resource: service.ResourceQuotaManagement, Action: service.ActionReadSummary},
+	)
+	require.NoError(t, db.Create(&model.Log{
+		UserId:    agent.Id,
+		Username:  agent.Username,
+		CreatedAt: 1813100001,
+		Type:      model.LogTypeConsume,
+		Content:   "agent export log",
+		TokenName: "agent-export-token",
+		ModelName: "agent-model",
+		Group:     "default",
+	}).Error)
+
+	ctx, recorder := newListExcelExportContextWithOperator(t, http.MethodPost, "/api/log/export", map[string]any{
+		"type":        model.LogTypeConsume,
+		"column_keys": []string{"username", "details"},
+		"limit":       10,
+	}, agent.Id, agent.Role)
+	ctx.Set("username", agent.Username)
+
+	ExportAllLogs(ctx)
+
+	var response settingAuditResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+	require.Equal(t, "permission denied", response.Message)
+	require.NotEqual(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
+}
+
 func setupListExcelExportTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
 	db := setupSettingAuditTestDB(t)
 	require.NoError(t, db.AutoMigrate(
 		&model.User{},
+		&model.Token{},
 		&model.Log{},
 		&model.PermissionProfile{},
 		&model.PermissionProfileItem{},

@@ -465,6 +465,7 @@ export const getLogsColumns = ({
   copyText,
   showUserInfoFunc,
   openChannelAffinityUsageCacheModal,
+  canShowChannelAffinityUsageCache = false,
   isAdminUser,
   billingDisplayMode = 'price',
 }) => {
@@ -520,7 +521,7 @@ export const getLogsColumns = ({
                   </Tag>
                 </span>
               </Tooltip>
-              {showMarker && (
+              {showMarker && canShowChannelAffinityUsageCache && (
                 <Tooltip
                   content={
                     <div style={{ lineHeight: 1.6 }}>

@@ -223,6 +223,7 @@ func getEffectivePermissionState(userId int) (*model.PermissionProfile, map[stri
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	actionMap = applyLegacyAgentUsageLogReadFallback(user, profile, actionMap)
 	sidebarModules = mergeTemplateMenuModules(sidebarModules, profile, templateMenuMap)
 
 	actionOverrides, err := loadUserPermissionOverrides(userId)
@@ -235,6 +236,19 @@ func getEffectivePermissionState(userId int) (*model.PermissionProfile, map[stri
 	}
 
 	return profile, mergeActionOverrides(actionMap, actionOverrides), mergeMenuOverrides(sidebarModules, menuOverrides), nil
+}
+
+func applyLegacyAgentUsageLogReadFallback(user *model.User, profile *model.PermissionProfile, actionMap map[string]bool) map[string]bool {
+	if user == nil || profile != nil || user.GetUserType() != model.UserTypeAgent {
+		return actionMap
+	}
+
+	if actionMap == nil {
+		actionMap = map[string]bool{}
+	}
+	actionMap[permissionActionKey(ResourceQuotaManagement, ActionLedgerRead)] = true
+	actionMap[permissionActionKey(ResourceQuotaManagement, ActionReadSummary)] = true
+	return actionMap
 }
 
 func mergeTemplateMenuModules(sidebarModules map[string]any, profile *model.PermissionProfile, templateMenus map[string]map[string]bool) map[string]any {

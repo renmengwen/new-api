@@ -16,6 +16,10 @@ import (
 )
 
 func GetAllLogs(c *gin.Context) {
+	operator, ok := requireUsageLogAdminAccess(c, service.ActionLedgerRead)
+	if !ok {
+		return
+	}
 	pageInfo := common.GetPageQuery(c)
 	logType, _ := strconv.Atoi(c.Query("type"))
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
@@ -26,7 +30,20 @@ func GetAllLogs(c *gin.Context) {
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
 	requestId := c.Query("request_id")
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId)
+	logs, total, err := service.ListScopedUsageLogs(
+		pageInfo,
+		operator.Id,
+		operator.Role,
+		logType,
+		startTimestamp,
+		endTimestamp,
+		modelName,
+		username,
+		tokenName,
+		channel,
+		group,
+		requestId,
+	)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -198,6 +215,10 @@ var defaultSelfUsageLogExportColumnKeys = []string{
 }
 
 func ExportAllLogs(c *gin.Context) {
+	operator, ok := requireUsageLogAdminAccess(c, service.ActionLedgerRead)
+	if !ok {
+		return
+	}
 	var req dto.UsageLogExportRequest
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
 		common.ApiError(c, errors.New("invalid request body"))
@@ -205,14 +226,16 @@ func ExportAllLogs(c *gin.Context) {
 	}
 	channel, _ := strconv.Atoi(req.Channel)
 
-	logs, err := model.GetAllLogsForExport(
+	logs, err := service.ListScopedUsageLogsForExport(
+		operator.Id,
+		operator.Role,
 		req.Type,
 		req.StartTimestamp,
 		req.EndTimestamp,
 		req.ModelName,
 		req.Username,
 		req.TokenName,
-		req.Limit,
+		normalizeExportLimit(req.Limit),
 		channel,
 		req.Group,
 		req.RequestID,
@@ -411,6 +434,10 @@ func GetLogByKey(c *gin.Context) {
 }
 
 func GetLogsStat(c *gin.Context) {
+	operator, ok := requireUsageLogAdminAccess(c, service.ActionReadSummary)
+	if !ok {
+		return
+	}
 	logType, _ := strconv.Atoi(c.Query("type"))
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
@@ -419,7 +446,18 @@ func GetLogsStat(c *gin.Context) {
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
-	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group)
+	_ = logType
+	stat, err := service.GetScopedUsageLogStat(
+		operator.Id,
+		operator.Role,
+		startTimestamp,
+		endTimestamp,
+		modelName,
+		username,
+		tokenName,
+		channel,
+		group,
+	)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -435,6 +473,19 @@ func GetLogsStat(c *gin.Context) {
 		},
 	})
 	return
+}
+
+func requireUsageLogAdminAccess(c *gin.Context, actionKey string) (*model.User, bool) {
+	if err := service.RequirePermissionAction(c.GetInt("id"), c.GetInt("role"), service.ResourceQuotaManagement, actionKey); err != nil {
+		common.ApiError(c, err)
+		return nil, false
+	}
+	operator, err := service.ResolveOperatorUser(c.GetInt("id"), c.GetInt("role"))
+	if err != nil {
+		common.ApiError(c, err)
+		return nil, false
+	}
+	return operator, true
 }
 
 func GetLogsSelfStat(c *gin.Context) {

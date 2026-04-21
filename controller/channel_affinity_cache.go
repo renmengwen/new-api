@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
@@ -73,6 +75,11 @@ func ClearChannelAffinityCache(c *gin.Context) {
 }
 
 func GetChannelAffinityUsageCacheStats(c *gin.Context) {
+	if c.GetInt("role") < common.RoleAdminUser {
+		common.ApiError(c, errors.New("permission denied"))
+		return
+	}
+
 	ruleName := strings.TrimSpace(c.Query("rule_name"))
 	usingGroup := strings.TrimSpace(c.Query("using_group"))
 	keyFp := strings.TrimSpace(c.Query("key_fp"))

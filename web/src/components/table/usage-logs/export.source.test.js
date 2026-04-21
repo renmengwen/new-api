@@ -23,12 +23,28 @@ test('UsageLogsFilters adds an export excel button wired to the export handler',
 
 test('useUsageLogsData uses committed query state for export, refresh, paging, and visible column ordered export payloads', () => {
   assert.match(hookSource, /from '\.\/exportState'/);
+  assert.match(hookSource, /isAgentUser/);
+  assert.match(hookSource, /useUserPermissions/);
+  assert.match(
+    hookSource,
+    /hasActionPermission\(\s*'quota_management',\s*'ledger_read',?\s*\)/,
+  );
+  assert.match(
+    hookSource,
+    /hasActionPermission\(\s*'quota_management',\s*'read_summary',?\s*\)/,
+  );
   assert.match(hookSource, /buildUsageLogExportRequest/);
   assert.match(hookSource, /createUsageLogCommittedQuery/);
   assert.match(hookSource, /getVisibleUsageLogColumnKeys/);
   assert.match(hookSource, /const \[committedQuery, setCommittedQuery\] = useState\(/);
   assert.match(hookSource, /const \[listRequestsInFlight, setListRequestsInFlight\] = useState\(0\)/);
   assert.match(hookSource, /const isExportReady = listRequestsInFlight === 0;/);
+  assert.match(
+    hookSource,
+    /const isAdminUser = isAdmin\(\) \|\| \(isAgentUser\(\) && canReadScopedUsageLogs\);/,
+  );
+  assert.match(hookSource, /const canShowChannelAffinityUsageCache = isAdmin\(\);/);
+  assert.doesNotMatch(hookSource, /const isAdminUser = isAdmin\(\) \|\| isAgentUser\(\);/);
   assert.match(hookSource, /downloadExcelBlob/);
   assert.match(hookSource, /\/api\/log\/export/);
   assert.match(hookSource, /\/api\/log\/self\/export/);

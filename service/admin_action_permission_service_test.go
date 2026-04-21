@@ -281,6 +281,26 @@ func TestBuildUserPermissionsExpandsAdminSidebarSnapshotForRootUsers(t *testing.
 	require.Equal(t, true, adminSection["setting"])
 }
 
+func TestBuildUserPermissionsGrantsLegacyUsageLogReadActionsForAgentWithoutProfile(t *testing.T) {
+	db := setupAdminPermissionServiceTestDB(t)
+
+	user := model.User{
+		Username: "permission_legacy_agent",
+		Password: "hashed-password",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		UserType: model.UserTypeAgent,
+		Group:    "default",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	permissions := BuildUserPermissions(user.Id, user.Role)
+	actions, ok := permissions["actions"].(map[string]bool)
+	require.True(t, ok)
+	require.True(t, actions[permissionActionKey(ResourceQuotaManagement, ActionLedgerRead)])
+	require.True(t, actions[permissionActionKey(ResourceQuotaManagement, ActionReadSummary)])
+}
+
 func TestRequirePermissionActionRespectsDenyOverride(t *testing.T) {
 	db := setupAdminPermissionServiceTestDB(t)
 
@@ -319,6 +339,63 @@ func TestRequirePermissionActionRespectsDenyOverride(t *testing.T) {
 	}).Error)
 
 	err := RequirePermissionAction(user.Id, user.Role, ResourcePermissionManagement, ActionRead)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "permission denied")
+}
+
+func TestRequirePermissionActionAllowsLegacyUsageLogReadForAgentWithoutProfile(t *testing.T) {
+	db := setupAdminPermissionServiceTestDB(t)
+
+	user := model.User{
+		Username: "permission_legacy_agent_require",
+		Password: "hashed-password",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		UserType: model.UserTypeAgent,
+		Group:    "default",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	require.NoError(t, RequirePermissionAction(user.Id, user.Role, ResourceQuotaManagement, ActionLedgerRead))
+	require.NoError(t, RequirePermissionAction(user.Id, user.Role, ResourceQuotaManagement, ActionReadSummary))
+}
+
+func TestRequirePermissionActionDoesNotGrantLegacyUsageLogReadWhenAgentHasExplicitProfileWithoutThoseActions(t *testing.T) {
+	db := setupAdminPermissionServiceTestDB(t)
+
+	user := model.User{
+		Username: "permission_explicit_agent_require",
+		Password: "hashed-password",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		UserType: model.UserTypeAgent,
+		Group:    "default",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	profile := model.PermissionProfile{
+		ProfileName: "Agent Adjust Only",
+		ProfileType: model.UserTypeAgent,
+		Status:      model.CommonStatusEnabled,
+	}
+	require.NoError(t, db.Create(&profile).Error)
+	require.NoError(t, db.Create(&model.PermissionProfileItem{
+		ProfileId:   profile.Id,
+		ResourceKey: ResourceQuotaManagement,
+		ActionKey:   ActionAdjust,
+		Allowed:     true,
+	}).Error)
+	require.NoError(t, db.Create(&model.UserPermissionBinding{
+		UserId:    user.Id,
+		ProfileId: profile.Id,
+		Status:    model.CommonStatusEnabled,
+	}).Error)
+
+	err := RequirePermissionAction(user.Id, user.Role, ResourceQuotaManagement, ActionLedgerRead)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "permission denied")
+
+	err = RequirePermissionAction(user.Id, user.Role, ResourceQuotaManagement, ActionReadSummary)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "permission denied")
 }
