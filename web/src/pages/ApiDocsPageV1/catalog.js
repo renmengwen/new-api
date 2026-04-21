@@ -59,6 +59,8 @@ const createDoc = ({
   summary,
   description,
   transport = 'json',
+  status,
+  placeholderMessage,
   requestBody,
   multipartFields,
   requestExample,
@@ -80,6 +82,14 @@ const createDoc = ({
     auth: { ...DEFAULT_AUTH },
     responseExample: makeResponseExample(responseBody),
   };
+
+  if (status) {
+    doc.status = status;
+  }
+
+  if (placeholderMessage) {
+    doc.placeholderMessage = placeholderMessage;
+  }
 
   if (requestExample) {
     doc.requestExample = requestExample;
@@ -468,6 +478,8 @@ export const AI_MODEL_DOC_ITEMS = [
     path: '/v1/files',
     summary: '文件管理接口预留入口。',
     description: '当前仅保留文档结构，后续将补充文件上传、列表和删除能力。',
+    status: 'placeholder',
+    placeholderMessage: '该接口文档尚未补全，后续会继续完善请求参数与返回示例。',
     requestBody: {
       file_name: 'example.pdf',
     },
@@ -581,6 +593,79 @@ export function getAiModelDocById(docId) {
 
 export function buildAiModelDocRoute(docId) {
   return `/console/docs/ai-model/${resolveAiModelDocId(docId)}`;
+}
+
+export function resolveAiModelDocPageState(category, docId) {
+  if (category !== 'ai-model' || !docId) {
+    return {
+      shouldRedirect: true,
+      docId: AI_MODEL_DOC_DEFAULT_ID,
+      redirectTo: buildAiModelDocRoute(AI_MODEL_DOC_DEFAULT_ID),
+    };
+  }
+
+  const resolvedDocId = resolveAiModelDocId(docId);
+  return {
+    shouldRedirect: resolvedDocId !== docId,
+    docId: resolvedDocId,
+    redirectTo:
+      resolvedDocId !== docId ? buildAiModelDocRoute(resolvedDocId) : null,
+  };
+}
+
+export function createAiModelDocSelectionHandler(navigate, closeSidebar) {
+  return (nextDocId) => {
+    navigate(buildAiModelDocRoute(nextDocId));
+    if (closeSidebar) {
+      closeSidebar();
+    }
+  };
+}
+
+export function getAiModelDocGroupKey(docId) {
+  const doc = AI_MODEL_DOC_BY_ID.get(resolveAiModelDocId(docId));
+  return doc?.groupKey || null;
+}
+
+export function expandAiModelDocGroups(expandedGroups, activeDocId) {
+  const groupKey = getAiModelDocGroupKey(activeDocId);
+  if (!groupKey || expandedGroups.includes(groupKey)) {
+    return expandedGroups;
+  }
+
+  return [...expandedGroups, groupKey];
+}
+
+export function getAiModelDocDisplayState(doc) {
+  if (!doc) {
+    return {
+      kind: 'empty',
+      title: '暂无可用文档',
+      message: '请选择左侧接口查看详情',
+    };
+  }
+
+  if (doc.status === 'placeholder') {
+    return {
+      kind: 'placeholder',
+      title: doc.title,
+      message: doc.placeholderMessage || '该文档仍在补充中。',
+      path: doc.path,
+      method: doc.method,
+    };
+  }
+
+  return {
+    kind: 'doc',
+    title: doc.title,
+    summary: doc.summary,
+    description: doc.description,
+    path: doc.path,
+    method: doc.method,
+    authExample: doc.auth?.example || 'Authorization: Bearer sk-xxxxxxxx',
+    requestExample: doc.requestExample || '暂无请求示例',
+    responseExample: doc.responseExample || '暂无响应示例',
+  };
 }
 
 export function buildAiModelDocTree() {

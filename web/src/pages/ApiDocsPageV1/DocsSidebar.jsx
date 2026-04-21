@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Tag, Typography } from '@douyinfe/semi-ui';
 import { IconChevronDown, IconChevronRight } from '@douyinfe/semi-icons';
 
-import { buildAiModelDocTree } from './catalog';
+import { buildAiModelDocTree, expandAiModelDocGroups } from './catalog';
 
 const { Text } = Typography;
 
@@ -19,6 +19,10 @@ const DocsSidebar = ({ activeDocId, onSelectDoc }) => {
   const [expandedGroups, setExpandedGroups] = useState(() =>
     groups.map((group) => group.key),
   );
+
+  useEffect(() => {
+    setExpandedGroups((current) => expandAiModelDocGroups(current, activeDocId));
+  }, [activeDocId]);
 
   const toggleGroup = (groupKey) => {
     setExpandedGroups((current) =>

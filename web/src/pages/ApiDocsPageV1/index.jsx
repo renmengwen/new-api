@@ -1,14 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button, SideSheet, Typography } from '@douyinfe/semi-ui';
 import { IconMenu } from '@douyinfe/semi-icons';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import {
-  AI_MODEL_DOC_DEFAULT_ID,
-  buildAiModelDocRoute,
+  createAiModelDocSelectionHandler,
   getAiModelDocById,
-  resolveAiModelDocId,
+  resolveAiModelDocPageState,
 } from './catalog';
 import DocsSidebar from './DocsSidebar';
 import DocContent from './DocContent';
@@ -20,32 +19,20 @@ const ApiDocsPageV1 = () => {
   const isMobile = useIsMobile();
   const { category, docId } = useParams();
   const [sidebarVisible, setSidebarVisible] = useState(false);
-
-  const normalizedDocId = useMemo(() => {
-    if (!docId) {
-      return null;
-    }
-    return resolveAiModelDocId(docId);
-  }, [docId]);
+  const routeState = resolveAiModelDocPageState(category, docId);
 
   useEffect(() => {
     setSidebarVisible(false);
   }, [docId]);
 
-  if (category !== 'ai-model' || !docId) {
-    return <Navigate to={buildAiModelDocRoute(AI_MODEL_DOC_DEFAULT_ID)} replace />;
+  if (routeState.shouldRedirect) {
+    return <Navigate to={routeState.redirectTo} replace />;
   }
 
-  if (normalizedDocId !== docId) {
-    return <Navigate to={buildAiModelDocRoute(normalizedDocId)} replace />;
-  }
-
-  const doc = getAiModelDocById(normalizedDocId);
-
-  const handleSelectDoc = (nextDocId) => {
-    navigate(buildAiModelDocRoute(nextDocId));
-    setSidebarVisible(false);
-  };
+  const doc = getAiModelDocById(routeState.docId);
+  const handleSelectDoc = createAiModelDocSelectionHandler(navigate, () =>
+    setSidebarVisible(false),
+  );
 
   return (
     <div className='min-h-[calc(100vh-60px)] bg-[var(--semi-color-bg-0)]'>
