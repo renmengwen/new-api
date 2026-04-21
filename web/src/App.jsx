@@ -61,6 +61,7 @@ const AdminUserPermissions = lazy(() => import('./pages/AdminUserPermissionsPage
 const AdminQuotaLedger = lazy(() => import('./pages/AdminQuotaLedgerPageV2'));
 const AdminAuditLogs = lazy(() => import('./pages/AdminAuditLogsPageV1'));
 const AdminOperationsAnalytics = lazy(() => import('./pages/AdminOperationsAnalyticsPageV1'));
+const ApiDocsPage = lazy(() => import('./pages/ApiDocsPageV1'));
 
 function DynamicOAuth2Callback() {
   const { provider } = useParams();
@@ -344,6 +345,14 @@ function App() {
           element={
             <PrivateRoute>
               <Suspense fallback={<Loading />}><Log /></Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/docs/:category?/:docId?'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading />}><ApiDocsPage /></Suspense>
             </PrivateRoute>
           }
         />

@@ -75,6 +75,7 @@ import {
   Package,
   Server,
   CalendarClock,
+  BookOpen,
 } from 'lucide-react';
 import {
   SiAtlassian,
@@ -130,6 +131,8 @@ export function getLucideIcon(key, selected = false) {
       return <ImageIcon {...commonProps} color={iconColor} />;
     case 'task':
       return <CheckSquare {...commonProps} color={iconColor} />;
+    case 'docs':
+      return <BookOpen {...commonProps} color={iconColor} />;
     case 'topup':
       return <CreditCard {...commonProps} color={iconColor} />;
     case 'channel':
