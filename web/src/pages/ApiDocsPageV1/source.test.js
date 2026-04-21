@@ -27,6 +27,19 @@ require.extensions['.css'] = () => {};
 const readSource = (fileUrl) =>
   fs.existsSync(fileUrl) ? fs.readFileSync(fileUrl, 'utf8') : '';
 
+const appSource = readSource(new URL('../../App.jsx', import.meta.url));
+const siderBarSource = readSource(
+  new URL('../../components/layout/SiderBar.jsx', import.meta.url),
+);
+const useSidebarSource = readSource(
+  new URL('../../hooks/common/useSidebar.js', import.meta.url),
+);
+const renderHelperSource = readSource(
+  new URL('../../helpers/render.jsx', import.meta.url),
+);
+const settingsSidebarModulesAdminSource = readSource(
+  new URL('../Setting/Operation/SettingsSidebarModulesAdmin.jsx', import.meta.url),
+);
 const pageSource = readSource(new URL('./index.jsx', import.meta.url));
 const sidebarSource = readSource(new URL('./DocsSidebar.jsx', import.meta.url));
 const contentSource = readSource(new URL('./DocContent.jsx', import.meta.url));
@@ -159,6 +172,48 @@ test('DocsSidebar and index.jsx stay wired to the route helpers', () => {
   assert.match(sidebarSource, /expandAiModelDocGroups/);
   assert.match(sidebarSource, /useEffect/);
   assert.match(sidebarSource, /setExpandedGroups\(\(current\) => expandAiModelDocGroups\(current, activeDocId\)\)/);
+});
+
+test('App registers the console docs page behind a private route', () => {
+  assert.match(
+    appSource,
+    /const ApiDocsPage = lazy\(\(\) => import\('\.\/pages\/ApiDocsPageV1'\)\);/,
+  );
+  assert.match(
+    appSource,
+    /<Route\s+path='\/console\/docs\/:category\?\/:docId\?'\s+element=\{\s*<PrivateRoute>[\s\S]*?<ApiDocsPage \/>[\s\S]*?<\/PrivateRoute>\s*\}\s*\/>/,
+  );
+});
+
+test('SiderBar exposes docs as a console entry and keeps nested docs routes highlighted', () => {
+  assert.match(siderBarSource, /docs: '\/console\/docs'/);
+  assert.match(siderBarSource, /text: t\('API 文档'\),[\s\S]*?itemKey: 'docs',[\s\S]*?to: '\/console\/docs'/);
+  assert.match(
+    siderBarSource,
+    /if \(!matchingKey && currentPath\.startsWith\('\/console\/docs'\)\) \{\s*matchingKey = 'docs';\s*\}/,
+  );
+});
+
+test('sidebar defaults and admin settings enable console docs by default', () => {
+  assert.match(
+    useSidebarSource,
+    /console:\s*\{[\s\S]*?enabled: true,[\s\S]*?detail: true,[\s\S]*?token: true,[\s\S]*?log: true,[\s\S]*?midjourney: true,[\s\S]*?task: true,[\s\S]*?docs: true,[\s\S]*?\}/,
+  );
+
+  const docsEnabledMatches = settingsSidebarModulesAdminSource.match(/docs: true/g) ?? [];
+  assert.ok(docsEnabledMatches.length >= 3);
+  assert.match(
+    settingsSidebarModulesAdminSource,
+    /key: 'docs',\s*title: t\('API 文档'\),\s*description: t\('站内接口文档中心'\)/,
+  );
+});
+
+test('render helper maps docs to the BookOpen icon', () => {
+  assert.match(renderHelperSource, /BookOpen,/);
+  assert.match(
+    renderHelperSource,
+    /case 'docs':\s*return <BookOpen \{\.\.\.commonProps\} color=\{iconColor\} \/>;/,
+  );
 });
 
 test('DocContent renders full docs and placeholder panels differently', async () => {
