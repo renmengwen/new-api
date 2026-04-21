@@ -495,6 +495,8 @@ export const AI_MODEL_DOC_ITEMS = [
     path: '/v1/fine_tuning/jobs',
     summary: '微调任务接口预留入口。',
     description: '当前仅保留文档结构，后续将补充微调任务创建和查询能力。',
+    status: 'placeholder',
+    placeholderMessage: '该微调文档仍在补充中，后续会开放完整请求参数和返回示例。',
     requestBody: {
       training_file: 'file-123',
     },
@@ -542,6 +544,8 @@ export const AI_MODEL_DOC_ITEMS = [
     path: '/v1/videos/generate',
     summary: '即梦视频接口预留入口。',
     description: '当前仅保留兼容路径，后续补充完整请求参数和返回结构。',
+    status: 'placeholder',
+    placeholderMessage: '该视频兼容入口仍在补充中，后续会开放完整实现。',
     requestBody: {
       prompt: '国风视频。',
     },
@@ -557,6 +561,8 @@ export const AI_MODEL_DOC_ITEMS = [
     path: '/v1/videos/generate',
     summary: '可灵视频接口预留入口。',
     description: '当前仅保留兼容路径，后续补充完整请求参数和返回结构。',
+    status: 'placeholder',
+    placeholderMessage: '该视频兼容入口仍在补充中，后续会开放完整实现。',
     requestBody: {
       prompt: '商品宣传视频。',
     },
@@ -572,6 +578,8 @@ export const AI_MODEL_DOC_ITEMS = [
     path: '/v1/videos/generate',
     summary: 'Sora 视频接口预留入口。',
     description: '当前仅保留兼容路径，后续补充完整请求参数和返回结构。',
+    status: 'placeholder',
+    placeholderMessage: '该视频兼容入口仍在补充中，后续会开放完整实现。',
     requestBody: {
       prompt: '城市航拍。',
     },
