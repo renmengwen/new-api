@@ -126,15 +126,15 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'audio-native-openai',
     groupKey: 'audio',
-    title: '?? OpenAI ??',
+    title: '原生 OpenAI 格式',
     method: 'POST',
     transport: 'multipart',
     path: '/v1/audio/transcriptions',
-    summary: '?? OpenAI ???????????????',
-    description: '?? OpenAI ????????????????????????',
+    summary: '使用 OpenAI 兼容音频转写接口上传音频文件。',
+    description: '面向需要提交音频文件的语音转写场景，保留 OpenAI 风格的 multipart 请求结构。',
     multipartFields: ['model=whisper-1', 'file=@audio.wav', 'response_format=json'],
     responseBody: {
-      text: '???????',
+      text: '音频转写结果。',
     },
   }),
   createDoc({
@@ -330,13 +330,13 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'images-openai-edit',
     groupKey: 'images',
-    title: '????',
+    title: '编辑图像',
     method: 'POST',
     transport: 'multipart',
     path: '/v1/images/edits',
-    summary: '?? OpenAI ????????????????',
-    description: '????????????????????????',
-    multipartFields: ['model=gpt-image-1', 'image=@input.png', 'prompt=????????'],
+    summary: '使用 OpenAI 风格的图片编辑接口修改输入图片。',
+    description: '适合对已有图片进行局部编辑、风格调整或背景替换。',
+    multipartFields: ['model=gpt-image-1', 'image=@input.png', 'prompt=把背景改成夜景。'],
     responseBody: {
       data: [{ url: 'https://example.com/edited.png' }],
     },
@@ -376,13 +376,13 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'images-qwen-edit',
     groupKey: 'images',
-    title: '????',
+    title: '编辑图像',
     method: 'POST',
     transport: 'multipart',
     path: '/v1/images/edits',
-    summary: '?? Qwen ???????????',
-    description: '?? Qwen ??????????????',
-    multipartFields: ['model=qwen-image', 'image=@input.png', 'prompt=???????????'],
+    summary: '使用 Qwen 风格参数编辑已有图片。',
+    description: '演示 Qwen 图像编辑链路的兼容请求结构。',
+    multipartFields: ['model=qwen-image', 'image=@input.png', 'prompt=调整色调并增强对比度。'],
     responseBody: {
       data: [{ url: 'https://example.com/qwen-edited.png' }],
     },
@@ -390,12 +390,12 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'models-native-openai',
     groupKey: 'models',
-    title: '?? OpenAI ??',
+    title: '原生 OpenAI 格式',
     method: 'GET',
     transport: 'get',
     path: '/v1/models',
-    summary: '?? OpenAI ???????',
-    description: '?????????????????',
+    summary: '列出 OpenAI 兼容模型列表。',
+    description: '用于查看当前可用模型和基础元数据。',
     responseBody: {
       data: [{ id: 'gpt-4o-mini', object: 'model' }],
     },
@@ -403,12 +403,12 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'models-native-gemini',
     groupKey: 'models',
-    title: '?? Gemini ??',
+    title: '原生 Gemini 格式',
     method: 'GET',
     transport: 'get',
     path: '/v1beta/models',
-    summary: '?? Gemini ???????',
-    description: '???? Gemini ????????????',
+    summary: '列出 Gemini 兼容模型列表。',
+    description: '用于查看 Gemini 侧可用模型及其展示名称。',
     responseBody: {
       models: [{ name: 'models/gemini-2.0-flash', displayName: 'Gemini 2.0 Flash' }],
     },
@@ -432,12 +432,12 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'realtime-native-openai',
     groupKey: 'realtime',
-    title: '?? OpenAI ??',
+    title: '原生 OpenAI 格式',
     method: 'GET',
     transport: 'get',
     path: '/v1/realtime',
-    summary: '?? OpenAI Realtime ????????',
-    description: '??????????????????????',
+    summary: '建立 OpenAI Realtime 连接的入口说明。',
+    description: '用于展示实时会话能力的握手与连接初始化方式。',
     responseBody: {
       model: 'gpt-realtime',
       status: 'ready',
@@ -466,13 +466,13 @@ export const AI_MODEL_DOC_ITEMS = [
     title: '文件',
     method: 'POST',
     path: '/v1/files',
-    summary: '文件管理接口占位，后续补全。',
-    description: '当前仅保留目录结构和占位文档，便于后续接入后端实现。',
+    summary: '文件管理接口预留入口。',
+    description: '当前仅保留文档结构，后续将补充文件上传、列表和删除能力。',
     requestBody: {
       file_name: 'example.pdf',
     },
     responseBody: {
-      message: '待后续实现',
+      message: '该接口当前用于目录展示，后续会开放完整实现。',
     },
   }),
   createDoc({
@@ -481,13 +481,13 @@ export const AI_MODEL_DOC_ITEMS = [
     title: '微调',
     method: 'POST',
     path: '/v1/fine_tuning/jobs',
-    summary: '微调任务接口占位，后续补全。',
-    description: '先保留菜单和详情页入口，后续再挂接真实任务创建流程。',
+    summary: '微调任务接口预留入口。',
+    description: '当前仅保留文档结构，后续将补充微调任务创建和查询能力。',
     requestBody: {
       training_file: 'file-123',
     },
     responseBody: {
-      message: '待后续实现',
+      message: '该接口当前用于目录展示，后续会开放完整实现。',
     },
   }),
   createDoc({
@@ -510,12 +510,12 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'videos-get-task',
     groupKey: 'videos',
-    title: '??????????',
+    title: '获取视频生成任务状态',
     method: 'GET',
     transport: 'get',
     path: '/v1/videos/tasks/{task_id}',
-    summary: '????????????????',
-    description: '????????????????',
+    summary: '查询视频生成任务的当前处理状态。',
+    description: '适合轮询异步生成进度或最终结果。',
     responseBody: {
       task_id: 'vt_123',
       status: 'processing',
@@ -528,13 +528,13 @@ export const AI_MODEL_DOC_ITEMS = [
     title: '即梦格式',
     method: 'POST',
     path: '/v1/videos/generate',
-    summary: '即梦视频接口占位文档。',
-    description: '先保留即梦兼容入口，后续再补充完整请求参数和返回结构。',
+    summary: '即梦视频接口预留入口。',
+    description: '当前仅保留兼容路径，后续补充完整请求参数和返回结构。',
     requestBody: {
       prompt: '国风视频。',
     },
     responseBody: {
-      message: '待后续实现',
+      message: '该接口当前用于目录展示，后续会开放完整实现。',
     },
   }),
   createDoc({
@@ -543,13 +543,13 @@ export const AI_MODEL_DOC_ITEMS = [
     title: '可灵格式',
     method: 'POST',
     path: '/v1/videos/generate',
-    summary: '可灵视频接口占位文档。',
-    description: '保留可灵兼容入口，便于后续接入真实任务创建逻辑。',
+    summary: '可灵视频接口预留入口。',
+    description: '当前仅保留兼容路径，后续补充完整请求参数和返回结构。',
     requestBody: {
       prompt: '商品宣传视频。',
     },
     responseBody: {
-      message: '待后续实现',
+      message: '该接口当前用于目录展示，后续会开放完整实现。',
     },
   }),
   createDoc({
@@ -558,13 +558,13 @@ export const AI_MODEL_DOC_ITEMS = [
     title: 'Sora 格式',
     method: 'POST',
     path: '/v1/videos/generate',
-    summary: 'Sora 视频接口占位文档。',
-    description: '先保留 Sora 入口和页面结构，后续替换成真实后端实现。',
+    summary: 'Sora 视频接口预留入口。',
+    description: '当前仅保留兼容路径，后续补充完整请求参数和返回结构。',
     requestBody: {
       prompt: '城市航拍。',
     },
     responseBody: {
-      message: '待后续实现',
+      message: '该接口当前用于目录展示，后续会开放完整实现。',
     },
   }),
 ];

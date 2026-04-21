@@ -43,6 +43,9 @@ const REQUIRED_DOC_IDS = [
 ];
 
 const VALID_GROUP_KEYS = new Set(AI_MODEL_DOC_GROUPS.map((group) => group.key));
+const USER_FACING_STRING_FIELDS = ['title', 'summary', 'description', 'requestExample', 'responseExample'];
+
+const hasPlaceholderPattern = (value) => value.includes('??');
 
 test('AI model docs catalog keeps the approved group order and default doc id', () => {
   assert.equal(AI_MODEL_DOC_DEFAULT_ID, 'audio-native-gemini');
@@ -92,13 +95,20 @@ test('catalog data stays internally consistent and groups render in approved ord
 
   AI_MODEL_DOC_ITEMS.forEach((item) => {
     assert.ok(VALID_GROUP_KEYS.has(item.groupKey), `invalid group key: ${item.groupKey}`);
+    assert.ok(item.title.length > 0);
     assert.ok(item.summary.length > 0);
     assert.ok(item.description.length > 0);
     assert.ok(item.requestExample.length > 0);
     assert.ok(item.responseExample.length > 0);
-    assert.ok(!item.requestExample.includes('https://api.newapi.pro'));
+    assert.ok(item.requestExample.includes('{{base_url}}'));
+    assert.ok(item.auth.example.length > 0);
 
-    if (item.method === 'GET') {
+    USER_FACING_STRING_FIELDS.forEach((field) => {
+      assert.ok(!hasPlaceholderPattern(item[field]), `${item.id}.${field} still contains placeholder text`);
+    });
+    assert.ok(!hasPlaceholderPattern(item.auth.example), `${item.id}.auth.example still contains placeholder text`);
+
+    if (item.transport === 'get') {
       assert.ok(!item.requestExample.includes('Content-Type: application/json'));
       assert.ok(!item.requestExample.includes('-d '));
     }
@@ -106,6 +116,10 @@ test('catalog data stays internally consistent and groups render in approved ord
     if (item.transport === 'multipart') {
       assert.ok(item.requestExample.includes('-F '));
       assert.ok(!item.requestExample.includes('Content-Type: application/json'));
+    }
+
+    if (item.transport === 'json') {
+      assert.ok(item.requestExample.includes("-H 'Content-Type: application/json'") || item.requestExample.includes('-d '));
     }
   });
 
