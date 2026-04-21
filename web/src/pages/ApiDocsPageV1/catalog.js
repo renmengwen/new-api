@@ -1,4 +1,5 @@
 const BASE_URL_PLACEHOLDER = '{{base_url}}';
+const BASE_WS_URL_PLACEHOLDER = '{{base_ws_url}}';
 
 const DEFAULT_AUTH = {
   type: 'bearer',
@@ -444,10 +445,14 @@ export const AI_MODEL_DOC_ITEMS = [
     groupKey: 'realtime',
     title: '原生 OpenAI 格式',
     method: 'GET',
-    transport: 'get',
+    transport: 'websocket',
     path: '/v1/realtime',
     summary: '建立 OpenAI Realtime 连接的入口说明。',
     description: '用于展示实时会话能力的握手与连接初始化方式。',
+    requestExample: [
+      `websocat 'wss://${BASE_WS_URL_PLACEHOLDER}/v1/realtime?model=gpt-4o-realtime-preview'`,
+      `  -H 'Sec-WebSocket-Protocol: realtime, openai-insecure-api-key.sk-xxxxxxxx, openai-beta.realtime-v1'`,
+    ].join(' \\\n'),
     responseBody: {
       model: 'gpt-realtime',
       status: 'ready',
@@ -509,13 +514,11 @@ export const AI_MODEL_DOC_ITEMS = [
     groupKey: 'videos',
     title: '创建视频生成任务',
     method: 'POST',
-    path: '/v1/videos/tasks',
+    transport: 'multipart',
+    path: '/v1/videos',
     summary: '提交视频生成请求并创建异步任务。',
     description: '适合需要先提交任务、再轮询状态的视频生成工作流。',
-    requestBody: {
-      model: 'sora',
-      prompt: '一只狗在公园散步。',
-    },
+    multipartFields: ['model=sora-2', 'prompt=一只狗在公园散步。', 'seconds=8'],
     responseBody: {
       task_id: 'vt_123',
       status: 'queued',
@@ -527,7 +530,7 @@ export const AI_MODEL_DOC_ITEMS = [
     title: '获取视频生成任务状态',
     method: 'GET',
     transport: 'get',
-    path: '/v1/videos/tasks/{task_id}',
+    path: '/v1/videos/{task_id}',
     summary: '查询视频生成任务的当前处理状态。',
     description: '适合轮询异步生成进度或最终结果。',
     responseBody: {
@@ -541,7 +544,7 @@ export const AI_MODEL_DOC_ITEMS = [
     groupKey: 'videos',
     title: '即梦格式',
     method: 'POST',
-    path: '/v1/videos/generate',
+    path: '/jimeng/',
     summary: '即梦视频接口预留入口。',
     description: '当前仅保留兼容路径，后续补充完整请求参数和返回结构。',
     status: 'placeholder',
@@ -558,7 +561,7 @@ export const AI_MODEL_DOC_ITEMS = [
     groupKey: 'videos',
     title: '可灵格式',
     method: 'POST',
-    path: '/v1/videos/generate',
+    path: '/kling/v1/videos/text2video',
     summary: '可灵视频接口预留入口。',
     description: '当前仅保留兼容路径，后续补充完整请求参数和返回结构。',
     status: 'placeholder',
@@ -575,14 +578,13 @@ export const AI_MODEL_DOC_ITEMS = [
     groupKey: 'videos',
     title: 'Sora 格式',
     method: 'POST',
-    path: '/v1/videos/generate',
+    transport: 'multipart',
+    path: '/v1/videos',
     summary: 'Sora 视频接口预留入口。',
     description: '当前仅保留兼容路径，后续补充完整请求参数和返回结构。',
     status: 'placeholder',
     placeholderMessage: '该视频兼容入口仍在补充中，后续会开放完整实现。',
-    requestBody: {
-      prompt: '城市航拍。',
-    },
+    multipartFields: ['model=sora-2', 'prompt=城市航拍。', 'seconds=8'],
     responseBody: {
       message: '该接口当前用于目录展示，后续会开放完整实现。',
     },

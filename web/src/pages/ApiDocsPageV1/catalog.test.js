@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 import {
   AI_MODEL_DOC_DEFAULT_ID,
@@ -44,6 +45,9 @@ const REQUIRED_DOC_IDS = [
 
 const VALID_GROUP_KEYS = new Set(AI_MODEL_DOC_GROUPS.map((group) => group.key));
 const USER_FACING_STRING_FIELDS = ['title', 'summary', 'description', 'requestExample', 'responseExample'];
+const relayOpenApi = JSON.parse(
+  fs.readFileSync(new URL('../../../../docs/openapi/relay.json', import.meta.url), 'utf8'),
+);
 
 const hasPlaceholderPattern = (value) => value.includes('??');
 
@@ -100,7 +104,11 @@ test('catalog data stays internally consistent and groups render in approved ord
     assert.ok(item.description.length > 0);
     assert.ok(item.requestExample.length > 0);
     assert.ok(item.responseExample.length > 0);
-    assert.ok(item.requestExample.includes('{{base_url}}'));
+    if (item.transport === 'websocket') {
+      assert.ok(item.requestExample.includes('{{base_ws_url}}'));
+    } else {
+      assert.ok(item.requestExample.includes('{{base_url}}'));
+    }
     assert.ok(item.auth.example.length > 0);
 
     USER_FACING_STRING_FIELDS.forEach((field) => {
@@ -121,6 +129,12 @@ test('catalog data stays internally consistent and groups render in approved ord
     if (item.transport === 'json') {
       assert.ok(item.requestExample.includes("-H 'Content-Type: application/json'") || item.requestExample.includes('-d '));
     }
+
+    if (item.transport === 'websocket') {
+      assert.ok(item.requestExample.includes('wss://'));
+      assert.ok(item.requestExample.includes('Sec-WebSocket-Protocol: realtime'));
+      assert.ok(!item.requestExample.includes('curl '));
+    }
   });
 
   assert.equal(resolveAiModelDocId('missing-doc'), AI_MODEL_DOC_DEFAULT_ID);
@@ -129,4 +143,51 @@ test('catalog data stays internally consistent and groups render in approved ord
     buildAiModelDocRoute('chat-openai-chat-completions'),
     '/console/docs/ai-model/chat-openai-chat-completions',
   );
+});
+
+test('relay openapi contract exposes the corrected realtime and video endpoints', () => {
+  const { paths } = relayOpenApi;
+
+  assert.ok(paths['/v1/videos']);
+  assert.ok(paths['/v1/videos'].post);
+  assert.ok(paths['/v1/videos'].post.requestBody.content['multipart/form-data']);
+
+  assert.ok(paths['/v1/videos/{task_id}']);
+  assert.ok(paths['/v1/videos/{task_id}'].get);
+
+  assert.ok(paths['/jimeng/']);
+  assert.ok(paths['/jimeng/'].post);
+
+  assert.ok(paths['/kling/v1/videos/text2video']);
+  assert.ok(paths['/kling/v1/videos/text2video'].post);
+
+  assert.ok(paths['/v1/realtime']);
+  assert.ok(paths['/v1/realtime'].get);
+  assert.match(paths['/v1/realtime'].get.description, /WebSocket|wss:\/\//);
+});
+
+test('catalog video and realtime docs stay aligned with the relay contract', () => {
+  const createTaskDoc = getAiModelDocById('videos-create-task');
+  const getTaskDoc = getAiModelDocById('videos-get-task');
+  const jimengDoc = getAiModelDocById('videos-jimeng');
+  const klingDoc = getAiModelDocById('videos-kling');
+  const soraDoc = getAiModelDocById('videos-sora');
+  const realtimeDoc = getAiModelDocById('realtime-native-openai');
+
+  assert.equal(createTaskDoc.path, '/v1/videos');
+  assert.equal(createTaskDoc.transport, 'multipart');
+  assert.match(createTaskDoc.requestExample, /-F '/);
+
+  assert.equal(getTaskDoc.path, '/v1/videos/{task_id}');
+  assert.equal(getTaskDoc.transport, 'get');
+
+  assert.equal(jimengDoc.path, '/jimeng/');
+  assert.equal(klingDoc.path, '/kling/v1/videos/text2video');
+  assert.equal(soraDoc.path, '/v1/videos');
+
+  assert.equal(realtimeDoc.path, '/v1/realtime');
+  assert.equal(realtimeDoc.transport, 'websocket');
+  assert.match(realtimeDoc.requestExample, /wss:\/\/.*\/v1\/realtime\?model=/);
+  assert.match(realtimeDoc.requestExample, /Sec-WebSocket-Protocol: realtime, openai-insecure-api-key\.sk-xxxxxxxx, openai-beta\.realtime-v1/);
+  assert.doesNotMatch(realtimeDoc.requestExample, /curl '/);
 });
