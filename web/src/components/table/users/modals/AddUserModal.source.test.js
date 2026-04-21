@@ -48,3 +48,15 @@ test('add user modal defaults group to the first available option instead of har
     modalSource.includes("formApiRef.current?.setValue('group', nextDefaultGroup);"),
   );
 });
+
+test('add user modal keeps allowed token groups logic while hiding the controls', () => {
+  assert.ok(modalSource.includes('props.supportsAllowedTokenGroups'));
+  assert.ok(modalSource.includes("field='allowed_token_groups_enabled'"));
+  assert.ok(modalSource.includes("field='allowed_token_groups'"));
+  assert.ok(modalSource.includes('multiple'));
+  assert.ok(
+    modalSource.includes(
+      "style={props.hideAllowedTokenGroupFields ? { display: 'none' } : undefined}",
+    ),
+  );
+});

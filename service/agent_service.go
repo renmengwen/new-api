@@ -5,26 +5,30 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 )
 
 type CreateAgentRequest struct {
-	Username     string `json:"username"`
-	Password     string `json:"password"`
-	AgentName    string `json:"agent_name"`
-	CompanyName  string `json:"company_name"`
-	ContactPhone string `json:"contact_phone"`
-	Group        string `json:"group"`
-	Remark       string `json:"remark"`
+	Username                  string   `json:"username"`
+	Password                  string   `json:"password"`
+	AgentName                 string   `json:"agent_name"`
+	CompanyName               string   `json:"company_name"`
+	ContactPhone              string   `json:"contact_phone"`
+	Group                     string   `json:"group"`
+	AllowedTokenGroupsEnabled bool     `json:"allowed_token_groups_enabled"`
+	AllowedTokenGroups        []string `json:"allowed_token_groups"`
+	Remark                    string   `json:"remark"`
 }
 
 type UpdateAgentRequest struct {
-	DisplayName  string `json:"display_name"`
-	AgentName    string `json:"agent_name"`
-	CompanyName  string `json:"company_name"`
-	ContactPhone string `json:"contact_phone"`
-	Remark       string `json:"remark"`
+	DisplayName               string   `json:"display_name"`
+	AgentName                 string   `json:"agent_name"`
+	CompanyName               string   `json:"company_name"`
+	ContactPhone              string   `json:"contact_phone"`
+	Group                     string   `json:"group"`
+	AllowedTokenGroupsEnabled bool     `json:"allowed_token_groups_enabled"`
+	AllowedTokenGroups        []string `json:"allowed_token_groups"`
+	Remark                    string   `json:"remark"`
 }
 
 type AgentListItem struct {
@@ -58,6 +62,21 @@ func CreateAgentWithOperator(req CreateAgentRequest, operatorUserId int, operato
 	if operatorUserId > 0 && (operatorUserType == model.UserTypeRoot || operatorUserType == model.UserTypeAdmin) {
 		inviterId = operatorUserId
 		user.InviterId = inviterId
+	}
+	assignableGroups := currentTokenGroupDefinitions()
+	if operatorUserId > 0 {
+		if operator, err := model.GetUserById(operatorUserId, false); err == nil {
+			assignableGroups = ResolveAssignableTokenGroups(operator)
+		}
+	}
+	normalizedAllowedTokenGroups, err := ValidateAllowedTokenGroupsAssignment(
+		user.Group,
+		req.AllowedTokenGroupsEnabled,
+		req.AllowedTokenGroups,
+		assignableGroups,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	tx := model.DB.Begin()
@@ -104,8 +123,10 @@ func CreateAgentWithOperator(req CreateAgentRequest, operatorUserId int, operato
 		return nil, err
 	}
 
-	setting := dto.UserSetting{}
+	setting := user.GetSetting()
 	setting.SidebarModules = buildAgentSidebarModules()
+	setting.AllowedTokenGroupsEnabled = req.AllowedTokenGroupsEnabled
+	setting.AllowedTokenGroups = normalizedAllowedTokenGroups
 	user.SetSetting(setting)
 	if err := tx.Model(&model.User{}).Where("id = ?", user.Id).Update("setting", user.Setting).Error; err != nil {
 		tx.Rollback()
@@ -113,9 +134,12 @@ func CreateAgentWithOperator(req CreateAgentRequest, operatorUserId int, operato
 	}
 
 	afterJSON, _ := common.Marshal(map[string]any{
-		"username":   user.Username,
-		"user_type":  user.UserType,
-		"agent_name": profile.AgentName,
+		"username":                     user.Username,
+		"user_type":                    user.UserType,
+		"agent_name":                   profile.AgentName,
+		"group":                        user.Group,
+		"allowed_token_groups_enabled": req.AllowedTokenGroupsEnabled,
+		"allowed_token_groups":         normalizedAllowedTokenGroups,
 	})
 	if err := CreateAdminAuditLogTx(tx, AuditLogInput{
 		OperatorUserId:   operatorUserId,
@@ -184,17 +208,21 @@ func GetAgentDetail(userId int) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	userSetting := user.GetSetting()
 
 	return map[string]any{
-		"id":            user.Id,
-		"username":      user.Username,
-		"display_name":  user.DisplayName,
-		"status":        user.Status,
-		"user_type":     user.GetUserType(),
-		"agent_name":    profile.AgentName,
-		"company_name":  profile.CompanyName,
-		"contact_phone": profile.ContactPhone,
-		"remark":        profile.Remark,
+		"id":                           user.Id,
+		"username":                     user.Username,
+		"display_name":                 user.DisplayName,
+		"status":                       user.Status,
+		"user_type":                    user.GetUserType(),
+		"agent_name":                   profile.AgentName,
+		"company_name":                 profile.CompanyName,
+		"contact_phone":                profile.ContactPhone,
+		"group":                        user.Group,
+		"allowed_token_groups_enabled": userSetting.AllowedTokenGroupsEnabled,
+		"allowed_token_groups":         userSetting.AllowedTokenGroups,
+		"remark":                       profile.Remark,
 		"quota_summary": map[string]any{
 			"balance":        account.Balance,
 			"frozen_balance": account.FrozenBalance,
@@ -223,21 +251,43 @@ func UpdateAgentWithOperator(userId int, req UpdateAgentRequest, operatorUserId 
 	nextAgentName := firstNonEmpty(strings.TrimSpace(req.AgentName), nextDisplayName, profile.AgentName)
 	nextCompanyName := strings.TrimSpace(req.CompanyName)
 	nextContactPhone := strings.TrimSpace(req.ContactPhone)
+	nextGroup := firstNonEmpty(strings.TrimSpace(req.Group), user.Group, "default")
 	nextRemark := strings.TrimSpace(req.Remark)
+	assignableGroups := currentTokenGroupDefinitions()
+	if operatorUserId > 0 {
+		if operator, err := model.GetUserById(operatorUserId, false); err == nil {
+			assignableGroups = ResolveAssignableTokenGroups(operator)
+		}
+	}
+	normalizedAllowedTokenGroups, err := ValidateAllowedTokenGroupsAssignment(
+		nextGroup,
+		req.AllowedTokenGroupsEnabled,
+		req.AllowedTokenGroups,
+		assignableGroups,
+	)
+	if err != nil {
+		return err
+	}
 
 	beforeJSON, _ := common.Marshal(map[string]any{
-		"display_name":  user.DisplayName,
-		"agent_name":    profile.AgentName,
-		"company_name":  profile.CompanyName,
-		"contact_phone": profile.ContactPhone,
-		"remark":        profile.Remark,
+		"display_name":                 user.DisplayName,
+		"agent_name":                   profile.AgentName,
+		"company_name":                 profile.CompanyName,
+		"contact_phone":                profile.ContactPhone,
+		"group":                        user.Group,
+		"allowed_token_groups_enabled": user.GetSetting().AllowedTokenGroupsEnabled,
+		"allowed_token_groups":         user.GetSetting().AllowedTokenGroups,
+		"remark":                       profile.Remark,
 	})
 	afterJSON, _ := common.Marshal(map[string]any{
-		"display_name":  nextDisplayName,
-		"agent_name":    nextAgentName,
-		"company_name":  nextCompanyName,
-		"contact_phone": nextContactPhone,
-		"remark":        nextRemark,
+		"display_name":                 nextDisplayName,
+		"agent_name":                   nextAgentName,
+		"company_name":                 nextCompanyName,
+		"contact_phone":                nextContactPhone,
+		"group":                        nextGroup,
+		"allowed_token_groups_enabled": req.AllowedTokenGroupsEnabled,
+		"allowed_token_groups":         normalizedAllowedTokenGroups,
+		"remark":                       nextRemark,
 	})
 
 	tx := model.DB.Begin()
@@ -253,7 +303,16 @@ func UpdateAgentWithOperator(userId int, req UpdateAgentRequest, operatorUserId 
 	if err := tx.Model(&model.User{}).Where("id = ?", userId).Updates(map[string]any{
 		"display_name": nextDisplayName,
 		"phone":        nextContactPhone,
+		"group":        nextGroup,
 	}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	currentSetting := user.GetSetting()
+	currentSetting.AllowedTokenGroupsEnabled = req.AllowedTokenGroupsEnabled
+	currentSetting.AllowedTokenGroups = normalizedAllowedTokenGroups
+	user.SetSetting(currentSetting)
+	if err := tx.Model(&model.User{}).Where("id = ?", userId).Update("setting", user.Setting).Error; err != nil {
 		tx.Rollback()
 		return err
 	}

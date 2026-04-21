@@ -30,6 +30,69 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+type legacyAdminUserRequest struct {
+	Id                        int      `json:"id"`
+	Username                  string   `json:"username"`
+	Password                  string   `json:"password"`
+	DisplayName               string   `json:"display_name"`
+	Role                      int      `json:"role"`
+	Email                     string   `json:"email"`
+	Group                     string   `json:"group"`
+	Quota                     int      `json:"quota"`
+	Remark                    string   `json:"remark"`
+	AllowedTokenGroupsEnabled bool     `json:"allowed_token_groups_enabled"`
+	AllowedTokenGroups        []string `json:"allowed_token_groups"`
+}
+
+func normalizeLegacyAllowedTokenGroups(primaryGroup string, enabled bool, groups []string) []string {
+	normalized := service.NormalizeAllowedTokenGroups(groups)
+	if !enabled {
+		return normalized
+	}
+
+	primaryGroup = strings.TrimSpace(primaryGroup)
+	if primaryGroup == "" {
+		return normalized
+	}
+	for _, group := range normalized {
+		if group == primaryGroup {
+			return normalized
+		}
+	}
+	return append([]string{primaryGroup}, normalized...)
+}
+
+func applyLegacyAllowedTokenGroups(user *model.User, enabled bool, groups []string) {
+	if user == nil {
+		return
+	}
+
+	currentSetting := user.GetSetting()
+	currentSetting.AllowedTokenGroupsEnabled = enabled
+	currentSetting.AllowedTokenGroups = normalizeLegacyAllowedTokenGroups(user.Group, enabled, groups)
+	user.SetSetting(currentSetting)
+}
+
+func buildLegacyUserDetailResponse(user *model.User) (map[string]any, error) {
+	if user == nil {
+		return nil, errors.New("user is nil")
+	}
+
+	userDataBytes, err := common.Marshal(user)
+	if err != nil {
+		return nil, err
+	}
+	userData := make(map[string]any)
+	if err := common.Unmarshal(userDataBytes, &userData); err != nil {
+		return nil, err
+	}
+
+	userSetting := user.GetSetting()
+	userData["allowed_token_groups_enabled"] = userSetting.AllowedTokenGroupsEnabled
+	userData["allowed_token_groups"] = userSetting.AllowedTokenGroups
+	return userData, nil
+}
+
 func Login(c *gin.Context) {
 	if !common.PasswordLoginEnabled {
 		common.ApiErrorI18n(c, i18n.MsgUserPasswordLoginDisabled)
@@ -222,7 +285,6 @@ func Register(c *gin.Context) {
 			return
 		}
 	}
-
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -285,10 +347,15 @@ func GetUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
 	}
+	userData, err := buildLegacyUserDetailResponse(user)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    user,
+		"data":    userData,
 	})
 	return
 }
@@ -570,11 +637,22 @@ func GetUserModels(c *gin.Context) {
 }
 
 func UpdateUser(c *gin.Context) {
-	var updatedUser model.User
-	err := common.DecodeJson(c.Request.Body, &updatedUser)
-	if err != nil || updatedUser.Id == 0 {
+	var request legacyAdminUserRequest
+	err := common.DecodeJson(c.Request.Body, &request)
+	if err != nil || request.Id == 0 {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
+	}
+	updatedUser := model.User{
+		Id:          request.Id,
+		Username:    strings.TrimSpace(request.Username),
+		Password:    request.Password,
+		DisplayName: request.DisplayName,
+		Role:        request.Role,
+		Email:       strings.TrimSpace(request.Email),
+		Group:       strings.TrimSpace(request.Group),
+		Quota:       request.Quota,
+		Remark:      request.Remark,
 	}
 	if updatedUser.Password == "" {
 		updatedUser.Password = "$I_LOVE_U" // make Validator happy :)
@@ -624,6 +702,16 @@ func UpdateUser(c *gin.Context) {
 			return
 		}
 		updatedUser.Quota = targetQuota
+	}
+	currentUser, err := model.GetUserById(updatedUser.Id, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	applyLegacyAllowedTokenGroups(currentUser, request.AllowedTokenGroupsEnabled, request.AllowedTokenGroups)
+	if err := currentUser.Update(false); err != nil {
+		common.ApiError(c, err)
+		return
 	}
 	if quotaChanged {
 		model.RecordLog(originUser.Id, model.LogTypeManage, fmt.Sprintf("管理员将用户额度从 %s修改为 %s", logger.LogQuota(originUser.Quota), logger.LogQuota(updatedUser.Quota)))
@@ -898,12 +986,22 @@ func apiUserInputError(c *gin.Context, err error) {
 }
 
 func CreateUser(c *gin.Context) {
-	var user model.User
-	err := common.DecodeJson(c.Request.Body, &user)
-	user.Username = strings.TrimSpace(user.Username)
-	if err != nil || user.Username == "" || user.Password == "" {
+	var request legacyAdminUserRequest
+	err := common.DecodeJson(c.Request.Body, &request)
+	request.Username = strings.TrimSpace(request.Username)
+	if err != nil || request.Username == "" || request.Password == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
+	}
+	user := model.User{
+		Username:    request.Username,
+		Password:    request.Password,
+		DisplayName: request.DisplayName,
+		Role:        request.Role,
+		Email:       strings.TrimSpace(request.Email),
+		Group:       strings.TrimSpace(request.Group),
+		Quota:       request.Quota,
+		Remark:      request.Remark,
 	}
 	if err := common.Validate.Struct(&user); err != nil {
 		common.ApiErrorMsg(c, mapUserValidationError(err))
@@ -929,6 +1027,7 @@ func CreateUser(c *gin.Context) {
 		targetGroup = "default"
 	}
 	cleanUser.Group = targetGroup
+	applyLegacyAllowedTokenGroups(&cleanUser, request.AllowedTokenGroupsEnabled, request.AllowedTokenGroups)
 	if err := cleanUser.Insert(0); err != nil {
 		apiUserInputError(c, err)
 		return
@@ -1253,13 +1352,19 @@ func UpdateUserSetting(c *gin.Context) {
 	}
 
 	// 构建设置
-	settings := dto.UserSetting{
-		NotifyType:                       req.QuotaWarningType,
-		QuotaWarningThreshold:            req.QuotaWarningThreshold,
-		UpstreamModelUpdateNotifyEnabled: upstreamModelUpdateNotifyEnabled,
-		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
-		RecordIpLog:                      req.RecordIpLog,
-	}
+	settings := existingSettings
+	settings.NotifyType = req.QuotaWarningType
+	settings.QuotaWarningThreshold = req.QuotaWarningThreshold
+	settings.UpstreamModelUpdateNotifyEnabled = upstreamModelUpdateNotifyEnabled
+	settings.AcceptUnsetRatioModel = req.AcceptUnsetModelRatioModel
+	settings.RecordIpLog = req.RecordIpLog
+	settings.WebhookUrl = ""
+	settings.WebhookSecret = ""
+	settings.NotificationEmail = ""
+	settings.BarkUrl = ""
+	settings.GotifyUrl = ""
+	settings.GotifyToken = ""
+	settings.GotifyPriority = 0
 
 	// 如果是webhook类型,添加webhook相关设置
 	if req.QuotaWarningType == dto.NotifyTypeWebhook {

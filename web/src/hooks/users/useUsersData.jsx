@@ -294,7 +294,9 @@ export const useUsersData = (mode = 'legacy') => {
   const fetchGroups = async () => {
     try {
       if (isManagedMode) {
-        const res = await API.get('/api/user/self/groups');
+        const res = await API.get('/api/user/self/groups', {
+          params: { mode: 'assignable_token' },
+        });
         if (res === undefined) {
           return;
         }

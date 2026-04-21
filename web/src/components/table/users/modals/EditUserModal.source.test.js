@@ -50,3 +50,16 @@ test('edit user quota display keeps six decimal places for admin adjustments', (
     ),
   );
 });
+
+test('edit user modal keeps allowed token groups logic while hiding the controls', () => {
+  assert.ok(modalSource.includes('props.supportsAllowedTokenGroups'));
+  assert.ok(modalSource.includes("field='allowed_token_groups_enabled'"));
+  assert.ok(modalSource.includes("field='allowed_token_groups'"));
+  assert.ok(modalSource.includes('optionList={groupOptions}'));
+  assert.ok(modalSource.includes('multiple'));
+  assert.ok(
+    modalSource.includes(
+      "style={props.hideAllowedTokenGroupFields ? { display: 'none' } : undefined}",
+    ),
+  );
+});

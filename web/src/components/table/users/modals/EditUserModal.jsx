@@ -98,10 +98,16 @@ const EditUserModal = (props) => {
     email: '',
     quota: 0,
     group: 'default',
+    allowed_token_groups_enabled: false,
+    allowed_token_groups: [],
     remark: '',
   });
 
   const fetchGroups = async () => {
+    if (Array.isArray(props.groupOptions) && props.groupOptions.length > 0) {
+      setGroupOptions(props.groupOptions);
+      return;
+    }
     try {
       let res = await API.get(`/api/group/`);
       setGroupOptions(toGroupOptions(res.data));
@@ -135,6 +141,12 @@ const EditUserModal = (props) => {
     setBindingModalVisible(false);
   }, [props.editingUser.id]);
 
+  useEffect(() => {
+    if (Array.isArray(props.groupOptions) && props.groupOptions.length > 0) {
+      setGroupOptions(props.groupOptions);
+    }
+  }, [props.groupOptions]);
+
   const openBindingModal = () => {
     setBindingModalVisible(true);
   };
@@ -151,6 +163,16 @@ const EditUserModal = (props) => {
       payload.quota = parseInt(payload.quota) || 0;
     if (userId) {
       payload.id = parseInt(userId);
+    }
+    if (props.supportsAllowedTokenGroups) {
+      const primaryGroup = payload.group || groupOptions?.[0]?.value || 'default';
+      const allowedGroups = Array.isArray(payload.allowed_token_groups)
+        ? payload.allowed_token_groups.filter(Boolean)
+        : [];
+      payload.group = primaryGroup;
+      payload.allowed_token_groups = payload.allowed_token_groups_enabled
+        ? Array.from(new Set([primaryGroup, ...allowedGroups].filter(Boolean)))
+        : allowedGroups;
     }
     const response = props.updateUser
       ? await props.updateUser(userId, payload)
@@ -330,6 +352,44 @@ const EditUserModal = (props) => {
                           rules={[{ required: true, message: t('请选择分组') }]}
                         />
                       </Col>
+
+                      {props.supportsAllowedTokenGroups ? (
+                        <>
+                          <Col
+                            span={24}
+                            style={props.hideAllowedTokenGroupFields ? { display: 'none' } : undefined}
+                          >
+                            <Form.Switch
+                              field='allowed_token_groups_enabled'
+                              label={t('限制令牌分组')}
+                              checkedText={t('开')}
+                              uncheckedText={t('关')}
+                              extraText={t(
+                                '开启后，用户创建令牌时只能选择下列分组，主分组会自动纳入',
+                              )}
+                            />
+                          </Col>
+
+                          <Col
+                            span={24}
+                            style={props.hideAllowedTokenGroupFields ? { display: 'none' } : undefined}
+                          >
+                            <Form.Select
+                              field='allowed_token_groups'
+                              label={t('可创建令牌分组')}
+                              placeholder={t('请选择可创建令牌的分组')}
+                              optionList={groupOptions}
+                              multiple
+                              allowAdditions
+                              search
+                              showClear
+                              extraText={t(
+                                '仅在开启限制令牌分组后生效，不影响用户主分组和计费语义',
+                              )}
+                            />
+                          </Col>
+                        </>
+                      ) : null}
 
                       <Col span={10}>
                         <Form.InputNumber

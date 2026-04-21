@@ -29,22 +29,26 @@ type AdminUserListItem struct {
 }
 
 type CreateAdminUserRequest struct {
-	Username    string `json:"username"`
-	Password    string `json:"password"`
-	DisplayName string `json:"display_name"`
-	Email       string `json:"email"`
-	Group       string `json:"group"`
-	Remark      string `json:"remark"`
+	Username                  string   `json:"username"`
+	Password                  string   `json:"password"`
+	DisplayName               string   `json:"display_name"`
+	Email                     string   `json:"email"`
+	Group                     string   `json:"group"`
+	AllowedTokenGroupsEnabled bool     `json:"allowed_token_groups_enabled"`
+	AllowedTokenGroups        []string `json:"allowed_token_groups"`
+	Remark                    string   `json:"remark"`
 }
 
 type UpdateAdminUserRequest struct {
-	Username    string `json:"username"`
-	Password    string `json:"password"`
-	DisplayName string `json:"display_name"`
-	Email       string `json:"email"`
-	Group       string `json:"group"`
-	Remark      string `json:"remark"`
-	Quota       int    `json:"quota"`
+	Username                  string   `json:"username"`
+	Password                  string   `json:"password"`
+	DisplayName               string   `json:"display_name"`
+	Email                     string   `json:"email"`
+	Group                     string   `json:"group"`
+	AllowedTokenGroupsEnabled bool     `json:"allowed_token_groups_enabled"`
+	AllowedTokenGroups        []string `json:"allowed_token_groups"`
+	Remark                    string   `json:"remark"`
+	Quota                     int      `json:"quota"`
 }
 
 func adminUserGroupSelectExpr() string {
@@ -116,6 +120,16 @@ func CreateAdminUserWithOperator(req CreateAdminUserRequest, operatorUserId int,
 	if operator.GetUserType() == model.UserTypeAgent {
 		user.ParentAgentId = operator.Id
 	}
+	assignableGroups := ResolveAssignableTokenGroups(operator)
+	normalizedAllowedTokenGroups, err := ValidateAllowedTokenGroupsAssignment(
+		user.Group,
+		req.AllowedTokenGroupsEnabled,
+		req.AllowedTokenGroups,
+		assignableGroups,
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := common.Validate.Struct(user); err != nil {
 		return nil, err
@@ -157,12 +171,23 @@ func CreateAdminUserWithOperator(req CreateAdminUserRequest, operatorUserId int,
 			return nil, err
 		}
 	}
+	currentSetting := user.GetSetting()
+	currentSetting.AllowedTokenGroupsEnabled = req.AllowedTokenGroupsEnabled
+	currentSetting.AllowedTokenGroups = normalizedAllowedTokenGroups
+	user.SetSetting(currentSetting)
+	if err := tx.Model(&model.User{}).Where("id = ?", user.Id).Update("setting", user.Setting).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
 
 	afterJSON, _ := common.Marshal(map[string]any{
-		"username":        user.Username,
-		"display_name":    user.DisplayName,
-		"user_type":       user.GetUserType(),
-		"parent_agent_id": user.ParentAgentId,
+		"username":                     user.Username,
+		"display_name":                 user.DisplayName,
+		"user_type":                    user.GetUserType(),
+		"parent_agent_id":              user.ParentAgentId,
+		"group":                        user.Group,
+		"allowed_token_groups_enabled": req.AllowedTokenGroupsEnabled,
+		"allowed_token_groups":         normalizedAllowedTokenGroups,
 	})
 	if err := CreateAdminAuditLogTx(tx, AuditLogInput{
 		OperatorUserId:   operator.Id,
@@ -204,26 +229,29 @@ func GetAdminUserDetail(targetUserId int, operatorUserId int, operatorRole int) 
 	if err != nil {
 		return nil, err
 	}
+	userSetting := user.GetSetting()
 
 	return map[string]any{
-		"id":                user.Id,
-		"username":          user.Username,
-		"display_name":      user.DisplayName,
-		"status":            user.Status,
-		"user_type":         user.GetUserType(),
-		"parent_agent_id":   user.ParentAgentId,
-		"group":             user.Group,
-		"phone":             user.Phone,
-		"email":             user.Email,
-		"quota":             user.Quota,
-		"used_quota":        user.UsedQuota,
-		"request_count":     user.RequestCount,
-		"inviter_id":        user.InviterId,
-		"aff_count":         user.AffCount,
-		"aff_history_quota": user.AffHistoryQuota,
-		"remark":            user.Remark,
-		"last_active_at":    user.LastActiveAt,
-		"quota_summary":     quotaSummary,
+		"id":                           user.Id,
+		"username":                     user.Username,
+		"display_name":                 user.DisplayName,
+		"status":                       user.Status,
+		"user_type":                    user.GetUserType(),
+		"parent_agent_id":              user.ParentAgentId,
+		"group":                        user.Group,
+		"phone":                        user.Phone,
+		"email":                        user.Email,
+		"quota":                        user.Quota,
+		"used_quota":                   user.UsedQuota,
+		"request_count":                user.RequestCount,
+		"inviter_id":                   user.InviterId,
+		"aff_count":                    user.AffCount,
+		"aff_history_quota":            user.AffHistoryQuota,
+		"remark":                       user.Remark,
+		"last_active_at":               user.LastActiveAt,
+		"allowed_token_groups_enabled": userSetting.AllowedTokenGroupsEnabled,
+		"allowed_token_groups":         userSetting.AllowedTokenGroups,
+		"quota_summary":                quotaSummary,
 	}, nil
 }
 
@@ -246,22 +274,36 @@ func UpdateAdminUserWithOperator(targetUserId int, req UpdateAdminUserRequest, o
 	originalQuota := user.Quota
 	targetQuota := req.Quota
 	quotaChanged := targetQuota != originalQuota
+	assignableGroups := ResolveAssignableTokenGroups(operator)
+	normalizedAllowedTokenGroups, err := ValidateAllowedTokenGroupsAssignment(
+		nextGroup,
+		req.AllowedTokenGroupsEnabled,
+		req.AllowedTokenGroups,
+		assignableGroups,
+	)
+	if err != nil {
+		return err
+	}
 
 	beforeJSON, _ := common.Marshal(map[string]any{
-		"username":     user.Username,
-		"display_name": user.DisplayName,
-		"group":        user.Group,
-		"quota":        user.Quota,
-		"remark":       user.Remark,
-		"email":        user.Email,
+		"username":                     user.Username,
+		"display_name":                 user.DisplayName,
+		"group":                        user.Group,
+		"quota":                        user.Quota,
+		"remark":                       user.Remark,
+		"email":                        user.Email,
+		"allowed_token_groups_enabled": user.GetSetting().AllowedTokenGroupsEnabled,
+		"allowed_token_groups":         user.GetSetting().AllowedTokenGroups,
 	})
 	afterJSON, _ := common.Marshal(map[string]any{
-		"username":     nextUsername,
-		"display_name": nextDisplayName,
-		"group":        nextGroup,
-		"quota":        req.Quota,
-		"remark":       nextRemark,
-		"email":        nextEmail,
+		"username":                     nextUsername,
+		"display_name":                 nextDisplayName,
+		"group":                        nextGroup,
+		"quota":                        req.Quota,
+		"remark":                       nextRemark,
+		"email":                        nextEmail,
+		"allowed_token_groups_enabled": req.AllowedTokenGroupsEnabled,
+		"allowed_token_groups":         normalizedAllowedTokenGroups,
 	})
 
 	user.Username = nextUsername
@@ -313,6 +355,11 @@ func UpdateAdminUserWithOperator(targetUserId int, req UpdateAdminUserRequest, o
 		"remark":       user.Remark,
 		"email":        user.Email,
 	}
+	currentSetting := user.GetSetting()
+	currentSetting.AllowedTokenGroupsEnabled = req.AllowedTokenGroupsEnabled
+	currentSetting.AllowedTokenGroups = normalizedAllowedTokenGroups
+	user.SetSetting(currentSetting)
+	updates["setting"] = user.Setting
 	if updatePassword {
 		updates["password"] = user.Password
 	}

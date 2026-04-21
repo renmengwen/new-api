@@ -29,7 +29,8 @@ const hookSource = fs.readFileSync(
 
 test('useUsersData loads managed-mode group options from user self groups', () => {
   assert.ok(hookSource.includes('toManagedGroupOptions'));
-  assert.ok(hookSource.includes("API.get('/api/user/self/groups')"));
+  assert.ok(hookSource.includes("API.get('/api/user/self/groups', {"));
+  assert.ok(hookSource.includes("params: { mode: 'assignable_token' }"));
   assert.ok(hookSource.includes("const userGroup = JSON.parse(localStorage.getItem('user'))?.group;"));
   assert.ok(
     hookSource.includes(

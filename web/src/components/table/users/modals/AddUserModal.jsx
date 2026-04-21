@@ -45,6 +45,10 @@ const AddUserModal = (props) => {
   const isMobile = useIsMobile();
 
   const getDefaultGroupValue = () => props.groupOptions?.[0]?.value || '';
+  const getDefaultAllowedTokenGroups = () => {
+    const defaultGroup = getDefaultGroupValue();
+    return defaultGroup ? [defaultGroup] : [];
+  };
 
   const getInitValues = () => ({
     username: '',
@@ -52,6 +56,8 @@ const AddUserModal = (props) => {
     password: '',
     remark: '',
     group: getDefaultGroupValue(),
+    allowed_token_groups_enabled: false,
+    allowed_token_groups: getDefaultAllowedTokenGroups(),
   });
 
   useEffect(() => {
@@ -66,13 +72,31 @@ const AddUserModal = (props) => {
     if (!currentGroup) {
       formApiRef.current?.setValue('group', nextDefaultGroup);
     }
+    if (props.supportsAllowedTokenGroups) {
+      const currentAllowedGroups =
+        formApiRef.current?.getValue('allowed_token_groups') || [];
+      if (!Array.isArray(currentAllowedGroups) || currentAllowedGroups.length === 0) {
+        formApiRef.current?.setValue('allowed_token_groups', [nextDefaultGroup]);
+      }
+    }
   }, [props.visible, props.groupOptions]);
 
   const submit = async (values) => {
     setLoading(true);
+    const payload = { ...values };
+    if (props.supportsAllowedTokenGroups) {
+      const primaryGroup = payload.group || getDefaultGroupValue();
+      const allowedGroups = Array.isArray(payload.allowed_token_groups)
+        ? payload.allowed_token_groups.filter(Boolean)
+        : [];
+      payload.group = primaryGroup;
+      payload.allowed_token_groups = payload.allowed_token_groups_enabled
+        ? Array.from(new Set([primaryGroup, ...allowedGroups].filter(Boolean)))
+        : allowedGroups;
+    }
     const response = props.createUser
-      ? await props.createUser(values)
-      : (await API.post(`/api/user/`, values)).data;
+      ? await props.createUser(payload)
+      : (await API.post(`/api/user/`, payload)).data;
     const { success, message } = response;
     if (success) {
       showSuccess(t('用户账户创建成功！'));
@@ -182,6 +206,41 @@ const AddUserModal = (props) => {
                       search
                     />
                   </Col>
+                  {props.supportsAllowedTokenGroups ? (
+                    <>
+                      <Col
+                        span={24}
+                        style={props.hideAllowedTokenGroupFields ? { display: 'none' } : undefined}
+                      >
+                        <Form.Switch
+                          field='allowed_token_groups_enabled'
+                          label={t('限制令牌分组')}
+                          checkedText={t('开')}
+                          uncheckedText={t('关')}
+                          extraText={t(
+                            '开启后，用户创建令牌时只能选择下列分组，主分组会自动纳入',
+                          )}
+                        />
+                      </Col>
+                      <Col
+                        span={24}
+                        style={props.hideAllowedTokenGroupFields ? { display: 'none' } : undefined}
+                      >
+                        <Form.Select
+                          field='allowed_token_groups'
+                          label={t('可创建令牌分组')}
+                          placeholder={t('请选择可创建令牌的分组')}
+                          optionList={props.groupOptions}
+                          multiple
+                          search
+                          showClear
+                          extraText={t(
+                            '仅在开启限制令牌分组后生效，不影响用户主分组和计费语义',
+                          )}
+                        />
+                      </Col>
+                    </>
+                  ) : null}
                   <Col span={24}>
                     <Form.Input
                       field='remark'

@@ -153,6 +153,34 @@ func TestCreateAgentPersistsRequestedGroup(t *testing.T) {
 	require.Equal(t, "EZModel", user.Group)
 }
 
+func TestCreateAgentPersistsAllowedTokenGroups(t *testing.T) {
+	db := setupAdminAgentTestDB(t)
+
+	ctx, recorder := newAdminAgentContext(t, http.MethodPost, "/api/admin/agents", map[string]any{
+		"username":                     "agent_allow_g1",
+		"password":                     "12345678",
+		"agent_name":                   "Agent Allow",
+		"company_name":                 "Shenzhou",
+		"contact_phone":                "13800000000",
+		"group":                        "default",
+		"allowed_token_groups_enabled": true,
+		"allowed_token_groups":         []string{"default", "vip"},
+	})
+	CreateAgent(ctx)
+
+	var response adminAgentAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var user model.User
+	require.NoError(t, db.Where("username = ?", "agent_allow_g1").First(&user).Error)
+
+	settingMap := make(map[string]any)
+	require.NoError(t, common.UnmarshalJsonStr(user.Setting, &settingMap))
+	require.Equal(t, true, settingMap["allowed_token_groups_enabled"])
+	require.Equal(t, []any{"default", "vip"}, settingMap["allowed_token_groups"])
+}
+
 func TestCreateAgentSetsRootCreatorAsInviter(t *testing.T) {
 	db := setupAdminAgentTestDB(t)
 

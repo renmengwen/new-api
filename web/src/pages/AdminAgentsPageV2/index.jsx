@@ -38,11 +38,11 @@ import CardPro from '../../components/common/ui/CardPro';
 import { API, createCardProPagination, showError, showSuccess } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
-import { toGroupOptions } from '../../hooks/users/useUsersData.helpers';
+import { toManagedGroupOptions } from '../../hooks/users/useUsersData.helpers';
 
 const { Text, Title } = Typography;
 
-const emptyFormState = {
+const createEmptyFormState = (defaultGroup = '') => ({
   username: '',
   password: '',
   display_name: '',
@@ -50,8 +50,10 @@ const emptyFormState = {
   company_name: '',
   contact_phone: '',
   remark: '',
-  group: '',
-};
+  group: defaultGroup,
+  allowed_token_groups_enabled: false,
+  allowed_token_groups: defaultGroup ? [defaultGroup] : [],
+});
 
 const sectionStyle = {
   border: '1px solid var(--semi-color-border)',
@@ -82,6 +84,7 @@ const AdminAgentsPageV2 = () => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const { loading: permissionLoading, hasActionPermission } = useUserPermissions();
+  const hideAllowedTokenGroupFields = true;
 
   const canRead = hasActionPermission('agent_management', 'read');
   const canCreate = hasActionPermission('agent_management', 'create');
@@ -103,30 +106,40 @@ const AdminAgentsPageV2 = () => {
   const [detailAgentId, setDetailAgentId] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingAgent, setEditingAgent] = useState(null);
-  const [formState, setFormState] = useState(emptyFormState);
+  const [formState, setFormState] = useState(createEmptyFormState());
   const [groupOptions, setGroupOptions] = useState([]);
   const [defaultGroup, setDefaultGroup] = useState('');
 
   const closeModal = () => {
     setModalVisible(false);
     setEditingAgent(null);
-    setFormState({ ...emptyFormState, group: defaultGroup });
+    setFormState(createEmptyFormState(defaultGroup));
   };
 
   const fetchGroups = async () => {
     try {
-      const res = await API.get('/api/group/');
+      const res = await API.get('/api/user/self/groups', {
+        params: { mode: 'assignable_token' },
+      });
       if (res?.data?.success !== true) {
         showError(res?.data?.message || t('加载分组列表失败'));
         return;
       }
-      const options = toGroupOptions(res.data);
+      const userGroup = JSON.parse(localStorage.getItem('user'))?.group;
+      const options = toManagedGroupOptions(res.data.data, userGroup);
       setGroupOptions(options);
       const nextDefaultGroup = options[0]?.value || '';
       setDefaultGroup(nextDefaultGroup);
       setFormState((prev) => ({
         ...prev,
         group: prev.group || nextDefaultGroup,
+        allowed_token_groups:
+          Array.isArray(prev.allowed_token_groups) &&
+          prev.allowed_token_groups.length > 0
+            ? prev.allowed_token_groups
+            : nextDefaultGroup
+              ? [nextDefaultGroup]
+              : [],
       }));
     } catch (error) {
       showError(error);
@@ -196,7 +209,7 @@ const AdminAgentsPageV2 = () => {
 
   const openCreateModal = () => {
     setEditingAgent(null);
-    setFormState({ ...emptyFormState, group: defaultGroup });
+    setFormState(createEmptyFormState(defaultGroup));
     setModalVisible(true);
   };
 
@@ -204,14 +217,12 @@ const AdminAgentsPageV2 = () => {
     setEditingAgent(record);
     setModalVisible(true);
     setFormState({
+      ...createEmptyFormState(record.group || defaultGroup),
       username: record.username || '',
-      password: '',
       display_name: record.display_name || '',
       agent_name: record.agent_name || '',
       company_name: record.company_name || '',
       contact_phone: record.contact_phone || '',
-      remark: '',
-      group: record.group || defaultGroup,
     });
 
     try {
@@ -230,6 +241,11 @@ const AdminAgentsPageV2 = () => {
         contact_phone: data.contact_phone || '',
         remark: data.remark || '',
         group: data.group || defaultGroup,
+        allowed_token_groups_enabled:
+          data.allowed_token_groups_enabled === true,
+        allowed_token_groups: Array.isArray(data.allowed_token_groups)
+          ? data.allowed_token_groups
+          : [],
       }));
     } catch (error) {
       showError(error);
@@ -246,10 +262,22 @@ const AdminAgentsPageV2 = () => {
       return;
     }
 
-    if (!editingAgent && !formState.group) {
+    if (!formState.group) {
       showError(t('请选择分组'));
       return;
     }
+
+    const normalizedAllowedTokenGroups = formState.allowed_token_groups_enabled
+      ? Array.from(
+          new Set(
+            [formState.group, ...(formState.allowed_token_groups || [])].filter(
+              Boolean,
+            ),
+          ),
+        )
+      : Array.isArray(formState.allowed_token_groups)
+        ? formState.allowed_token_groups.filter(Boolean)
+        : [];
 
     setSubmitting(true);
     try {
@@ -260,6 +288,10 @@ const AdminAgentsPageV2 = () => {
             company_name: formState.company_name.trim(),
             contact_phone: formState.contact_phone.trim(),
             remark: formState.remark.trim(),
+            group: formState.group,
+            allowed_token_groups_enabled:
+              formState.allowed_token_groups_enabled,
+            allowed_token_groups: normalizedAllowedTokenGroups,
           }
         : {
             username: formState.username.trim(),
@@ -269,6 +301,9 @@ const AdminAgentsPageV2 = () => {
             contact_phone: formState.contact_phone.trim(),
             remark: formState.remark.trim(),
             group: formState.group,
+            allowed_token_groups_enabled:
+              formState.allowed_token_groups_enabled,
+            allowed_token_groups: normalizedAllowedTokenGroups,
           };
 
       const res = editingAgent
@@ -467,7 +502,9 @@ const AdminAgentsPageV2 = () => {
                   />
                 </div>
               )}
-              <div style={fieldStyle}>
+              <div
+                style={hideAllowedTokenGroupFields ? { ...fieldStyle, display: 'none' } : fieldStyle}
+              >
                 <Text type='tertiary'>{t('代理商名称')}</Text>
                 <Input
                   placeholder={t('请输入代理商名称')}
@@ -475,7 +512,9 @@ const AdminAgentsPageV2 = () => {
                   onChange={(value) => setFormState((prev) => ({ ...prev, agent_name: value }))}
                 />
               </div>
-              <div style={fieldStyle}>
+              <div
+                style={hideAllowedTokenGroupFields ? { ...fieldStyle, display: 'none' } : fieldStyle}
+              >
                 <Text type='tertiary'>{t('公司名称')}</Text>
                 <Input
                   placeholder={t('请输入公司名称')}
@@ -504,6 +543,55 @@ const AdminAgentsPageV2 = () => {
                   />
                 </div>
               ) : null}
+              <div style={fieldStyle}>
+                <Text type='tertiary'>{t('主分组')}</Text>
+                <Select
+                  placeholder={t('请选择主分组')}
+                  optionList={groupOptions}
+                  value={formState.group}
+                  onChange={(value) =>
+                    setFormState((prev) => ({ ...prev, group: value || '' }))
+                  }
+                />
+              </div>
+              <div style={fieldStyle}>
+                <Text type='tertiary'>{t('限制令牌分组')}</Text>
+                <Select
+                  optionList={[
+                    { label: t('关闭'), value: false },
+                    { label: t('开启'), value: true },
+                  ]}
+                  value={formState.allowed_token_groups_enabled}
+                  onChange={(value) =>
+                    setFormState((prev) => ({
+                      ...prev,
+                      allowed_token_groups_enabled: value === true,
+                    }))
+                  }
+                />
+                <Text type='tertiary' size='small'>
+                  {t('开启后，用户创建令牌时只能选择下列分组，主分组会自动纳入')}
+                </Text>
+              </div>
+              <div style={fieldStyle}>
+                <Text type='tertiary'>{t('可创建令牌分组')}</Text>
+                <Select
+                  placeholder={t('请选择可创建令牌的分组')}
+                  optionList={groupOptions}
+                  value={formState.allowed_token_groups}
+                  multiple
+                  search
+                  onChange={(value) =>
+                    setFormState((prev) => ({
+                      ...prev,
+                      allowed_token_groups: Array.isArray(value) ? value : [],
+                    }))
+                  }
+                />
+                <Text type='tertiary' size='small'>
+                  {t('仅在开启限制令牌分组后生效，不影响用户主分组和计费语义')}
+                </Text>
+              </div>
             </div>
           </div>
           <div style={sectionBlockStyle}>

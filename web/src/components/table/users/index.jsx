@@ -33,6 +33,8 @@ const UsersPage = ({ mode = 'legacy', capabilities = {} }) => {
   const usersData = useUsersData(mode);
   const isMobile = useIsMobile();
   const isManagedMode = mode === 'managed';
+  const supportsAllowedTokenGroups = capabilities.supportsAllowedTokenGroups !== false;
+  const hideAllowedTokenGroupFields = true;
   const effectiveCapabilities = isManagedMode
     ? {
         canCreateUser: capabilities.canCreateUser === true,
@@ -96,6 +98,8 @@ const UsersPage = ({ mode = 'legacy', capabilities = {} }) => {
         handleClose={closeAddUser}
         createUser={usersData.createUser}
         groupOptions={groupOptions}
+        supportsAllowedTokenGroups={supportsAllowedTokenGroups}
+        hideAllowedTokenGroupFields={hideAllowedTokenGroupFields}
       />
 
       <EditUserModal
@@ -103,8 +107,11 @@ const UsersPage = ({ mode = 'legacy', capabilities = {} }) => {
         visible={showEditUser}
         handleClose={closeEditUser}
         editingUser={editingUser}
+        groupOptions={groupOptions}
         loadUserDetail={usersData.loadUserDetail}
         updateUser={usersData.updateUser}
+        supportsAllowedTokenGroups={supportsAllowedTokenGroups}
+        hideAllowedTokenGroupFields={hideAllowedTokenGroupFields}
         supportsBindingManagement={effectiveCapabilities.canManageBindings}
       />
 

@@ -461,6 +461,34 @@ func TestCreateAdminUserPersistsRequestedGroup(t *testing.T) {
 	require.Equal(t, "EZModel", user.Group)
 }
 
+func TestCreateAdminUserPersistsAllowedTokenGroups(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodPost, "/api/admin/users", map[string]any{
+		"username":                     "managed_group_u1",
+		"password":                     "12345678",
+		"display_name":                 "Allowed User",
+		"group":                        "default",
+		"allowed_token_groups_enabled": true,
+		"allowed_token_groups":         []string{"default", "vip"},
+		"remark":                       "allowed groups",
+	}, 999, common.RoleRootUser)
+
+	CreateAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var user model.User
+	require.NoError(t, db.Where("username = ?", "managed_group_u1").First(&user).Error)
+
+	settingMap := make(map[string]any)
+	require.NoError(t, common.UnmarshalJsonStr(user.Setting, &settingMap))
+	require.Equal(t, true, settingMap["allowed_token_groups_enabled"])
+	require.Equal(t, []any{"default", "vip"}, settingMap["allowed_token_groups"])
+}
+
 func TestUpdateAdminUserForAgentRejectsUserOutsideManagedScope(t *testing.T) {
 	db := setupAdminUserTestDB(t)
 	agent := seedManagedUser(t, db, "agent_update_operator", model.UserTypeAgent, common.RoleAdminUser, 0, 0)
@@ -484,6 +512,44 @@ func TestUpdateAdminUserForAgentRejectsUserOutsideManagedScope(t *testing.T) {
 	var reloaded model.User
 	require.NoError(t, db.First(&reloaded, target.Id).Error)
 	require.Equal(t, target.DisplayName, reloaded.DisplayName)
+}
+
+func TestUpdateAdminUserRejectsWhitelistOutsideAgentAssignableGroups(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	agent := seedManagedUser(t, db, "agent_allowed_groups_operator", model.UserTypeAgent, common.RoleAdminUser, 0, 0)
+	target := seedManagedUser(t, db, "managed_allowed_groups_target", model.UserTypeEndUser, common.RoleCommonUser, 120, agent.Id)
+	agent.Setting = `{"allowed_token_groups_enabled":true,"allowed_token_groups":["default","vip"]}`
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", agent.Id).Update("setting", agent.Setting).Error)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   target.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, model.UserTypeAgent,
+		permissionGrant{Resource: service.ResourceUserManagement, Action: service.ActionUpdate},
+	)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodPut, "/api/admin/users/"+strconv.Itoa(target.Id), map[string]any{
+		"username":                     target.Username,
+		"display_name":                 "Should Reject",
+		"password":                     "",
+		"group":                        "default",
+		"allowed_token_groups_enabled": true,
+		"allowed_token_groups":         []string{"default", "beta"},
+		"remark":                       "should fail",
+		"email":                        "",
+		"quota":                        target.Quota,
+	}, agent.Id, common.RoleAdminUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(target.Id)}}
+
+	UpdateAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
 }
 
 func TestDeleteAdminUserForAgentDeletesManagedUser(t *testing.T) {

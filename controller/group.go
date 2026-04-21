@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -25,26 +26,37 @@ func GetGroups(c *gin.Context) {
 
 func GetUserGroups(c *gin.Context) {
 	usableGroups := make(map[string]map[string]interface{})
-	userGroup := ""
-	userId := c.GetInt("id")
-	userGroup, _ = model.GetUserGroup(userId, false)
-	userUsableGroups := service.GetUserUsableGroups(userGroup)
-	if c.Query("mode") == "token" {
-		userUsableGroups = service.GetUserTokenSelectableGroups(userGroup)
+	user, err := model.GetUserById(c.GetInt("id"), false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
 	}
-	for groupName, _ := range ratio_setting.GetGroupRatioCopy() {
-		// UserUsableGroups contains the groups that the user can use
-		if desc, ok := userUsableGroups[groupName]; ok {
-			usableGroups[groupName] = map[string]interface{}{
-				"ratio": service.GetUserGroupRatio(userGroup, groupName),
+
+	userUsableGroups := service.GetUserUsableGroups(user.Group)
+	switch c.Query("mode") {
+	case "token":
+		userUsableGroups = service.ResolveUserTokenSelectableGroups(user.Group, user.GetSetting())
+	case "assignable_token":
+		userUsableGroups = service.ResolveAssignableTokenGroups(user)
+	}
+
+	for groupName, desc := range userUsableGroups {
+		if groupName == "auto" {
+			if desc == "" {
+				desc = setting.GetUsableGroupDescription("auto")
+			}
+			usableGroups["auto"] = map[string]interface{}{
+				"ratio": "鑷姩",
 				"desc":  desc,
 			}
+			continue
 		}
-	}
-	if _, ok := userUsableGroups["auto"]; ok {
-		usableGroups["auto"] = map[string]interface{}{
-			"ratio": "自动",
-			"desc":  setting.GetUsableGroupDescription("auto"),
+		if desc == "" {
+			desc = setting.GetUsableGroupDescription(groupName)
+		}
+		usableGroups[groupName] = map[string]interface{}{
+			"ratio": service.GetUserGroupRatio(user.Group, groupName),
+			"desc":  desc,
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{

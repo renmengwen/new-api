@@ -55,7 +55,7 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	if err := db.AutoMigrate(&model.Token{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Token{}); err != nil {
 		t.Fatalf("failed to migrate token table: %v", err)
 	}
 
@@ -67,6 +67,26 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 	})
 
 	return db
+}
+
+func seedTokenUser(t *testing.T, db *gorm.DB, userID int, group string, setting string) *model.User {
+	t.Helper()
+
+	user := &model.User{
+		Id:          userID,
+		Username:    fmt.Sprintf("token_user_%d", userID),
+		Password:    "hashed-password",
+		DisplayName: fmt.Sprintf("Token User %d", userID),
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		Group:       group,
+		Setting:     setting,
+		AffCode:     fmt.Sprintf("tokenuseraff%d", userID),
+	}
+	if err := db.Create(user).Error; err != nil {
+		t.Fatalf("failed to create token user: %v", err)
+	}
+	return user
 }
 
 func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string) *model.Token {
@@ -206,6 +226,7 @@ func TestGetTokenMasksKeyInResponse(t *testing.T) {
 
 func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
+	seedTokenUser(t, db, 1, "default", "")
 	token := seedToken(t, db, 1, "editable-token", "yzab1234cdef5678")
 
 	body := map[string]any{
@@ -237,6 +258,122 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	}
 	if strings.Contains(recorder.Body.String(), token.Key) {
 		t.Fatalf("update response leaked raw token key: %s", recorder.Body.String())
+	}
+}
+
+func TestAddTokenRejectsGroupOutsideAllowedTokenGroups(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedTokenUser(t, db, 1, "default", `{"allowed_token_groups_enabled":true,"allowed_token_groups":["default"]}`)
+
+	body := map[string]any{
+		"name":                 "restricted-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "vip",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected add token to reject non-assignable group, got success response: %s", recorder.Body.String())
+	}
+}
+
+func TestUpdateTokenRejectsGroupOutsideAllowedTokenGroups(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedTokenUser(t, db, 1, "default", `{"allowed_token_groups_enabled":true,"allowed_token_groups":["default"]}`)
+	token := seedToken(t, db, 1, "restricted-edit-token", "abcd9999efgh0000")
+
+	body := map[string]any{
+		"id":                   token.Id,
+		"name":                 "restricted-edit-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "vip",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected update token to reject non-assignable group, got success response: %s", recorder.Body.String())
+	}
+}
+
+func TestAddTokenAllowsEmptyGroupToUseLegacyPrimaryGroup(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedTokenUser(t, db, 1, "legacy-private", "")
+
+	body := map[string]any{
+		"name":                 "legacy-primary-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected add token to fall back to legacy primary group, got failure: %s", recorder.Body.String())
+	}
+
+	var created model.Token
+	if err := db.Where("user_id = ? AND name = ?", 1, "legacy-primary-token").First(&created).Error; err != nil {
+		t.Fatalf("failed to load created token: %v", err)
+	}
+	if created.Group != "legacy-private" {
+		t.Fatalf("expected created token group to use legacy primary group, got %q", created.Group)
+	}
+}
+
+func TestUpdateTokenAllowsEmptyGroupToUseLegacyPrimaryGroup(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedTokenUser(t, db, 1, "legacy-private", "")
+	token := seedToken(t, db, 1, "legacy-primary-edit-token", "legacy1234edit5678")
+
+	body := map[string]any{
+		"id":                   token.Id,
+		"name":                 "legacy-primary-edit-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected update token to fall back to legacy primary group, got failure: %s", recorder.Body.String())
+	}
+
+	var updated model.Token
+	if err := db.First(&updated, token.Id).Error; err != nil {
+		t.Fatalf("failed to load updated token: %v", err)
+	}
+	if updated.Group != "legacy-private" {
+		t.Fatalf("expected updated token group to use legacy primary group, got %q", updated.Group)
 	}
 }
 
