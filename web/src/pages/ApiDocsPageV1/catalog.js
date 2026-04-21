@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://api.newapi.pro';
+const BASE_URL_PLACEHOLDER = '{{base_url}}';
 
 const DEFAULT_AUTH = {
   type: 'bearer',
@@ -22,16 +22,28 @@ export const AI_MODEL_DOC_GROUPS = [
   { key: 'videos', title: 'Videos' },
 ];
 
-const makeRequestExample = (method, path, requestBody) => {
-  const lines = [
-    `curl -X ${method} '${API_BASE_URL}${path}'`,
-    `  -H 'Authorization: Bearer sk-xxxxxxxx'`,
-    `  -H 'Content-Type: application/json'`,
-  ];
+const AI_MODEL_DOC_GROUP_KEYS = new Set(AI_MODEL_DOC_GROUPS.map((group) => group.key));
+
+const makeJsonRequestExample = (method, path, requestBody) => {
+  const lines = [`curl -X ${method} '${BASE_URL_PLACEHOLDER}${path}'`, `  -H 'Authorization: Bearer sk-xxxxxxxx'`];
 
   if (requestBody !== undefined) {
+    lines.push(`  -H 'Content-Type: application/json'`);
     lines.push(`  -d '${JSON.stringify(requestBody)}'`);
   }
+
+  return lines.join(' \\\n');
+};
+
+const makeGetRequestExample = (path) =>
+  [`curl '${BASE_URL_PLACEHOLDER}${path}'`, `  -H 'Authorization: Bearer sk-xxxxxxxx'`].join(' \\\n');
+
+const makeMultipartRequestExample = (method, path, multipartFields) => {
+  const lines = [`curl -X ${method} '${BASE_URL_PLACEHOLDER}${path}'`, `  -H 'Authorization: Bearer sk-xxxxxxxx'`];
+
+  multipartFields.forEach((field) => {
+    lines.push(`  -F '${field}'`);
+  });
 
   return lines.join(' \\\n');
 };
@@ -46,20 +58,41 @@ const createDoc = ({
   path,
   summary,
   description,
+  transport = 'json',
   requestBody,
+  multipartFields,
+  requestExample,
   responseBody,
-}) => ({
-  id,
-  groupKey,
-  title,
-  method,
-  path,
-  summary,
-  description,
-  auth: { ...DEFAULT_AUTH },
-  requestExample: makeRequestExample(method, path, requestBody),
-  responseExample: makeResponseExample(responseBody),
-});
+}) => {
+  if (!AI_MODEL_DOC_GROUP_KEYS.has(groupKey)) {
+    throw new Error(`Unknown AI model docs group key: ${groupKey}`);
+  }
+
+  const doc = {
+    id,
+    groupKey,
+    title,
+    method,
+    path,
+    summary,
+    description,
+    transport,
+    auth: { ...DEFAULT_AUTH },
+    responseExample: makeResponseExample(responseBody),
+  };
+
+  if (requestExample) {
+    doc.requestExample = requestExample;
+  } else if (transport === 'get') {
+    doc.requestExample = makeGetRequestExample(path);
+  } else if (transport === 'multipart') {
+    doc.requestExample = makeMultipartRequestExample(method, path, multipartFields || []);
+  } else {
+    doc.requestExample = makeJsonRequestExample(method, path, requestBody);
+  }
+
+  return doc;
+};
 
 export const AI_MODEL_DOC_ITEMS = [
   createDoc({
@@ -93,18 +126,15 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'audio-native-openai',
     groupKey: 'audio',
-    title: '原生 OpenAI 格式',
+    title: '?? OpenAI ??',
     method: 'POST',
+    transport: 'multipart',
     path: '/v1/audio/transcriptions',
-    summary: '使用 OpenAI 兼容音频转写接口提交音频文件。',
-    description: '面向 OpenAI 风格的语音转写工作流，保留现有客户端的请求结构。',
-    requestBody: {
-      model: 'whisper-1',
-      file: 'audio.wav',
-      response_format: 'json',
-    },
+    summary: '?? OpenAI ???????????????',
+    description: '?? OpenAI ????????????????????????',
+    multipartFields: ['model=whisper-1', 'file=@audio.wav', 'response_format=json'],
     responseBody: {
-      text: '音频转写结果。',
+      text: '???????',
     },
   }),
   createDoc({
@@ -300,16 +330,13 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'images-openai-edit',
     groupKey: 'images',
-    title: '编辑图像',
+    title: '????',
     method: 'POST',
+    transport: 'multipart',
     path: '/v1/images/edits',
-    summary: '使用 OpenAI 风格的图片编辑接口修改输入图片。',
-    description: '适合对已有图片进行局部编辑、风格调整或背景替换。',
-    requestBody: {
-      model: 'gpt-image-1',
-      image: 'input.png',
-      prompt: '把背景改成夜景。',
-    },
+    summary: '?? OpenAI ????????????????',
+    description: '????????????????????????',
+    multipartFields: ['model=gpt-image-1', 'image=@input.png', 'prompt=????????'],
     responseBody: {
       data: [{ url: 'https://example.com/edited.png' }],
     },
@@ -349,16 +376,13 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'images-qwen-edit',
     groupKey: 'images',
-    title: '编辑图像',
+    title: '????',
     method: 'POST',
+    transport: 'multipart',
     path: '/v1/images/edits',
-    summary: '使用 Qwen 风格参数编辑已有图片。',
-    description: '演示 Qwen 图像编辑链路的兼容请求结构。',
-    requestBody: {
-      model: 'qwen-image',
-      image: 'input.png',
-      prompt: '调整色调并增强对比度。',
-    },
+    summary: '?? Qwen ???????????',
+    description: '?? Qwen ??????????????',
+    multipartFields: ['model=qwen-image', 'image=@input.png', 'prompt=???????????'],
     responseBody: {
       data: [{ url: 'https://example.com/qwen-edited.png' }],
     },
@@ -366,11 +390,12 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'models-native-openai',
     groupKey: 'models',
-    title: '原生 OpenAI 格式',
+    title: '?? OpenAI ??',
     method: 'GET',
+    transport: 'get',
     path: '/v1/models',
-    summary: '列出 OpenAI 兼容模型列表。',
-    description: '用于查看当前可用模型和基础元数据。',
+    summary: '?? OpenAI ???????',
+    description: '?????????????????',
     responseBody: {
       data: [{ id: 'gpt-4o-mini', object: 'model' }],
     },
@@ -378,11 +403,12 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'models-native-gemini',
     groupKey: 'models',
-    title: '原生 Gemini 格式',
+    title: '?? Gemini ??',
     method: 'GET',
+    transport: 'get',
     path: '/v1beta/models',
-    summary: '列出 Gemini 兼容模型列表。',
-    description: '用于查看 Gemini 侧可用模型及其展示名称。',
+    summary: '?? Gemini ???????',
+    description: '???? Gemini ????????????',
     responseBody: {
       models: [{ name: 'models/gemini-2.0-flash', displayName: 'Gemini 2.0 Flash' }],
     },
@@ -406,11 +432,12 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'realtime-native-openai',
     groupKey: 'realtime',
-    title: '原生 OpenAI 格式',
+    title: '?? OpenAI ??',
     method: 'GET',
+    transport: 'get',
     path: '/v1/realtime',
-    summary: '建立 OpenAI Realtime 连接的入口说明。',
-    description: '用于展示实时会话能力的握手与连接初始化方式。',
+    summary: '?? OpenAI Realtime ????????',
+    description: '??????????????????????',
     responseBody: {
       model: 'gpt-realtime',
       status: 'ready',
@@ -483,11 +510,12 @@ export const AI_MODEL_DOC_ITEMS = [
   createDoc({
     id: 'videos-get-task',
     groupKey: 'videos',
-    title: '获取视频生成任务状态',
+    title: '??????????',
     method: 'GET',
+    transport: 'get',
     path: '/v1/videos/tasks/{task_id}',
-    summary: '查询视频生成任务的当前处理状态。',
-    description: '适合轮询异步生成进度或最终结果。',
+    summary: '????????????????',
+    description: '????????????????',
     responseBody: {
       task_id: 'vt_123',
       status: 'processing',
@@ -560,9 +588,10 @@ export function buildAiModelDocTree() {
 
   AI_MODEL_DOC_ITEMS.forEach((item) => {
     const groupItems = itemsByGroup.get(item.groupKey);
-    if (groupItems) {
-      groupItems.push(item);
+    if (!groupItems) {
+      throw new Error(`Unknown AI model doc group key: ${item.groupKey}`);
     }
+    groupItems.push(item);
   });
 
   return AI_MODEL_DOC_GROUPS.map((group) => ({
