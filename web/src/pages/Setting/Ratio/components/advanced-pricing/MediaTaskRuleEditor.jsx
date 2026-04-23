@@ -25,6 +25,7 @@ import {
   Input,
   Radio,
   RadioGroup,
+  Select,
   SideSheet,
   Space,
   Table,
@@ -40,6 +41,7 @@ import {
   buildMediaTaskConditionSummary,
   buildMediaTaskPreview,
   createEmptyMediaTaskRule,
+  getMediaTaskTypeDisplayLabel,
   normalizeMediaTaskRule,
   serializeAdvancedPricingConfig,
   serializeMediaTaskRule,
@@ -105,6 +107,49 @@ export default function MediaTaskRuleEditor({
     ],
     [t],
   );
+  const taskTypeOptions = useMemo(() => {
+    const baseOptions = [
+      { value: 'video_generation', label: t('视频生成') },
+      { value: 'image_generation', label: t('图片生成') },
+    ];
+    const currentTaskType = String(config?.taskType || '').trim();
+    if (
+      currentTaskType &&
+      !baseOptions.some((option) => option.value === currentTaskType)
+    ) {
+      return [
+        ...baseOptions,
+        {
+          value: currentTaskType,
+          label: getMediaTaskTypeDisplayLabel(currentTaskType, t),
+        },
+      ];
+    }
+    return baseOptions;
+  }, [config?.taskType, t]);
+  const billingUnitOptions = useMemo(() => {
+    const baseOptions = [
+      { value: 'per_million_tokens', label: t('每百万 Tokens') },
+      { value: 'per_second', label: t('每秒') },
+      { value: 'per_minute', label: t('每分钟') },
+      { value: 'per_image', label: t('每张图片') },
+      { value: 'per_1000_calls', label: t('每千次调用') },
+    ];
+    const currentBillingUnit = String(config?.billingUnit || '').trim();
+    if (
+      currentBillingUnit &&
+      !baseOptions.some((option) => option.value === currentBillingUnit)
+    ) {
+      return [
+        ...baseOptions,
+        {
+          value: currentBillingUnit,
+          label: currentBillingUnit,
+        },
+      ];
+    }
+    return baseOptions;
+  }, [config?.billingUnit, t]);
   const numericFields = useMemo(
     () => [
       {
@@ -314,8 +359,13 @@ export default function MediaTaskRuleEditor({
     [candidatePreviewRules],
   );
   const sheetPreviewResult = useMemo(
-    () => buildMediaTaskPreview(candidatePreviewRules, previewInput),
-    [candidatePreviewRules, previewInput],
+    () =>
+      buildMediaTaskPreview(
+        candidatePreviewRules,
+        previewInput,
+        config?.taskType,
+      ),
+    [candidatePreviewRules, config?.taskType, previewInput],
   );
   const previewResult = sheetPreviewResult;
 
@@ -510,13 +560,7 @@ export default function MediaTaskRuleEditor({
             </div>
             <div>
               <div className='mb-1 font-medium text-gray-700'>{t('任务类型')}</div>
-              <Text>{config?.taskType || '-'}</Text>
-            </div>
-            <div>
-              <div className='mb-1 font-medium text-gray-700'>
-                {t('计费单位')}
-              </div>
-              <Text>{config?.billingUnit || '-'}</Text>
+              <Text>{getMediaTaskTypeDisplayLabel(config?.taskType, t) || '-'}</Text>
             </div>
             <div style={{ gridColumn: '1 / -1' }}>
               <div className='mb-1 font-medium text-gray-700'>{t('备注')}</div>
@@ -544,19 +588,19 @@ export default function MediaTaskRuleEditor({
           </div>
           <div>
             <div className='mb-1 font-medium text-gray-700'>{t('任务类型')}</div>
-            <Input
+            <Select
               value={config?.taskType || ''}
-              placeholder={t('如 video_generation')}
+              optionList={taskTypeOptions}
+              style={{ width: '100%' }}
               onChange={(value) => handleRuleSetFieldChange('taskType', value)}
             />
           </div>
           <div>
-            <div className='mb-1 font-medium text-gray-700'>
-              {t('计费单位')}
-            </div>
-            <Input
+            <div className='mb-1 font-medium text-gray-700'>{t('计费单位')}</div>
+            <Select
               value={config?.billingUnit || ''}
-              placeholder={t('如 total_tokens')}
+              optionList={billingUnitOptions}
+              style={{ width: '100%' }}
               onChange={(value) => handleRuleSetFieldChange('billingUnit', value)}
             />
           </div>

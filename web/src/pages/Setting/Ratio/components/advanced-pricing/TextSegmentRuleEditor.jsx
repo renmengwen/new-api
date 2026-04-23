@@ -25,6 +25,7 @@ import {
   Input,
   Radio,
   RadioGroup,
+  Select,
   SideSheet,
   Space,
   Table,
@@ -856,6 +857,29 @@ export default function TextSegmentRuleEditor({
       }),
     [config, rules],
   );
+  const billingUnitOptions = useMemo(() => {
+    const baseOptions = [
+      { value: 'per_million_tokens', label: t('每百万 Tokens') },
+      { value: 'per_second', label: t('每秒') },
+      { value: 'per_minute', label: t('每分钟') },
+      { value: 'per_image', label: t('每张图片') },
+      { value: 'per_1000_calls', label: t('每千次调用') },
+    ];
+    const currentBillingUnit = String(config?.billingUnit || '').trim();
+    if (
+      currentBillingUnit &&
+      !baseOptions.some((option) => option.value === currentBillingUnit)
+    ) {
+      return [
+        ...baseOptions,
+        {
+          value: currentBillingUnit,
+          label: currentBillingUnit,
+        },
+      ];
+    }
+    return baseOptions;
+  }, [config?.billingUnit, t]);
   const priorityHint = t(
     '按优先级从小到大依次匹配，命中第一条启用规则后停止；停用规则不会参与命中预览和最终保存。',
   );
@@ -947,9 +971,10 @@ export default function TextSegmentRuleEditor({
           </div>
           <div>
             <div className='mb-1 font-medium text-gray-700'>{t('计费单位')}</div>
-            <Input
+            <Select
               value={config?.billingUnit || ''}
-              placeholder={t('例如：1M tokens')}
+              optionList={billingUnitOptions}
+              style={{ width: '100%' }}
               onChange={(value) => handleConfigFieldChange('billingUnit', value)}
             />
           </div>

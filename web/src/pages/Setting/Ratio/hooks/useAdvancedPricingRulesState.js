@@ -280,7 +280,11 @@ export function useAdvancedPricingRulesState({
 
   const previewResult = useMemo(() => {
     if (selectedAdvancedConfig.ruleType === MEDIA_TASK_RULE_TYPE) {
-      return buildMediaTaskPreview(selectedAdvancedConfig.rules, previewInput);
+      return buildMediaTaskPreview(
+        selectedAdvancedConfig.rules,
+        previewInput,
+        selectedAdvancedConfig.taskType,
+      );
     }
     if (selectedAdvancedConfig.ruleType === TEXT_SEGMENT_RULE_TYPE) {
       return buildTextSegmentPreview(selectedAdvancedConfig.rules, previewInput);

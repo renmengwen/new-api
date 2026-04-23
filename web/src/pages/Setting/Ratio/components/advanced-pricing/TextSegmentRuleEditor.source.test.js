@@ -71,6 +71,33 @@ test('text segment rule editor uses readable UTF-8 Chinese labels for advanced p
   assert.doesNotMatch(source, /Overage Threshold/);
 });
 
+test('text segment rule editor uses a constrained top-level billing unit selector with chinese labels', () => {
+  assert.match(
+    source,
+    /import \{[\s\S]*Select,[\s\S]*\} from '@douyinfe\/semi-ui';/,
+  );
+  assert.match(source, /const billingUnitOptions = useMemo/);
+  assert.match(source, /value: 'per_million_tokens'/);
+  assert.match(source, /label: t\('每百万 Tokens'\)/);
+  assert.match(source, /value: 'per_second'/);
+  assert.match(source, /label: t\('每秒'\)/);
+  assert.match(source, /value: 'per_minute'/);
+  assert.match(source, /label: t\('每分钟'\)/);
+  assert.match(source, /value: 'per_image'/);
+  assert.match(source, /label: t\('每张图片'\)/);
+  assert.match(source, /value: 'per_1000_calls'/);
+  assert.match(source, /label: t\('每千次调用'\)/);
+  assert.match(source, /<Select/);
+  assert.match(source, /optionList=\{billingUnitOptions\}/);
+  assert.match(source, /value=\{config\?\.billingUnit \|\| ''\}/);
+  assert.match(
+    source,
+    /<Select[\s\S]*value=\{config\?\.billingUnit \|\| ''\}[\s\S]*optionList=\{billingUnitOptions\}[\s\S]*style=\{\{ width: '100%' \}\}/,
+  );
+  assert.match(source, /field: 'billingUnit'[\s\S]*label: '计费单位'/);
+  assert.doesNotMatch(source, /placeholder=\{t\('例如：1M tokens'\)\}/);
+});
+
 test('text segment rule editor still uses Semi top-level TextArea export instead of Input.TextArea', () => {
   assert.match(
     source,

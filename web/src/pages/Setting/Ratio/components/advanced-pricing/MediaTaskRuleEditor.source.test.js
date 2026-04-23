@@ -38,7 +38,6 @@ test('media task rule editor keeps the advanced rule workflow in a SideSheet wit
   assert.match(source, /ruleMeta\.enabledRules/);
   assert.match(source, /config\?\.displayName/);
   assert.match(source, /config\?\.taskType/);
-  assert.match(source, /config\?\.billingUnit/);
   assert.match(source, /config\?\.note/);
   assert.match(source, /SideSheet/);
   assert.match(source, /sideSheetVisible/);
@@ -62,6 +61,8 @@ test('media task rule editor keeps the advanced rule workflow in a SideSheet wit
   assert.match(source, /sheetPreviewResult\?\.priceSummary\?\.estimatedCost/);
   assert.match(source, /serializeMediaTaskRule\(previewResult\.matchedRule\)/);
   assert.match(source, /serializedConfig\.segments \|\| \[\]/);
+  assert.match(source, /value=\{config\?\.billingUnit \|\| ''\}/);
+  assert.match(source, /handleRuleSetFieldChange\('billingUnit', value\)/);
   assert.doesNotMatch(source, /<Modal/);
 });
 
@@ -139,6 +140,48 @@ test('media task rule editor uses readable chinese summary labels instead of tec
   assert.doesNotMatch(source, /保存后 segments JSON/);
   assert.doesNotMatch(source, /命中 segment JSON/);
 });
+test('media task rule editor uses a constrained task-type selector and shows chinese task labels', () => {
+  assert.match(
+    source,
+    /import \{[\s\S]*Select,[\s\S]*\} from '@douyinfe\/semi-ui';/,
+  );
+  assert.match(source, /const taskTypeOptions = useMemo/);
+  assert.match(source, /value: 'video_generation'/);
+  assert.match(source, /label: t\('视频生成'\)/);
+  assert.match(source, /value: 'image_generation'/);
+  assert.match(source, /label: t\('图片生成'\)/);
+  assert.match(
+    source,
+    /<Text>\{getMediaTaskTypeDisplayLabel\(config\?\.taskType, t\) \|\| '-'\}<\/Text>/,
+  );
+  assert.match(source, /<Select/);
+  assert.match(source, /optionList=\{taskTypeOptions\}/);
+  assert.match(source, /style=\{\{ width: '100%' \}\}/);
+  assert.doesNotMatch(source, /placeholder=\{t\('如 video_generation'\)\}/);
+});
+
+test('media task rule editor uses a constrained top-level billing unit selector with chinese labels', () => {
+  assert.match(source, /const billingUnitOptions = useMemo/);
+  assert.match(source, /value: 'per_million_tokens'/);
+  assert.match(source, /label: t\('每百万 Tokens'\)/);
+  assert.match(source, /value: 'per_second'/);
+  assert.match(source, /label: t\('每秒'\)/);
+  assert.match(source, /value: 'per_minute'/);
+  assert.match(source, /label: t\('每分钟'\)/);
+  assert.match(source, /value: 'per_image'/);
+  assert.match(source, /label: t\('每张图片'\)/);
+  assert.match(source, /value: 'per_1000_calls'/);
+  assert.match(source, /label: t\('每千次调用'\)/);
+  assert.match(
+    source,
+    /<Select[\s\S]*value=\{config\?\.billingUnit \|\| ''\}[\s\S]*optionList=\{billingUnitOptions\}[\s\S]*style=\{\{ width: '100%' \}\}/,
+  );
+  assert.doesNotMatch(
+    source,
+    /value=\{config\?\.billingUnit \|\| ''\}[\s\S]*placeholder=\{t\('如 total_tokens'\)\}/,
+  );
+});
+
 test('media task rule editor uses Semi top-level TextArea export instead of Input.TextArea', () => {
   assert.match(
     source,

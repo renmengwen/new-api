@@ -34,6 +34,7 @@ import {
   canUseAdvancedPricingMode,
   getAdvancedPricingMapValidationErrors,
   getAdvancedPricingValidationErrors,
+  getMediaTaskTypeDisplayLabel,
   getTextSegmentRuleEditorMeta,
   findMatchingTextSegmentRule,
   getEffectiveBillingModeForModel,
@@ -902,6 +903,114 @@ test('buildMediaTaskPreview returns an unmatched preview when task conditions mi
   assert.equal(preview.priceSummary.estimatedCost, '');
 });
 
+test('buildMediaTaskPreview respects top-level media task type gating and legacy raw actions', () => {
+  const preview = buildMediaTaskPreview(
+    [
+      {
+        id: 'media-video-task',
+        priority: 1,
+        rawAction: 'generate',
+        unitPrice: '0.3',
+      },
+    ],
+    {
+      rawAction: 'generate',
+      usageTotalTokens: '256',
+    },
+    'image_generation',
+  );
+
+  assert.equal(preview.matchedRule, null);
+
+  const legacyPreview = buildMediaTaskPreview(
+    [
+      {
+        id: 'media-legacy-video-task',
+        priority: 1,
+        unitPrice: '0.3',
+      },
+    ],
+    {
+      rawAction: 'generate',
+      usageTotalTokens: '256',
+    },
+    'video_generation',
+  );
+
+  assert.equal(legacyPreview.matchedRule?.id, 'media-legacy-video-task');
+
+  const remixPreview = buildMediaTaskPreview(
+    [
+      {
+        id: 'media-remix-video-task',
+        priority: 1,
+        unitPrice: '0.4',
+      },
+    ],
+    {
+      rawAction: 'remixGenerate',
+      usageTotalTokens: '256',
+    },
+    'video_generation',
+  );
+
+  assert.equal(remixPreview.matchedRule?.id, 'media-remix-video-task');
+
+  const blankActionPreview = buildMediaTaskPreview(
+    [
+      {
+        id: 'media-video-default-task',
+        priority: 1,
+        unitPrice: '0.4',
+      },
+    ],
+    {
+      usageTotalTokens: '256',
+      resolution: '1080p',
+    },
+    'video_generation',
+  );
+
+  assert.equal(blankActionPreview.matchedRule?.id, 'media-video-default-task');
+
+  const blankLegacyActionPreview = buildMediaTaskPreview(
+    [
+      {
+        id: 'media-generate-only-task',
+        priority: 1,
+        unitPrice: '0.4',
+      },
+    ],
+    {
+      usageTotalTokens: '256',
+    },
+    'generate',
+  );
+
+  assert.equal(blankLegacyActionPreview.matchedRule, null);
+});
+
+test('getMediaTaskTypeDisplayLabel maps legacy media task values to chinese labels', () => {
+  const t = (label) => label;
+
+  assert.equal(getMediaTaskTypeDisplayLabel('video_generation', t), '视频生成');
+  assert.equal(getMediaTaskTypeDisplayLabel('generate', t), '视频生成（旧值 generate）');
+  assert.equal(
+    getMediaTaskTypeDisplayLabel('firstTailGenerate', t),
+    '视频生成（旧值 firstTailGenerate）',
+  );
+  assert.equal(
+    getMediaTaskTypeDisplayLabel('referenceGenerate', t),
+    '视频生成（旧值 referenceGenerate）',
+  );
+  assert.equal(getMediaTaskTypeDisplayLabel('remix', t), '视频生成（旧值 remix）');
+  assert.equal(
+    getMediaTaskTypeDisplayLabel('remixGenerate', t),
+    '视频生成（旧值 remixGenerate）',
+  );
+  assert.equal(getMediaTaskTypeDisplayLabel('image_generation', t), '图片生成');
+});
+
 test('buildMediaTaskPreview matches output modality, image tier, and tool usage scaffolding fields', () => {
   const preview = buildMediaTaskPreview(
     [
@@ -1626,7 +1735,6 @@ test('validateMediaTaskConfig rejects media_task configs without segments', () =
     ruleType: 'media_task',
     displayName: 'empty',
     taskType: 'video_generation',
-    billingUnit: 'total_tokens',
     note: '',
     rules: [],
   });
@@ -1641,7 +1749,6 @@ test('getAdvancedPricingValidationErrors allows saving an empty media rule set s
     getAdvancedPricingValidationErrors({
       ruleType: 'media_task',
       taskType: 'video_generation',
-      billingUnit: 'total_tokens',
       rules: [],
     }),
     [],
@@ -1651,7 +1758,6 @@ test('getAdvancedPricingValidationErrors allows saving an empty media rule set s
     getAdvancedPricingValidationErrors({
       ruleType: 'media_task',
       taskType: 'video_generation',
-      billingUnit: 'total_tokens',
       rules: [
         {
           id: 'media_task-1',
@@ -1668,7 +1774,6 @@ test('validateMediaTaskConfig rejects half-open and decimal media task duration 
     ruleType: 'media_task',
     displayName: 'invalid-durations',
     taskType: 'video_generation',
-    billingUnit: 'total_tokens',
     note: '',
     rules: [
       {
@@ -1785,6 +1890,23 @@ test('validateMediaTaskConfig rejects missing required fields, duplicate priorit
   assert.ok(
     errors.some((error) => error.includes('media_task-2') && error.includes('input_video_duration')),
   );
+});
+
+test('validateMediaTaskConfig requires top-level billing_unit when rules carry pricing details', () => {
+  const errors = validateMediaTaskConfig({
+    ruleType: 'media_task',
+    taskType: 'video_generation',
+    rules: [
+      {
+        id: 'media_task-1',
+        priority: '1',
+        billingUnit: 'per_image',
+        unitPrice: '0.3',
+      },
+    ],
+  });
+
+  assert.ok(errors.some((error) => error.includes('billing_unit')));
 });
 
 test('buildMediaTaskConditionSummary summarizes key media task filters for operator preview', () => {

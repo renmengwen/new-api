@@ -404,6 +404,55 @@ const toBooleanRuleValue = (value) => {
 const normalizeStringField = (value) =>
   typeof value === 'string' ? value : value === null || value === undefined ? '' : String(value);
 
+const normalizeMediaTaskTypeValue = (value) =>
+  normalizeStringField(value).trim().toLowerCase();
+
+const isCanonicalMediaTaskType = (value) =>
+  value === 'video_generation' || value === 'image_generation';
+
+const resolvePreviewMediaTaskType = (previewInput = {}) => {
+  const explicitTaskType = normalizeMediaTaskTypeValue(previewInput?.taskType);
+  if (explicitTaskType) {
+    return explicitTaskType;
+  }
+
+  const rawAction = normalizeMediaTaskTypeValue(previewInput?.rawAction);
+  switch (rawAction) {
+    case 'image_generation':
+      return 'image_generation';
+    case 'video_generation':
+      return 'video_generation';
+    case 'generate':
+    case 'textgenerate':
+    case 'firsttailgenerate':
+    case 'referencegenerate':
+    case 'remixgenerate':
+    case 'remix':
+      return 'video_generation';
+    default:
+      return rawAction;
+  }
+};
+
+export const getMediaTaskTypeDisplayLabel = (value, t = (label) => label) => {
+  const normalizedValue = normalizeStringField(value).trim();
+  switch (normalizeMediaTaskTypeValue(normalizedValue)) {
+    case 'video_generation':
+      return t('视频生成');
+    case 'generate':
+    case 'textgenerate':
+    case 'firsttailgenerate':
+    case 'referencegenerate':
+    case 'remixgenerate':
+    case 'remix':
+      return `${t('视频生成')}（${t('旧值')} ${normalizedValue}）`;
+    case 'image_generation':
+      return t('图片生成');
+    default:
+      return normalizedValue;
+  }
+};
+
 const normalizeNumericField = (value) => {
   const formatted = formatNumber(value);
   return formatted === '' ? '' : formatted;
@@ -1153,6 +1202,24 @@ const isMediaTaskStringMatch = (previewValue, ruleValue) => {
   return isOptionalStringMatch(previewValue, ruleValue);
 };
 
+const isMediaTaskTypeMatch = (ruleSetTaskType, previewInput = {}) => {
+  const normalizedRuleTaskType = normalizeMediaTaskTypeValue(ruleSetTaskType);
+  if (!normalizedRuleTaskType) {
+    return true;
+  }
+
+  const normalizedRawAction = normalizeMediaTaskTypeValue(previewInput?.rawAction);
+  const previewTaskType = resolvePreviewMediaTaskType(previewInput);
+  if (!previewTaskType && !normalizedRawAction) {
+    return isCanonicalMediaTaskType(normalizedRuleTaskType);
+  }
+  if (previewTaskType && normalizedRuleTaskType === previewTaskType) {
+    return true;
+  }
+
+  return normalizedRuleTaskType === normalizedRawAction;
+};
+
 const isMediaTaskBooleanMatch = (previewValue, ruleValue) => {
   const normalizedRuleValue = toBooleanRuleValue(ruleValue);
   if (normalizedRuleValue === null) {
@@ -1225,9 +1292,14 @@ const buildPer1000CallsFormulaSummary = (
 ) =>
   `max(${formatNumber(totalCount)} - ${formatNumber(freeQuota)}, 0) / ${formatNumber(overageThreshold)} per_1000_calls × ${formatNumber(unitPrice)} × ${formatNumber(multiplier)}`;
 
-const findMatchingMediaTaskRule = (rules = [], previewInput = {}) =>
+const findMatchingMediaTaskRule = (
+  rules = [],
+  previewInput = {},
+  ruleSetTaskType = '',
+) =>
   sortMediaTaskRules(rules).find(
     (rule) =>
+      isMediaTaskTypeMatch(ruleSetTaskType, previewInput) &&
       isMediaTaskStringMatch(
         previewInput?.rawAction,
         rule?.rawAction ?? rule?.raw_action,
@@ -1403,8 +1475,16 @@ export const buildTextSegmentPreview = (rules = [], previewInput = {}) => {
   };
 };
 
-export const buildMediaTaskPreview = (rules = [], previewInput = {}) => {
-  const matchedRule = findMatchingMediaTaskRule(rules, previewInput);
+export const buildMediaTaskPreview = (
+  rules = [],
+  previewInput = {},
+  ruleSetTaskType = '',
+) => {
+  const matchedRule = findMatchingMediaTaskRule(
+    rules,
+    previewInput,
+    ruleSetTaskType,
+  );
 
   if (!matchedRule) {
     return {
