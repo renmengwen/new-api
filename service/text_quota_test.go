@@ -67,7 +67,7 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	require.Equal(t, messageSummary.CacheCreationTokens5m, chatSummary.CacheCreationTokens5m)
 	require.Equal(t, messageSummary.CacheCreationTokens1h, chatSummary.CacheCreationTokens1h)
 	require.True(t, chatSummary.IsClaudeUsageSemantic)
-	require.Equal(t, 1488, chatSummary.Quota)
+	require.Equal(t, 1487, chatSummary.Quota)
 }
 
 func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.T) {
@@ -109,6 +109,105 @@ func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.
 	require.Equal(t, 118, summary.Quota)
 }
 
+func TestCalculateTextQuotaSummaryTruncatesHalfQuotaForClaudeTextSettlement(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		RelayFormat:             types.RelayFormatClaude,
+		FinalRequestRelayFormat: types.RelayFormatClaude,
+		OriginModelName:         "claude-sonnet-4-6",
+		PriceData: types.PriceData{
+			ModelRatio:           1.5,
+			CompletionRatio:      5,
+			CacheCreationRatio:   1.25,
+			CacheCreation5mRatio: 1.25,
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens:     3,
+		CompletionTokens: 20,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedCreationTokens: 28872,
+		},
+		ClaudeCacheCreation5mTokens: 28872,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// (3 + 28872*1.25 + 20*5) * 1.5 = 54289.5, text settlement should truncate.
+	require.Equal(t, 54289, summary.Quota)
+}
+
+func TestCalculateTextQuotaSummaryPreservesMinimumOneQuotaForUsePriceTextSettlement(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "tiny-price-text-model",
+		PriceData: types.PriceData{
+			UsePrice:       true,
+			ModelPrice:     0.0000015,
+			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+
+	usage := &dto.Usage{
+		PromptTokens: 1,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// 0.0000015 * 500000 = 0.75 quota, price-based text settlement should still bill 1 quota.
+	require.Equal(t, 1, summary.Quota)
+}
+
+func TestCalculateTextQuotaSummaryPreservesMinimumOneQuotaForAdvancedNonTokenTextSettlement(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	liveDurationSecs := 1
+	startTime := time.Unix(time.Now().Unix()-1, 0)
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "tiny-advanced-text-model",
+		PriceData: types.PriceData{
+			BillingMode:      types.BillingModeAdvanced,
+			AdvancedRuleType: types.AdvancedRuleTypeTextSegment,
+			GroupRatioInfo:   types.GroupRatioInfo{GroupRatio: 1},
+			AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{
+				RuleType:    types.AdvancedRuleTypeTextSegment,
+				BillingUnit: types.AdvancedBillingUnitPerSecond,
+				PriceSnapshot: types.AdvancedRulePriceSnapshot{
+					InputPrice: common.GetPointer(0.0000015),
+				},
+			},
+			AdvancedPricingContext: &types.AdvancedPricingContextSnapshot{
+				BillingUnit:      types.AdvancedBillingUnitPerSecond,
+				LiveDurationSecs: &liveDurationSecs,
+			},
+		},
+		StartTime: startTime,
+	}
+
+	usage := &dto.Usage{
+		PromptTokens: 1,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// 1 second * 0.0000015 * 500000 = 0.75 quota, advanced non-token text settlement should still bill 1 quota.
+	require.Equal(t, 1, summary.Quota)
+}
+
 func TestCalculateTextQuotaSummaryUsesAnthropicUsageSemanticFromUpstreamUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
@@ -147,7 +246,7 @@ func TestCalculateTextQuotaSummaryUsesAnthropicUsageSemanticFromUpstreamUsage(t 
 
 	require.True(t, summary.IsClaudeUsageSemantic)
 	require.Equal(t, "anthropic", summary.UsageSemantic)
-	require.Equal(t, 1488, summary.Quota)
+	require.Equal(t, 1487, summary.Quota)
 }
 
 func TestCacheWriteTokensTotal(t *testing.T) {
@@ -205,8 +304,8 @@ func TestCalculateTextQuotaSummaryHandlesLegacyClaudeDerivedOpenAIUsage(t *testi
 
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
-	// 62 + 3544*0.1 + 586*1.25 + 95*5 = 1624.9 => 1624
-	require.Equal(t, 1624, summary.Quota)
+	// 62 + 3544*0.1 + 586*1.25 + 95*5 = 1623.9 => 1623
+	require.Equal(t, 1623, summary.Quota)
 }
 
 func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheReadFromPromptBilling(t *testing.T) {
@@ -953,7 +1052,7 @@ func TestCalculateTextQuotaSummaryToolOverageUsesDedicatedPriceBeyondFreeQuota(t
 
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
-	expectedQuota := decimal.NewFromFloat(16.8).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).Round(0)
+	expectedQuota := decimal.NewFromFloat(16.8).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	require.Equal(t, int(expectedQuota.IntPart()), summary.Quota)
 	require.Equal(t, types.BillingModeAdvanced, relayInfo.PriceData.BillingMode)
 	require.NotNil(t, relayInfo.PriceData.AdvancedPricingContext)
