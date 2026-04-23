@@ -1099,6 +1099,7 @@ func setupListExcelExportTestDB(t *testing.T) *gorm.DB {
 		&model.User{},
 		&model.Token{},
 		&model.Log{},
+		&model.AsyncExportJob{},
 		&model.PermissionProfile{},
 		&model.PermissionProfileItem{},
 		&model.UserPermissionBinding{},

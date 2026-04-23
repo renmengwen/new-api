@@ -100,9 +100,42 @@ func ExportQuotaLedger(c *gin.Context) {
 		return
 	}
 
+	exportQuotaLedgerByRequest(c, c.GetInt("id"), c.GetInt("role"), req)
+}
+
+func ExportQuotaLedgerAuto(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceQuotaManagement, service.ActionLedgerRead) {
+		return
+	}
+
+	var req dto.AdminQuotaLedgerExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	decision, err := service.DecideQuotaLedgerSmartExport(c.GetInt("id"), c.GetInt("role"), req)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if decision.Mode == service.SmartExportModeAsync {
+		job, err := service.CreateQuotaLedgerExportJob(c.GetInt("id"), c.GetInt("role"), req)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		respondAsyncExportJobCreated(c, decision, job)
+		return
+	}
+
+	exportQuotaLedgerByRequest(c, c.GetInt("id"), c.GetInt("role"), req)
+}
+
+func exportQuotaLedgerByRequest(c *gin.Context, requesterUserID int, requesterRole int, req dto.AdminQuotaLedgerExportRequest) {
 	items, _, err := service.ListQuotaLedgerForExport(
-		c.GetInt("id"),
-		c.GetInt("role"),
+		requesterUserID,
+		requesterRole,
 		req.UserID,
 		req.OperatorUserID,
 		req.EntryType,
@@ -125,6 +158,26 @@ func ExportQuotaLedger(c *gin.Context) {
 	}
 
 	streamExcelFile(c, fileName, content)
+}
+
+func CreateQuotaLedgerExportJob(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceQuotaManagement, service.ActionLedgerRead) {
+		return
+	}
+
+	var req dto.AdminQuotaLedgerExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	job, err := service.CreateQuotaLedgerExportJob(c.GetInt("id"), c.GetInt("role"), req)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, service.BuildAsyncExportJobResponse(job))
 }
 
 func AdjustUserQuotaBatch(c *gin.Context) {

@@ -23,7 +23,6 @@ import { Modal } from '@douyinfe/semi-ui';
 import {
   API,
   MAX_EXCEL_EXPORT_ROWS,
-  downloadExcelBlob,
   getTodayStartTimestamp,
   isAdmin,
   isAgentUser,
@@ -42,6 +41,10 @@ import {
   renderClaudeModelPrice,
   renderModelPrice,
 } from '../../helpers';
+import {
+  createSmartExportStatusNotifier,
+  runSmartExport,
+} from '../../helpers/smartExport';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import { useUserPermissions } from '../common/useUserPermissions';
@@ -1372,13 +1375,21 @@ export const useLogsData = () => {
   const runExport = async () => {
     setExportLoading(true);
     try {
-      await downloadExcelBlob({
-        url: isAdminUser ? '/api/log/export' : '/api/log/self/export',
-        payload: buildUsageLogExportRequest({
-          committedQuery,
-          visibleColumnKeys: getExportColumnKeys(),
-        }),
+      await runSmartExport({
+        url: isAdminUser ? '/api/log/export-auto' : '/api/log/self/export-auto',
+        payload: {
+          ...buildUsageLogExportRequest({
+            committedQuery,
+            visibleColumnKeys: getExportColumnKeys(),
+          }),
+          limit: logCount,
+        },
         fallbackFileName: 'usage-logs.xlsx',
+        onAsyncProgress: createSmartExportStatusNotifier({
+          t,
+          showInfo,
+          showSuccess,
+        }),
       });
     } catch (error) {
       showError(error);
@@ -1400,9 +1411,7 @@ export const useLogsData = () => {
     if (logCount > MAX_EXCEL_EXPORT_ROWS) {
       Modal.confirm({
         title: t('导出 Excel'),
-        content: t(
-          '当前筛选结果超过 2000 条，将仅导出最近 2000 条记录，是否继续？',
-        ),
+        content: t('当前筛选结果较大，导出可能切换为后台生成，是否继续？'),
         okText: t('继续导出'),
         cancelText: t('取消'),
         onOk: runExport,

@@ -6,11 +6,15 @@ import {
   API,
   createCardProPagination,
   MAX_EXCEL_EXPORT_ROWS,
-  downloadExcelBlob,
   showError,
   showInfo,
+  showSuccess,
   timestamp2string,
 } from '../../helpers';
+import {
+  createSmartExportStatusNotifier,
+  runSmartExport,
+} from '../../helpers/smartExport';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
 import {
@@ -65,6 +69,7 @@ const AdminAuditLogsPageV1 = () => {
   const [listError, setListError] = useState('');
   const [queryState, setQueryState] = useState(() => createAuditLogQueryState());
   const [total, setTotal] = useState(0);
+  const [exportLoading, setExportLoading] = useState(false);
   const requestTrackerRef = useRef(null);
 
   if (!requestTrackerRef.current) {
@@ -141,23 +146,31 @@ const AdminAuditLogsPageV1 = () => {
   };
 
   const runExport = async () => {
+    setExportLoading(true);
     try {
-      await downloadExcelBlob({
-        url: '/api/admin/audit-logs/export',
+      await runSmartExport({
+        url: '/api/admin/audit-logs/export-auto',
         payload: {
           action_module: committedRequest.actionModule.trim(),
           operator_user_id: parseOptionalInteger(committedRequest.operatorUserId),
-          limit: MAX_EXCEL_EXPORT_ROWS,
+          limit: total,
         },
         fallbackFileName: 'audit-logs.xlsx',
+        onAsyncProgress: createSmartExportStatusNotifier({
+          t,
+          showInfo,
+          showSuccess,
+        }),
       });
     } catch (error) {
       showError(error);
+    } finally {
+      setExportLoading(false);
     }
   };
 
   const exportAuditLogs = async () => {
-    if (loading) {
+    if (loading || exportLoading) {
       return;
     }
 
@@ -169,7 +182,7 @@ const AdminAuditLogsPageV1 = () => {
     if (total > MAX_EXCEL_EXPORT_ROWS) {
       Modal.confirm({
         title: t('导出 Excel'),
-        content: t('当前筛选结果超过 2000 条，将仅导出前 2000 条记录，是否继续？'),
+        content: t('当前筛选结果较大，导出可能切换为后台生成，是否继续？'),
         okText: t('继续导出'),
         cancelText: t('取消'),
         onOk: runExport,
@@ -270,7 +283,12 @@ const AdminAuditLogsPageV1 = () => {
         }
         actionsArea={
           <div className='flex flex-wrap items-center gap-2'>
-            <Button size='small' type='tertiary' onClick={exportAuditLogs} disabled={loading}>
+            <Button
+              size='small'
+              type='tertiary'
+              onClick={exportAuditLogs}
+              disabled={loading || exportLoading}
+            >
               {t('导出 Excel')}
             </Button>
             <Button

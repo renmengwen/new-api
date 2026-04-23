@@ -328,6 +328,8 @@ func SetApiRouter(router *gin.Engine) {
 			adminQuotaRoute.POST("/adjust/batch", controller.AdjustUserQuotaBatch)
 			adminQuotaRoute.GET("/ledger", controller.GetQuotaLedger)
 			adminQuotaRoute.POST("/ledger/export", controller.ExportQuotaLedger)
+			adminQuotaRoute.POST("/ledger/export-jobs", controller.CreateQuotaLedgerExportJob)
+			adminQuotaRoute.POST("/ledger/export-auto", controller.ExportQuotaLedgerAuto)
 		}
 
 		adminAuditRoute := apiRouter.Group("/admin/audit-logs")
@@ -335,6 +337,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			adminAuditRoute.GET("", controller.GetAdminAuditLogs)
 			adminAuditRoute.POST("/export", controller.ExportAdminAuditLogs)
+			adminAuditRoute.POST("/export-jobs", controller.CreateAdminAuditExportJob)
+			adminAuditRoute.POST("/export-auto", controller.ExportAdminAuditLogsAuto)
 		}
 
 		adminAnalyticsRoute := apiRouter.Group("/admin/analytics")
@@ -345,7 +349,12 @@ func SetApiRouter(router *gin.Engine) {
 			adminAnalyticsRoute.GET("/users", controller.GetAdminAnalyticsUsers)
 			adminAnalyticsRoute.GET("/daily", controller.GetAdminAnalyticsDaily)
 			adminAnalyticsRoute.POST("/export", controller.ExportAdminAnalytics)
+			adminAnalyticsRoute.POST("/export-jobs", controller.CreateAdminAnalyticsExportJob)
+			adminAnalyticsRoute.POST("/export-auto", controller.ExportAdminAnalyticsAuto)
 		}
+
+		apiRouter.GET("/export-jobs/:id", middleware.UserAuth(), controller.GetAsyncExportJob)
+		apiRouter.GET("/export-jobs/:id/file", middleware.UserAuth(), controller.DownloadAsyncExportJobFile)
 
 		usageRoute := apiRouter.Group("/usage")
 		usageRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
@@ -371,6 +380,8 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminPlatformAuth(), controller.GetAllLogs)
 		logRoute.POST("/export", middleware.AdminPlatformAuth(), controller.ExportAllLogs)
+		logRoute.POST("/export-jobs", middleware.AdminPlatformAuth(), controller.CreateAdminUsageLogExportJob)
+		logRoute.POST("/export-auto", middleware.AdminPlatformAuth(), controller.ExportAllLogsAuto)
 		logRoute.DELETE("/", middleware.AdminAuth(), controller.DeleteHistoryLogs)
 		logRoute.GET("/stat", middleware.AdminPlatformAuth(), controller.GetLogsStat)
 		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
@@ -378,6 +389,8 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
 		logRoute.POST("/self/export", middleware.UserAuth(), controller.ExportUserLogs)
+		logRoute.POST("/self/export-jobs", middleware.UserAuth(), controller.CreateSelfUsageLogExportJob)
+		logRoute.POST("/self/export-auto", middleware.UserAuth(), controller.ExportUserLogsAuto)
 		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
 
 		dataRoute := apiRouter.Group("/data")

@@ -224,11 +224,44 @@ func ExportAllLogs(c *gin.Context) {
 		common.ApiError(c, errors.New("invalid request body"))
 		return
 	}
-	channel, _ := strconv.Atoi(req.Channel)
 
+	exportAdminUsageLogsByRequest(c, operator.Id, operator.Role, req)
+}
+
+func ExportAllLogsAuto(c *gin.Context) {
+	operator, ok := requireUsageLogAdminAccess(c, service.ActionLedgerRead)
+	if !ok {
+		return
+	}
+	var req dto.UsageLogExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	decision, err := service.DecideUsageLogSmartExport(operator.Id, operator.Role, req, resolveUsageLogExportColumnKeys(req.ColumnKeys, true), true)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if decision.Mode == service.SmartExportModeAsync {
+		job, err := service.CreateAdminUsageLogExportJob(operator.Id, operator.Role, req)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		respondAsyncExportJobCreated(c, decision, job)
+		return
+	}
+
+	exportAdminUsageLogsByRequest(c, operator.Id, operator.Role, req)
+}
+
+func exportAdminUsageLogsByRequest(c *gin.Context, requesterUserID int, requesterRole int, req dto.UsageLogExportRequest) {
+	channel, _ := strconv.Atoi(req.Channel)
 	logs, err := service.ListScopedUsageLogsForExport(
-		operator.Id,
-		operator.Role,
+		requesterUserID,
+		requesterRole,
 		req.Type,
 		req.StartTimestamp,
 		req.EndTimestamp,
@@ -244,8 +277,28 @@ func ExportAllLogs(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-
 	exportUsageLogs(c, logs, req.ColumnKeys, req.QuotaDisplayType, true)
+}
+
+func CreateAdminUsageLogExportJob(c *gin.Context) {
+	operator, ok := requireUsageLogAdminAccess(c, service.ActionLedgerRead)
+	if !ok {
+		return
+	}
+
+	var req dto.UsageLogExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	job, err := service.CreateAdminUsageLogExportJob(operator.Id, operator.Role, req)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, service.BuildAsyncExportJobResponse(job))
 }
 
 func ExportUserLogs(c *gin.Context) {
@@ -255,8 +308,37 @@ func ExportUserLogs(c *gin.Context) {
 		return
 	}
 
+	exportSelfUsageLogsByRequest(c, c.GetInt("id"), req)
+}
+
+func ExportUserLogsAuto(c *gin.Context) {
+	var req dto.UsageLogExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	decision, err := service.DecideUsageLogSmartExport(c.GetInt("id"), c.GetInt("role"), req, resolveUsageLogExportColumnKeys(req.ColumnKeys, false), false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if decision.Mode == service.SmartExportModeAsync {
+		job, err := service.CreateSelfUsageLogExportJob(c.GetInt("id"), c.GetInt("role"), req)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		respondAsyncExportJobCreated(c, decision, job)
+		return
+	}
+
+	exportSelfUsageLogsByRequest(c, c.GetInt("id"), req)
+}
+
+func exportSelfUsageLogsByRequest(c *gin.Context, requesterUserID int, req dto.UsageLogExportRequest) {
 	logs, err := model.GetUserLogsForExport(
-		c.GetInt("id"),
+		requesterUserID,
 		req.Type,
 		req.StartTimestamp,
 		req.EndTimestamp,
@@ -272,6 +354,22 @@ func ExportUserLogs(c *gin.Context) {
 	}
 
 	exportUsageLogs(c, logs, req.ColumnKeys, req.QuotaDisplayType, false)
+}
+
+func CreateSelfUsageLogExportJob(c *gin.Context) {
+	var req dto.UsageLogExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	job, err := service.CreateSelfUsageLogExportJob(c.GetInt("id"), c.GetInt("role"), req)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, service.BuildAsyncExportJobResponse(job))
 }
 
 func exportUsageLogs(c *gin.Context, logs []*model.Log, requestedColumnKeys []string, requestedQuotaDisplayType string, isAdmin bool) {

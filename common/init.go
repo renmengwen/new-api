@@ -19,13 +19,14 @@ var (
 	PrintVersion = flag.Bool("version", false, "print version and exit")
 	PrintHelp    = flag.Bool("help", false, "print help and exit")
 	LogDir       = flag.String("log-dir", "./logs", "specify the log directory")
+	ExportDir    = flag.String("export-dir", "./exports", "specify the async export artifact directory")
 )
 
 func printHelp() {
 	fmt.Println("NewAPI(Based OneAPI) " + Version + " - The next-generation LLM gateway and AI asset management system supports multiple languages.")
 	fmt.Println("Original Project: OneAPI by JustSong - https://github.com/songquanpeng/one-api")
 	fmt.Println("Maintainer: QuantumNous - https://github.com/QuantumNous/new-api")
-	fmt.Println("Usage: newapi [--port <port>] [--log-dir <log directory>] [--version] [--help]")
+	fmt.Println("Usage: newapi [--port <port>] [--log-dir <log directory>] [--export-dir <export directory>] [--version] [--help]")
 }
 
 func InitEnv() {
@@ -64,6 +65,9 @@ func InitEnv() {
 	if os.Getenv("SQLITE_PATH") != "" {
 		SQLitePath = os.Getenv("SQLITE_PATH")
 	}
+	if os.Getenv("EXPORT_DIR") != "" {
+		*ExportDir = os.Getenv("EXPORT_DIR")
+	}
 	if *LogDir != "" {
 		var err error
 		*LogDir, err = filepath.Abs(*LogDir)
@@ -72,6 +76,19 @@ func InitEnv() {
 		}
 		if _, err := os.Stat(*LogDir); os.IsNotExist(err) {
 			err = os.Mkdir(*LogDir, 0777)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
+	if *ExportDir != "" {
+		var err error
+		*ExportDir, err = filepath.Abs(*ExportDir)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if _, err := os.Stat(*ExportDir); os.IsNotExist(err) {
+			err = os.Mkdir(*ExportDir, 0777)
 			if err != nil {
 				log.Fatal(err)
 			}

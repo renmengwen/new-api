@@ -64,9 +64,47 @@ func ExportAdminAuditLogs(c *gin.Context) {
 		return
 	}
 
+	exportAdminAuditLogsByRequest(c, operator.Id, operator.Role, req)
+}
+
+func ExportAdminAuditLogsAuto(c *gin.Context) {
+	operator, err := service.ResolveOperatorUser(c.GetInt("id"), c.GetInt("role"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !requireAdminActionPermission(c, service.ResourceAuditManagement, service.ActionRead) {
+		return
+	}
+
+	var req dto.AdminAuditExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	decision, err := service.DecideAdminAuditLogSmartExport(operator.Id, operator.Role, req)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if decision.Mode == service.SmartExportModeAsync {
+		job, err := service.CreateAdminAuditExportJob(operator.Id, operator.Role, req)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		respondAsyncExportJobCreated(c, decision, job)
+		return
+	}
+
+	exportAdminAuditLogsByRequest(c, operator.Id, operator.Role, req)
+}
+
+func exportAdminAuditLogsByRequest(c *gin.Context, requesterUserID int, requesterRole int, req dto.AdminAuditExportRequest) {
 	items, _, err := service.ListAdminAuditLogsForExport(
-		operator.Id,
-		operator.Role,
+		requesterUserID,
+		requesterRole,
 		req.ActionModule,
 		req.OperatorUserID,
 		normalizeExportLimit(req.Limit),
@@ -89,6 +127,31 @@ func ExportAdminAuditLogs(c *gin.Context) {
 	}
 
 	streamExcelFile(c, fileName, content)
+}
+
+func CreateAdminAuditExportJob(c *gin.Context) {
+	operator, err := service.ResolveOperatorUser(c.GetInt("id"), c.GetInt("role"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !requireAdminActionPermission(c, service.ResourceAuditManagement, service.ActionRead) {
+		return
+	}
+
+	var req dto.AdminAuditExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	job, err := service.CreateAdminAuditExportJob(operator.Id, operator.Role, req)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, service.BuildAsyncExportJobResponse(job))
 }
 
 func normalizeExportLimit(limit int) int {

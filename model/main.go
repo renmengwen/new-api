@@ -284,6 +284,7 @@ func migrateDB() error {
 		&QuotaAdjustmentBatch{},
 		&QuotaAdjustmentBatchItem{},
 		&AdminAuditLog{},
+		&AsyncExportJob{},
 		&PasskeyCredential{},
 		&Option{},
 		&Redemption{},

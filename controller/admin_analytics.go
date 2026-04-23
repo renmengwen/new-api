@@ -111,6 +111,39 @@ func ExportAdminAnalytics(c *gin.Context) {
 		return
 	}
 
+	exportAdminAnalyticsByRequest(c, c.GetInt("id"), c.GetInt("role"), req)
+}
+
+func ExportAdminAnalyticsAuto(c *gin.Context) {
+	if !requireAdminAnalyticsAccess(c, service.ActionRead, service.ActionExport) {
+		return
+	}
+
+	var req dto.AdminAnalyticsExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	decision, err := service.DecideAdminAnalyticsSmartExport(c.GetInt("id"), c.GetInt("role"), req)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if decision.Mode == service.SmartExportModeAsync {
+		job, err := service.CreateAdminAnalyticsExportJob(c.GetInt("id"), c.GetInt("role"), req)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		respondAsyncExportJobCreated(c, decision, job)
+		return
+	}
+
+	exportAdminAnalyticsByRequest(c, c.GetInt("id"), c.GetInt("role"), req)
+}
+
+func exportAdminAnalyticsByRequest(c *gin.Context, requesterUserID int, requesterRole int, req dto.AdminAnalyticsExportRequest) {
 	query, err := dto.NormalizeAdminAnalyticsQuery(req.ToQuery(), common.GetTimestamp())
 	if err != nil {
 		common.ApiError(c, err)
@@ -122,8 +155,8 @@ func ExportAdminAnalytics(c *gin.Context) {
 		query,
 		strings.TrimSpace(req.QuotaDisplayType),
 		normalizeExportLimit(req.Limit),
-		c.GetInt("id"),
-		c.GetInt("role"),
+		requesterUserID,
+		requesterRole,
 	)
 	if err != nil {
 		common.ApiError(c, err)
@@ -131,6 +164,26 @@ func ExportAdminAnalytics(c *gin.Context) {
 	}
 
 	streamExcelFile(c, fileName, content)
+}
+
+func CreateAdminAnalyticsExportJob(c *gin.Context) {
+	if !requireAdminAnalyticsAccess(c, service.ActionRead, service.ActionExport) {
+		return
+	}
+
+	var req dto.AdminAnalyticsExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	job, err := service.CreateAdminAnalyticsExportJob(c.GetInt("id"), c.GetInt("role"), req)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, service.BuildAsyncExportJobResponse(job))
 }
 
 func buildAdminAnalyticsExportFile(view string, query dto.AdminAnalyticsQuery, quotaDisplayType string, limit int, requesterUserID int, requesterRole int) (string, []byte, error) {

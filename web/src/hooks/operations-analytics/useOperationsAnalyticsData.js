@@ -20,10 +20,14 @@ import { useEffect, useState } from 'react';
 import dayjs from 'dayjs';
 import {
   API,
-  MAX_EXCEL_EXPORT_ROWS,
-  downloadExcelBlob,
   showError,
+  showInfo,
+  showSuccess,
 } from '../../helpers';
+import {
+  createSmartExportStatusNotifier,
+  runSmartExport,
+} from '../../helpers/smartExport';
 
 const DEFAULT_ACTIVE_TAB = 'models';
 const DEFAULT_DATE_PRESET = 'last7days';
@@ -109,6 +113,55 @@ const getQuotaDisplayType = () => {
   return localStorage.getItem('quota_display_type') || 'USD';
 };
 
+const normalizeExportLimit = (value) => {
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+    return 0;
+  }
+
+  return Math.ceil(parsedValue);
+};
+
+const getOperationsAnalyticsExportLimit = ({
+  activeTab,
+  datePreset,
+  filters,
+  summary,
+}) => {
+  if (activeTab === 'models') {
+    return normalizeExportLimit(summary?.active_models);
+  }
+
+  if (activeTab === 'users') {
+    return normalizeExportLimit(summary?.active_users);
+  }
+
+  if (activeTab === 'daily') {
+    if (datePreset === 'today') {
+      return 1;
+    }
+
+    if (datePreset === 'last7days') {
+      return 7;
+    }
+
+    if (datePreset === 'custom') {
+      const startDay = dayjs(filters?.startDate);
+      const endDay = dayjs(filters?.endDate);
+
+      if (!startDay.isValid() || !endDay.isValid()) {
+        return 0;
+      }
+
+      return normalizeExportLimit(
+        endDay.startOf('day').diff(startDay.startOf('day'), 'day') + 1,
+      );
+    }
+  }
+
+  return 0;
+};
+
 export const buildOperationsAnalyticsSummaryParams = (appliedFilters) => {
   const params = {
     date_preset: appliedFilters.datePreset,
@@ -143,11 +196,12 @@ export const buildOperationsAnalyticsExportPayload = ({
   datePreset,
   filters,
   sortState,
+  limit,
 }) => {
   const payload = {
     view: activeTab,
     date_preset: datePreset,
-    limit: MAX_EXCEL_EXPORT_ROWS,
+    limit,
   };
   payload.quota_display_type = getQuotaDisplayType();
 
@@ -334,15 +388,26 @@ export const useOperationsAnalyticsData = ({
 
     setExportLoading(true);
     try {
-      await downloadExcelBlob({
-        url: '/api/admin/analytics/export',
+      await runSmartExport({
+        url: '/api/admin/analytics/export-auto',
         payload: buildOperationsAnalyticsExportPayload({
           activeTab,
           datePreset: appliedFilters.datePreset,
           filters: appliedFilters,
           sortState: sortStateByTab[activeTab],
+          limit: getOperationsAnalyticsExportLimit({
+            activeTab,
+            datePreset: appliedFilters.datePreset,
+            filters: appliedFilters,
+            summary,
+          }),
         }),
         fallbackFileName: `operations-analytics-${activeTab}.xlsx`,
+        onAsyncProgress: createSmartExportStatusNotifier({
+          t,
+          showInfo,
+          showSuccess,
+        }),
       });
     } catch (error) {
       showError(error);

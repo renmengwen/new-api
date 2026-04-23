@@ -2,6 +2,8 @@ package service
 
 import (
 	"bytes"
+	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -76,4 +78,49 @@ func mustCell(t *testing.T, workbook *excelize.File, sheetName string, cell stri
 	require.NoError(t, err)
 
 	return value
+}
+
+func TestAsyncExportWriterHandlesMoreThanTwoThousandRows(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "large_export.xlsx")
+
+	rowCount, err := WriteAsyncExportXLSX(AsyncExportWriterSpec{
+		FilePath:  filePath,
+		SheetName: "large_export",
+		Headers:   []string{"id", "value"},
+		PageSize:  500,
+		FetchPage: func(page int, pageSize int) (AsyncExportPage, error) {
+			start := (page - 1) * pageSize
+			if start >= 2501 {
+				return AsyncExportPage{Rows: [][]string{}, Done: true}, nil
+			}
+			end := start + pageSize
+			if end > 2501 {
+				end = 2501
+			}
+
+			rows := make([][]string, 0, end-start)
+			for i := start; i < end; i++ {
+				rows = append(rows, []string{strconv.Itoa(i + 1), "row"})
+			}
+			return AsyncExportPage{
+				Rows: rows,
+				Done: end >= 2501,
+			}, nil
+		},
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 2501, rowCount)
+
+	workbook, err := excelize.OpenFile(filePath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, workbook.Close())
+	})
+
+	rows, err := workbook.GetRows("large_export")
+	require.NoError(t, err)
+	require.Len(t, rows, 2502)
+	require.Equal(t, []string{"id", "value"}, rows[0])
+	require.Equal(t, []string{"1", "row"}, rows[1])
+	require.Equal(t, []string{"2501", "row"}, rows[len(rows)-1])
 }

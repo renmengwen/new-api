@@ -25,12 +25,16 @@ import {
   API,
   createCardProPagination,
   MAX_EXCEL_EXPORT_ROWS,
-  downloadExcelBlob,
   renderQuota,
   showError,
   showInfo,
+  showSuccess,
   timestamp2string,
 } from '../../helpers';
+import {
+  createSmartExportStatusNotifier,
+  runSmartExport,
+} from '../../helpers/smartExport';
 import {
   QUOTA_LEDGER_ENTRY_TYPE_OPTIONS,
   getQuotaAccountName,
@@ -74,6 +78,7 @@ const AdminQuotaLedgerPageV2 = () => {
   const [listError, setListError] = useState('');
   const [queryState, setQueryState] = useState(() => createQuotaLedgerQueryState());
   const [total, setTotal] = useState(0);
+  const [exportLoading, setExportLoading] = useState(false);
   const requestTrackerRef = useRef(null);
 
   if (!requestTrackerRef.current) {
@@ -150,23 +155,31 @@ const AdminQuotaLedgerPageV2 = () => {
   };
 
   const runExport = async () => {
+    setExportLoading(true);
     try {
-      await downloadExcelBlob({
-        url: '/api/admin/quota/ledger/export',
+      await runSmartExport({
+        url: '/api/admin/quota/ledger/export-auto',
         payload: {
           user_id: parseOptionalInteger(committedRequest.userId),
           entry_type: committedRequest.entryType,
-          limit: MAX_EXCEL_EXPORT_ROWS,
+          limit: total,
         },
         fallbackFileName: 'quota-ledger.xlsx',
+        onAsyncProgress: createSmartExportStatusNotifier({
+          t,
+          showInfo,
+          showSuccess,
+        }),
       });
     } catch (error) {
       showError(error);
+    } finally {
+      setExportLoading(false);
     }
   };
 
   const exportLedger = async () => {
-    if (loading) {
+    if (loading || exportLoading) {
       return;
     }
 
@@ -178,7 +191,7 @@ const AdminQuotaLedgerPageV2 = () => {
     if (total > MAX_EXCEL_EXPORT_ROWS) {
       Modal.confirm({
         title: t('导出 Excel'),
-        content: t('当前筛选结果超过 2000 条，将仅导出前 2000 条记录，是否继续？'),
+        content: t('当前筛选结果较大，导出可能切换为后台生成，是否继续？'),
         okText: t('继续导出'),
         cancelText: t('取消'),
         onOk: runExport,
@@ -303,7 +316,12 @@ const AdminQuotaLedgerPageV2 = () => {
         }
         actionsArea={
           <div className='flex flex-wrap items-center gap-2'>
-            <Button size='small' type='tertiary' onClick={exportLedger} disabled={loading}>
+            <Button
+              size='small'
+              type='tertiary'
+              onClick={exportLedger}
+              disabled={loading || exportLoading}
+            >
               {t('导出 Excel')}
             </Button>
             <Button size='small' type='tertiary' onClick={() => loadLedger(queryState)}>
