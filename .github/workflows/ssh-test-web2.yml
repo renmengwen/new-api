@@ -1,0 +1,26 @@
+  name: SSH Test Web2
+
+  on:
+    workflow_dispatch:
+
+  jobs:
+    test_web2:
+      runs-on: ubuntu-latest
+      steps:
+        - name: Test SSH to web2
+          uses: appleboy/ssh-action@v1
+          with:
+            host: ${{ secrets.DEPLOY_HOST_2 }}
+            port: ${{ secrets.DEPLOY_PORT_2 }}
+            username: root
+            key: ${{ secrets.DEPLOY_SSH_KEY }}
+            command_timeout: 5m
+            script: |
+              echo "SSH connected"
+              hostname
+              whoami
+              pwd
+              ls -la /root/new-api
+              cd /root/new-api
+              docker compose ps
+              curl -fsS http://127.0.0.1:3000/api/status
