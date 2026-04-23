@@ -41,3 +41,17 @@ test('advanced pricing model list accepts the page hook field names while preser
   assert.match(source, /Tag color=\{ruleType \? 'blue' : 'grey'\}/);
   assert.match(source, /hasBasePricing \?/);
 });
+
+test('advanced pricing model list truncates long model names without horizontal overflow', () => {
+  assert.match(
+    source,
+    /import \{[\s\S]*Tooltip,[\s\S]*\} from '@douyinfe\/semi-ui';/,
+  );
+  assert.match(source, /overflowX: 'hidden'/);
+  assert.match(source, /maxWidth: '100%'/);
+  assert.match(source, /minWidth: 0/);
+  assert.match(source, /<Tooltip content=\{model\.name\}>/);
+  assert.match(source, /textOverflow: 'ellipsis'/);
+  assert.match(source, /whiteSpace: 'nowrap'/);
+  assert.match(source, /flexShrink: 0/);
+});

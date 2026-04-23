@@ -18,7 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Button, Card, Empty, Input, Space, Tag, Typography } from '@douyinfe/semi-ui';
+import {
+  Button,
+  Card,
+  Empty,
+  Input,
+  Space,
+  Tag,
+  Tooltip,
+  Typography,
+} from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 
@@ -88,8 +97,15 @@ export default function AdvancedPricingModelList({
           />
         </div>
       ) : (
-        <div style={{ maxHeight: 720, overflowY: 'auto', padding: 12 }}>
-          <Space vertical align='start' style={{ width: '100%' }}>
+        <div
+          style={{
+            maxHeight: 720,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            padding: 12,
+          }}
+        >
+          <Space vertical align='start' style={{ width: '100%', minWidth: 0 }}>
             {models.map((model) => {
               const selected = model.name === selectedModelName;
               const billingMode =
@@ -106,9 +122,11 @@ export default function AdvancedPricingModelList({
                   onClick={() => onSelectModel(model.name)}
                   style={{
                     width: '100%',
+                    maxWidth: '100%',
                     padding: 12,
                     height: 'auto',
                     justifyContent: 'flex-start',
+                    overflow: 'hidden',
                     borderRadius: 12,
                     textAlign: 'left',
                     border: selected
@@ -119,14 +137,51 @@ export default function AdvancedPricingModelList({
                       : 'var(--semi-color-bg-1)',
                   }}
                 >
-                  <div style={{ width: '100%' }}>
-                    <div className='flex items-center justify-between gap-2'>
-                      <Text strong>{model.name}</Text>
-                      <Tag color={getBillingModeColor(billingMode)}>
+                  <div style={{ width: '100%', minWidth: 0, overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        minWidth: 0,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Tooltip content={model.name}>
+                          <Text
+                            strong
+                            style={{
+                              display: 'block',
+                              maxWidth: '100%',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {model.name}
+                          </Text>
+                        </Tooltip>
+                      </div>
+                      <Tag
+                        color={getBillingModeColor(billingMode)}
+                        style={{ flexShrink: 0 }}
+                      >
                         {getBillingModeText(billingMode, t)}
                       </Tag>
                     </div>
-                    <div className='mt-2 flex items-center gap-2 flex-wrap'>
+                    <div
+                      style={{
+                        marginTop: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        flexWrap: 'wrap',
+                        minWidth: 0,
+                        maxWidth: '100%',
+                        overflow: 'hidden',
+                      }}
+                    >
                       <Tag color={ruleType ? 'blue' : 'grey'}>
                         {ruleType
                           ? getRuleTypeText(ruleType, t)
