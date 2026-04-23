@@ -128,3 +128,63 @@ func TestSearchUsersIncludesParentAgentUsernameForOwnedUsers(t *testing.T) {
 	require.Equal(t, float64(ownedUser.Id), item["id"])
 	require.Equal(t, "legacy_search_parent_agent", item["parent_agent_username"])
 }
+
+func TestSearchUsersFiltersByRole(t *testing.T) {
+	db := setupLegacyUpdateUserQuotaTestDB(t)
+	_ = seedLegacyUpdateUserQuotaTarget(t, db, "legacy_role_end_user", model.UserTypeEndUser, common.RoleCommonUser, 600)
+	_ = seedLegacyUpdateUserQuotaTarget(t, db, "legacy_role_agent_user", model.UserTypeAgent, common.RoleCommonUser, 300)
+	adminUser := seedLegacyUpdateUserQuotaTarget(t, db, "legacy_role_admin_user", model.UserTypeAdmin, common.RoleAdminUser, 0)
+	rootUser := seedLegacyUpdateUserQuotaTarget(t, db, "legacy_role_root_user", model.UserTypeRoot, common.RoleRootUser, 0)
+
+	ctx, recorder := newLegacyUserListContext(
+		http.MethodGet,
+		"/api/user/search?keyword=&group=&role=admin&p=1&page_size=10",
+	)
+	SearchUsers(ctx)
+
+	var response legacyUserPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, 2, response.Data.Total)
+
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+	require.Len(t, items, 2)
+
+	usernames := make(map[string]bool, len(items))
+	for _, rawItem := range items {
+		item, ok := rawItem.(map[string]any)
+		require.True(t, ok)
+		usernames[item["username"].(string)] = true
+	}
+
+	require.True(t, usernames[adminUser.Username])
+	require.True(t, usernames[rootUser.Username])
+}
+
+func TestSearchUsersFiltersByStatus(t *testing.T) {
+	db := setupLegacyUpdateUserQuotaTestDB(t)
+	_ = seedLegacyUpdateUserQuotaTarget(t, db, "legacy_status_enabled_user", model.UserTypeEndUser, common.RoleCommonUser, 600)
+	disabledUser := seedLegacyUpdateUserQuotaTarget(t, db, "legacy_status_disabled_user", model.UserTypeAgent, common.RoleCommonUser, 300)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", disabledUser.Id).Update("status", common.UserStatusDisabled).Error)
+
+	ctx, recorder := newLegacyUserListContext(
+		http.MethodGet,
+		"/api/user/search?keyword=&group=&status=2&p=1&page_size=10",
+	)
+	SearchUsers(ctx)
+
+	var response legacyUserPageResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, 1, response.Data.Total)
+
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+	require.Len(t, items, 1)
+
+	item, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(disabledUser.Id), item["id"])
+	require.Equal(t, float64(common.UserStatusDisabled), item["status"])
+}

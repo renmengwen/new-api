@@ -32,9 +32,26 @@ const UsersFilters = ({
   loading,
   searching,
   showGroupFilter = true,
+  showRoleFilter = false,
+  showStatusFilter = false,
   t,
 }) => {
   const formApiRef = useRef(null);
+  const roleOptions = [
+    { label: t('普通用户'), value: 'end_user' },
+    { label: t('代理商'), value: 'agent' },
+    { label: t('管理员'), value: 'admin' },
+  ];
+  const statusOptions = [
+    { label: t('启用'), value: '1' },
+    { label: t('禁用'), value: '2' },
+  ];
+
+  const triggerSearch = () => {
+    setTimeout(() => {
+      searchUsers(1, pageSize);
+    }, 100);
+  };
 
   const handleReset = () => {
     if (!formApiRef.current) return;
@@ -72,23 +89,48 @@ const UsersFilters = ({
             size='small'
           />
         </div>
-        {showGroupFilter ? <div className='w-full md:w-48'>
-          <Form.Select
-            field='searchGroup'
-            placeholder={t('选择分组')}
-            optionList={groupOptions}
-            onChange={() => {
-              // Group change triggers automatic search
-              setTimeout(() => {
-                searchUsers(1, pageSize);
-              }, 100);
-            }}
-            className='w-full'
-            showClear
-            pure
-            size='small'
-          />
-        </div> : null}
+        {showGroupFilter ? (
+          <div className='w-full md:w-48'>
+            <Form.Select
+              field='searchGroup'
+              placeholder={t('选择分组')}
+              optionList={groupOptions}
+              onChange={triggerSearch}
+              className='w-full'
+              showClear
+              pure
+              size='small'
+            />
+          </div>
+        ) : null}
+        {showRoleFilter ? (
+          <div className='w-full md:w-36'>
+            <Form.Select
+              field='searchRole'
+              placeholder={t('角色')}
+              optionList={roleOptions}
+              onChange={triggerSearch}
+              className='w-full'
+              showClear
+              pure
+              size='small'
+            />
+          </div>
+        ) : null}
+        {showStatusFilter ? (
+          <div className='w-full md:w-36'>
+            <Form.Select
+              field='searchStatus'
+              placeholder={t('状态')}
+              optionList={statusOptions}
+              onChange={triggerSearch}
+              className='w-full'
+              showClear
+              pure
+              size='small'
+            />
+          </div>
+        ) : null}
         <div className='flex gap-2 w-full md:w-auto'>
           <Button
             type='tertiary'

@@ -43,3 +43,25 @@ test('useUsersData keeps legacy group loading on the admin group endpoint', () =
   assert.ok(hookSource.includes("API.get('/api/group/')"));
   assert.ok(hookSource.includes('setGroupOptions(toGroupOptions(res.data));'));
 });
+
+test('useUsersData tracks role and status filters for legacy user search', () => {
+  assert.ok(hookSource.includes("searchRole: ''"));
+  assert.ok(hookSource.includes("searchStatus: ''"));
+  assert.ok(hookSource.includes('searchRole: formValues.searchRole || \'\','));
+  assert.ok(hookSource.includes('searchStatus: formValues.searchStatus || \'\','));
+  assert.ok(hookSource.includes("params.set('role', searchRole);"));
+  assert.ok(hookSource.includes("params.set('status', searchStatus);"));
+});
+
+test('useUsersData delegates search-state decisions to the shared mode-aware helper', () => {
+  assert.ok(
+    hookSource.includes(
+      'shouldUseUserSearch',
+    ),
+  );
+  assert.ok(
+    hookSource.includes(
+      'const shouldSearch = shouldUseUserSearch({',
+    ),
+  );
+});

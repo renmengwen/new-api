@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 
 import {
   normalizeUserPageData,
+  shouldUseUserSearch,
   toManagedGroupOptions,
   toGroupOptions,
 } from './useUsersData.helpers.js';
@@ -89,5 +90,51 @@ test('toManagedGroupOptions keeps managed-mode labels aligned with raw group nam
         fullLabel: 'vip分组',
       },
     ],
+  );
+});
+
+test('shouldUseUserSearch keeps managed-mode keyword searches active', () => {
+  assert.equal(
+    shouldUseUserSearch({
+      isManagedMode: true,
+      searchKeyword: 'agent-user',
+      searchGroup: '',
+      searchRole: '',
+      searchStatus: '',
+    }),
+    true,
+  );
+  assert.equal(
+    shouldUseUserSearch({
+      isManagedMode: true,
+      searchKeyword: '',
+      searchGroup: 'default',
+      searchRole: 'admin',
+      searchStatus: '1',
+    }),
+    false,
+  );
+});
+
+test('shouldUseUserSearch keeps legacy filters active when any filter is present', () => {
+  assert.equal(
+    shouldUseUserSearch({
+      isManagedMode: false,
+      searchKeyword: '',
+      searchGroup: '',
+      searchRole: 'agent',
+      searchStatus: '',
+    }),
+    true,
+  );
+  assert.equal(
+    shouldUseUserSearch({
+      isManagedMode: false,
+      searchKeyword: '',
+      searchGroup: '',
+      searchRole: '',
+      searchStatus: '',
+    }),
+    false,
   );
 });
