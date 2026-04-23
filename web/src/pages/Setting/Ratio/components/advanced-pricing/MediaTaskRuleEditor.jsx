@@ -23,6 +23,7 @@ import {
   Button,
   Card,
   Input,
+  Modal,
   Radio,
   RadioGroup,
   Select,
@@ -43,6 +44,7 @@ import {
   createEmptyMediaTaskRule,
   getMediaTaskTypeDisplayLabel,
   normalizeMediaTaskRule,
+  parseAdvancedRuleSetJsonImport,
   serializeAdvancedPricingConfig,
   serializeMediaTaskRule,
   sortMediaTaskRules,
@@ -84,10 +86,59 @@ const updateConfigRuleSetField = (config, field, value) => ({
   [field]: value,
 });
 
+function RuleSetJsonEditorModal({
+  visible,
+  jsonText,
+  errors,
+  onTextChange,
+  onCancel,
+  onSave,
+  expectedRuleType,
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <Modal
+      title={t('编辑规则 JSON')}
+      visible={visible}
+      onCancel={onCancel}
+      onOk={() => onSave(expectedRuleType)}
+      okText={t('保存 JSON')}
+      cancelText={t('取消')}
+      width={720}
+    >
+      <Space vertical align='start' style={{ width: '100%' }}>
+        <TextArea
+          value={jsonText}
+          onChange={onTextChange}
+          autosize={{ minRows: 14, maxRows: 24 }}
+        />
+        {errors.length > 0 ? (
+          <Banner
+            type='danger'
+            bordered
+            fullMode={false}
+            closeIcon={null}
+            title={t('JSON 校验失败')}
+            description={
+              <Space vertical align='start'>
+                {errors.map((error) => (
+                  <Text key={error}>{error}</Text>
+                ))}
+              </Space>
+            }
+          />
+        ) : null}
+      </Space>
+    </Modal>
+  );
+}
+
 export default function MediaTaskRuleEditor({
   config,
   validationErrors = [],
   onChange,
+  onRuleSetJsonApply,
 }) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
@@ -296,6 +347,9 @@ export default function MediaTaskRuleEditor({
     () => serializeAdvancedPricingConfig(config),
     [config],
   );
+  const [jsonEditorVisible, setJsonEditorVisible] = useState(false);
+  const [jsonEditorText, setJsonEditorText] = useState('');
+  const [jsonEditorErrors, setJsonEditorErrors] = useState([]);
 
   const resetDraftState = () => {
     setEditingRuleId('');
@@ -385,6 +439,42 @@ export default function MediaTaskRuleEditor({
 
   const handleRuleSetFieldChange = (field, value) => {
     onChange(updateConfigRuleSetField(config, field, value));
+  };
+
+  const handleOpenJsonEditor = () => {
+    setJsonEditorText(JSON.stringify(serializedConfig, null, 2));
+    setJsonEditorErrors([]);
+    setJsonEditorVisible(true);
+  };
+
+  const handleCloseJsonEditor = () => {
+    setJsonEditorVisible(false);
+    setJsonEditorErrors([]);
+  };
+
+  const handleSaveJsonEditor = (expectedRuleType) => {
+    const parseResult = parseAdvancedRuleSetJsonImport(
+      jsonEditorText,
+      expectedRuleType,
+    );
+
+    if (parseResult.errors.length > 0 || !parseResult.config) {
+      setJsonEditorErrors(parseResult.errors);
+      return;
+    }
+
+    if (typeof onRuleSetJsonApply === 'function') {
+      const applyResult = onRuleSetJsonApply(jsonEditorText, expectedRuleType);
+      if (!applyResult?.success) {
+        setJsonEditorErrors(applyResult?.errors || []);
+        return;
+      }
+    } else if (typeof onChange === 'function') {
+      onChange(parseResult.config);
+    }
+
+    setJsonEditorVisible(false);
+    setJsonEditorErrors([]);
   };
 
   const handleDraftFieldChange = (field, value, regex) => {
@@ -514,9 +604,12 @@ export default function MediaTaskRuleEditor({
       <Card
         title={t('媒体任务规则编辑器')}
         headerExtraContent={
-          <Button icon={<IconPlus />} onClick={openCreateSideSheet}>
-            {t('新增规则')}
-          </Button>
+          <Space>
+            <Button onClick={handleOpenJsonEditor}>{t('编辑规则 JSON')}</Button>
+            <Button icon={<IconPlus />} onClick={openCreateSideSheet}>
+              {t('新增规则')}
+            </Button>
+          </Space>
         }
       >
         <div className='text-sm text-gray-500 mb-3'>
@@ -667,6 +760,16 @@ export default function MediaTaskRuleEditor({
             </pre>
           </CollapsibleJsonBlock>
         </Card>
+
+        <RuleSetJsonEditorModal
+          visible={jsonEditorVisible}
+          jsonText={jsonEditorText}
+          errors={jsonEditorErrors}
+          onTextChange={setJsonEditorText}
+          onCancel={handleCloseJsonEditor}
+          onSave={handleSaveJsonEditor}
+          expectedRuleType={MEDIA_TASK_RULE_TYPE}
+        />
       </Card>
 
       <SideSheet

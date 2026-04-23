@@ -107,6 +107,21 @@ test('text segment rule editor still uses Semi top-level TextArea export instead
   assert.doesNotMatch(source, /Input\.TextArea/);
 });
 
+test('text segment rule editor exposes a current rule-set JSON edit dialog', () => {
+  assert.match(
+    source,
+    /import \{[\s\S]*Modal,[\s\S]*TextArea,[\s\S]*\} from '@douyinfe\/semi-ui';/,
+  );
+  assert.match(source, /onRuleSetJsonApply/);
+  assert.match(source, /parseAdvancedRuleSetJsonImport/);
+  assert.match(source, /jsonEditorVisible/);
+  assert.match(source, /jsonEditorText/);
+  assert.match(source, /setJsonEditorText\(JSON\.stringify\(serializedConfig, null, 2\)\)/);
+  assert.match(source, /编辑规则 JSON/);
+  assert.match(source, /保存 JSON/);
+  assert.match(source, /expectedRuleType={TEXT_SEGMENT_RULE_TYPE}/);
+});
+
 test('text segment rule editor renders JSON blocks through the shared collapsible JSON component', () => {
   assert.match(source, /import CollapsibleJsonBlock from '\.\/CollapsibleJsonBlock';/);
   assert.match(source, /<CollapsibleJsonBlock title=\{t\('当前规则 JSON'\)\}>/);

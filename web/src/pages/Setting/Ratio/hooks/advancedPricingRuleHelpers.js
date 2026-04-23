@@ -1712,6 +1712,78 @@ export const getAdvancedPricingValidationErrors = (config) => {
   return [];
 };
 
+export const parseAdvancedRuleSetJsonImport = (jsonText, expectedRuleType) => {
+  const rawText = normalizeStringField(jsonText).trim();
+  if (!rawText) {
+    return {
+      config: null,
+      errors: ['JSON content is required'],
+    };
+  }
+
+  let parsedRuleSet;
+  try {
+    parsedRuleSet = JSON.parse(rawText);
+  } catch (error) {
+    return {
+      config: null,
+      errors: [`JSON parse failed: ${error.message}`],
+    };
+  }
+
+  const errors = [];
+  if (
+    !parsedRuleSet ||
+    typeof parsedRuleSet !== 'object' ||
+    Array.isArray(parsedRuleSet)
+  ) {
+    return {
+      config: null,
+      errors: ['JSON root must be an object'],
+    };
+  }
+
+  const rawRuleType = normalizeStringField(
+    parsedRuleSet.rule_type ?? parsedRuleSet.ruleType,
+  ).trim();
+  const normalizedRuleType =
+    rawRuleType === MEDIA_TASK_RULE_TYPE || rawRuleType === 'media-task'
+      ? MEDIA_TASK_RULE_TYPE
+      : rawRuleType === TEXT_SEGMENT_RULE_TYPE
+        ? TEXT_SEGMENT_RULE_TYPE
+        : '';
+
+  if (!rawRuleType) {
+    errors.push('rule_type is required');
+  } else if (!normalizedRuleType) {
+    errors.push('rule_type must be text_segment or media_task');
+  } else if (expectedRuleType && normalizedRuleType !== expectedRuleType) {
+    errors.push(`rule_type must be ${expectedRuleType}`);
+  }
+
+  if (!Array.isArray(parsedRuleSet.segments)) {
+    errors.push('segments must be an array');
+  }
+
+  if (errors.length > 0) {
+    return {
+      config: null,
+      errors,
+    };
+  }
+
+  const normalizedConfig = normalizeAdvancedPricingConfig({
+    ...parsedRuleSet,
+    rule_type: normalizedRuleType,
+  });
+  const validationErrors = getAdvancedPricingValidationErrors(normalizedConfig);
+
+  return {
+    config: validationErrors.length > 0 ? null : normalizedConfig,
+    errors: validationErrors,
+  };
+};
+
 export const getAdvancedPricingMapValidationErrors = (advancedPricingMap = {}) =>
   Object.entries(advancedPricingMap).reduce((result, [modelName, config]) => {
     const validationErrors = getAdvancedPricingValidationErrors(config);

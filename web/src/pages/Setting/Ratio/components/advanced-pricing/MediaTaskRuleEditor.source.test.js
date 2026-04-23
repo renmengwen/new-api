@@ -29,7 +29,7 @@ const source = fs.readFileSync(
 test('media task rule editor keeps the advanced rule workflow in a SideSheet with summary metadata and task preview', () => {
   assert.match(
     source,
-    /export default function MediaTaskRuleEditor\(\{\s*config,\s*validationErrors = \[\],\s*onChange,\s*\}\)/,
+    /export default function MediaTaskRuleEditor\(\{\s*config,\s*validationErrors = \[\],\s*onChange,\s*onRuleSetJsonApply,\s*\}\)/,
   );
   assert.match(source, /serializeAdvancedPricingConfig/);
   assert.match(source, /buildMediaTaskPreview/);
@@ -63,7 +63,6 @@ test('media task rule editor keeps the advanced rule workflow in a SideSheet wit
   assert.match(source, /serializedConfig\.segments \|\| \[\]/);
   assert.match(source, /value=\{config\?\.billingUnit \|\| ''\}/);
   assert.match(source, /handleRuleSetFieldChange\('billingUnit', value\)/);
-  assert.doesNotMatch(source, /<Modal/);
 });
 
 test('media task rule editor renders modality, image tier, billing unit, and tool scaffolding fields', () => {
@@ -188,6 +187,21 @@ test('media task rule editor uses Semi top-level TextArea export instead of Inpu
     /import \{[\s\S]*TextArea,[\s\S]*\} from '@douyinfe\/semi-ui';/,
   );
   assert.doesNotMatch(source, /Input\.TextArea/);
+});
+
+test('media task rule editor exposes a current rule-set JSON edit dialog', () => {
+  assert.match(
+    source,
+    /import \{[\s\S]*Modal,[\s\S]*TextArea,[\s\S]*\} from '@douyinfe\/semi-ui';/,
+  );
+  assert.match(source, /onRuleSetJsonApply/);
+  assert.match(source, /parseAdvancedRuleSetJsonImport/);
+  assert.match(source, /jsonEditorVisible/);
+  assert.match(source, /jsonEditorText/);
+  assert.match(source, /setJsonEditorText\(JSON\.stringify\(serializedConfig, null, 2\)\)/);
+  assert.match(source, /编辑规则 JSON/);
+  assert.match(source, /保存 JSON/);
+  assert.match(source, /expectedRuleType={MEDIA_TASK_RULE_TYPE}/);
 });
 
 test('media task rule editor renders JSON blocks through the shared collapsible JSON component', () => {

@@ -23,6 +23,7 @@ import {
   Button,
   Card,
   Input,
+  Modal,
   Radio,
   RadioGroup,
   Select,
@@ -37,11 +38,13 @@ import { IconCopy, IconDelete, IconEdit, IconPlus } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import CollapsibleJsonBlock from './CollapsibleJsonBlock';
 import {
+  TEXT_SEGMENT_RULE_TYPE,
   buildTextSegmentConditionSummary,
   buildTextSegmentPreview,
   createEmptyTextSegmentRule,
   getTextSegmentRuleEditorMeta,
   normalizeTextSegmentRule,
+  parseAdvancedRuleSetJsonImport,
   serializeAdvancedPricingConfig,
   serializeTextSegmentRule,
   sortTextSegmentRules,
@@ -176,7 +179,60 @@ const TEXT_SEGMENT_FIELDS = [
   },
 ];
 
-function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
+function RuleSetJsonEditorModal({
+  visible,
+  jsonText,
+  errors,
+  onTextChange,
+  onCancel,
+  onSave,
+  expectedRuleType,
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <Modal
+      title={t('编辑规则 JSON')}
+      visible={visible}
+      onCancel={onCancel}
+      onOk={() => onSave(expectedRuleType)}
+      okText={t('保存 JSON')}
+      cancelText={t('取消')}
+      width={720}
+    >
+      <Space vertical align='start' style={{ width: '100%' }}>
+        <TextArea
+          value={jsonText}
+          onChange={onTextChange}
+          autosize={{ minRows: 14, maxRows: 24 }}
+        />
+        {errors.length > 0 ? (
+          <Banner
+            type='danger'
+            bordered
+            fullMode={false}
+            closeIcon={null}
+            title={t('JSON 校验失败')}
+            description={
+              <Space vertical align='start'>
+                {errors.map((error) => (
+                  <Text key={error}>{error}</Text>
+                ))}
+              </Space>
+            }
+          />
+        ) : null}
+      </Space>
+    </Modal>
+  );
+}
+
+function TextSegmentRulesEditor({
+  rules,
+  validationErrors,
+  onChange,
+  onEditRuleSetJson,
+}) {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const [sideSheetVisible, setSideSheetVisible] = useState(false);
@@ -423,9 +479,12 @@ function TextSegmentRulesEditor({ rules, validationErrors, onChange }) {
       <Card
         title={t('规则列表')}
         headerExtraContent={
-          <Button icon={<IconPlus />} onClick={openCreateSideSheet}>
-            {t('新增规则')}
-          </Button>
+          <Space>
+            <Button onClick={onEditRuleSetJson}>{t('编辑规则 JSON')}</Button>
+            <Button icon={<IconPlus />} onClick={openCreateSideSheet}>
+              {t('新增规则')}
+            </Button>
+          </Space>
         }
       >
         <div className='text-sm text-gray-500 mb-3'>
@@ -843,6 +902,7 @@ export default function TextSegmentRuleEditor({
   validationErrors = [],
   onChange,
   onConfigChange,
+  onRuleSetJsonApply,
 }) {
   const { t } = useTranslation();
   const ruleMeta = useMemo(
@@ -884,12 +944,52 @@ export default function TextSegmentRuleEditor({
     '按优先级从小到大依次匹配，命中第一条启用规则后停止；停用规则不会参与命中预览和最终保存。',
   );
 
+  const [jsonEditorVisible, setJsonEditorVisible] = useState(false);
+  const [jsonEditorText, setJsonEditorText] = useState('');
+  const [jsonEditorErrors, setJsonEditorErrors] = useState([]);
+
   const handleConfigFieldChange = (field, value) => {
     onConfigChange({
       ...(config || {}),
       rules,
       [field]: value,
     });
+  };
+
+  const handleOpenJsonEditor = () => {
+    setJsonEditorText(JSON.stringify(serializedConfig, null, 2));
+    setJsonEditorErrors([]);
+    setJsonEditorVisible(true);
+  };
+
+  const handleCloseJsonEditor = () => {
+    setJsonEditorVisible(false);
+    setJsonEditorErrors([]);
+  };
+
+  const handleSaveJsonEditor = (expectedRuleType) => {
+    const parseResult = parseAdvancedRuleSetJsonImport(
+      jsonEditorText,
+      expectedRuleType,
+    );
+
+    if (parseResult.errors.length > 0 || !parseResult.config) {
+      setJsonEditorErrors(parseResult.errors);
+      return;
+    }
+
+    if (typeof onRuleSetJsonApply === 'function') {
+      const applyResult = onRuleSetJsonApply(jsonEditorText, expectedRuleType);
+      if (!applyResult?.success) {
+        setJsonEditorErrors(applyResult?.errors || []);
+        return;
+      }
+    } else if (typeof onConfigChange === 'function') {
+      onConfigChange(parseResult.config);
+    }
+
+    setJsonEditorVisible(false);
+    setJsonEditorErrors([]);
   };
 
   return (
@@ -1001,6 +1101,17 @@ export default function TextSegmentRuleEditor({
           rules={rules}
           validationErrors={validationErrors}
           onChange={onChange}
+          onEditRuleSetJson={handleOpenJsonEditor}
+        />
+
+        <RuleSetJsonEditorModal
+          visible={jsonEditorVisible}
+          jsonText={jsonEditorText}
+          errors={jsonEditorErrors}
+          onTextChange={setJsonEditorText}
+          onCancel={handleCloseJsonEditor}
+          onSave={handleSaveJsonEditor}
+          expectedRuleType={TEXT_SEGMENT_RULE_TYPE}
         />
 
         <Card

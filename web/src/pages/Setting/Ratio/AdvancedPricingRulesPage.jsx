@@ -112,6 +112,7 @@ export default function AdvancedPricingRulesPage(props) {
     handleTextSegmentRulesChange,
     handleTextSegmentConfigChange,
     handleMediaTaskConfigChange,
+    handleAdvancedRuleSetJsonApply,
     handlePreviewInputChange,
     handleSave,
   } = useAdvancedPricingRulesState({
@@ -213,6 +214,7 @@ export default function AdvancedPricingRulesPage(props) {
                 validationErrors={validationErrors}
                 onChange={handleTextSegmentRulesChange}
                 onConfigChange={handleTextSegmentConfigChange}
+                onRuleSetJsonApply={handleAdvancedRuleSetJsonApply}
               />
               <AdvancedPricingPreview
                 selectedModel={selectedModel}
@@ -229,6 +231,7 @@ export default function AdvancedPricingRulesPage(props) {
                 config={selectedAdvancedConfig}
                 validationErrors={validationErrors}
                 onChange={handleMediaTaskConfigChange}
+                onRuleSetJsonApply={handleAdvancedRuleSetJsonApply}
               />
               <AdvancedPricingPreview
                 selectedModel={selectedModel}

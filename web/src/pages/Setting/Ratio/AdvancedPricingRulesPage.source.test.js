@@ -125,7 +125,6 @@ test('media task rule editor exposes rawAction input and keeps the side sheet bi
     /serializeMediaTaskRule\(previewResult\.matchedRule\)/,
   );
   assert.doesNotMatch(mediaTaskRuleEditorSource, /modalVisible/);
-  assert.doesNotMatch(mediaTaskRuleEditorSource, /<Modal/);
 });
 
 test('text segment rule editor is wired through the modern config contract only', () => {
@@ -142,4 +141,22 @@ test('text segment rule editor is wired through the modern config contract only'
     source,
     /<TextSegmentRuleEditor[\s\S]*config={selectedAdvancedConfig}[\s\S]*rules={selectedAdvancedConfig\.rules}[\s\S]*validationErrors={validationErrors}[\s\S]*onChange={handleTextSegmentRulesChange}[\s\S]*onConfigChange={handleTextSegmentConfigChange}[\s\S]*\/>/,
   );
+});
+
+test('advanced pricing page wires current-model rule-set JSON editing into both advanced editors', () => {
+  assert.match(source, /handleAdvancedRuleSetJsonApply/);
+  assert.match(
+    source,
+    /<TextSegmentRuleEditor[\s\S]*onRuleSetJsonApply={handleAdvancedRuleSetJsonApply}[\s\S]*\/>/,
+  );
+  assert.match(
+    source,
+    /<MediaTaskRuleEditor[\s\S]*onRuleSetJsonApply={handleAdvancedRuleSetJsonApply}[\s\S]*\/>/,
+  );
+  assert.match(textSegmentRuleEditorSource, /onRuleSetJsonApply/);
+  assert.match(mediaTaskRuleEditorSource, /onRuleSetJsonApply/);
+  assert.match(textSegmentRuleEditorSource, /编辑规则 JSON/);
+  assert.match(mediaTaskRuleEditorSource, /编辑规则 JSON/);
+  assert.match(textSegmentRuleEditorSource, /parseAdvancedRuleSetJsonImport/);
+  assert.match(mediaTaskRuleEditorSource, /parseAdvancedRuleSetJsonImport/);
 });

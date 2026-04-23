@@ -41,6 +41,7 @@ import {
   mergeAdvancedPricingDraftMap,
   mergeAdvancedPricingModeDraftMap,
   normalizeAdvancedPricingConfig,
+  parseAdvancedRuleSetJsonImport,
   saveAdvancedPricingOptions,
   serializeAdvancedPricingMap,
   serializeAdvancedPricingConfig,
@@ -48,6 +49,92 @@ import {
   validateTextSegmentRules,
 } from './advancedPricingRuleHelpers.js';
 import { resolveAdvancedPricingSelectedModelName } from './advancedPricingSelection.js';
+
+test('parseAdvancedRuleSetJsonImport validates imported text and media rule-set JSON', () => {
+  const mediaResult = parseAdvancedRuleSetJsonImport(
+    JSON.stringify({
+      rule_type: MEDIA_TASK_RULE_TYPE,
+      task_type: 'video_generation',
+      billing_unit: 'per_million_tokens',
+      segments: [
+        {
+          priority: 10,
+          input_video: true,
+          resolution: '720p',
+          output_duration_min: 5,
+          output_duration_max: 5,
+          unit_price: 4.2,
+        },
+      ],
+    }),
+    MEDIA_TASK_RULE_TYPE,
+  );
+
+  assert.deepEqual(mediaResult.errors, []);
+  assert.equal(mediaResult.config.ruleType, MEDIA_TASK_RULE_TYPE);
+  assert.equal(mediaResult.config.taskType, 'video_generation');
+  assert.equal(mediaResult.config.rules[0].resolution, '720p');
+  assert.equal(mediaResult.config.rules[0].unitPrice, '4.2');
+
+  const textResult = parseAdvancedRuleSetJsonImport(
+    JSON.stringify({
+      rule_type: TEXT_SEGMENT_RULE_TYPE,
+      billing_unit: 'per_million_tokens',
+      segments: [
+        {
+          priority: 10,
+          input_min: 0,
+          input_max: 1000,
+          input_price: 1.2,
+        },
+      ],
+    }),
+    TEXT_SEGMENT_RULE_TYPE,
+  );
+
+  assert.deepEqual(textResult.errors, []);
+  assert.equal(textResult.config.ruleType, TEXT_SEGMENT_RULE_TYPE);
+  assert.equal(textResult.config.rules[0].inputPrice, '1.2');
+
+  assert.ok(
+    parseAdvancedRuleSetJsonImport('{', TEXT_SEGMENT_RULE_TYPE).errors.some(
+      (error) => error.includes('JSON'),
+    ),
+  );
+  assert.ok(
+    parseAdvancedRuleSetJsonImport(
+      JSON.stringify({
+        rule_type: MEDIA_TASK_RULE_TYPE,
+        segments: [],
+      }),
+      TEXT_SEGMENT_RULE_TYPE,
+    ).errors.some((error) => error.includes('rule_type')),
+  );
+  assert.ok(
+    parseAdvancedRuleSetJsonImport(
+      JSON.stringify({
+        rule_type: TEXT_SEGMENT_RULE_TYPE,
+        segments: {},
+      }),
+      TEXT_SEGMENT_RULE_TYPE,
+    ).errors.some((error) => error.includes('segments')),
+  );
+  assert.ok(
+    parseAdvancedRuleSetJsonImport(
+      JSON.stringify({
+        rule_type: MEDIA_TASK_RULE_TYPE,
+        task_type: 'video_generation',
+        billing_unit: 'per_million_tokens',
+        segments: [
+          {
+            priority: 10,
+          },
+        ],
+      }),
+      MEDIA_TASK_RULE_TYPE,
+    ).errors.some((error) => error.includes('unit_price')),
+  );
+});
 
 test('resolveAdvancedPricingSelectedModelName keeps controlled selection empty until the controlled model becomes available', () => {
   assert.deepEqual(

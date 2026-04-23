@@ -40,6 +40,7 @@ import {
   mergeAdvancedPricingModeDraftMap,
   normalizeFixedBillingMode,
   normalizeAdvancedPricingConfig,
+  parseAdvancedRuleSetJsonImport,
   parseOptionJSON,
   saveAdvancedPricingOptions,
 } from './advancedPricingRuleHelpers';
@@ -481,6 +482,38 @@ export function useAdvancedPricingRulesState({
     );
   };
 
+  const handleAdvancedRuleSetJsonApply = (jsonText, expectedRuleType) => {
+    if (!selectedModel) {
+      return {
+        success: false,
+        errors: [t('请先选择模型')],
+      };
+    }
+
+    const { config, errors } = parseAdvancedRuleSetJsonImport(
+      jsonText,
+      expectedRuleType,
+    );
+
+    if (errors.length > 0 || !config) {
+      return {
+        success: false,
+        errors,
+      };
+    }
+
+    updateSelectedModelConfig(normalizeAdvancedPricingConfig(config));
+    setAdvancedPricingModeMap((previous) => ({
+      ...previous,
+      [selectedModel.name]: ADVANCED_PRICING_MODE_ADVANCED,
+    }));
+
+    return {
+      success: true,
+      errors: [],
+    };
+  };
+
   const handlePreviewInputChange = (field, value) => {
     if (PREVIEW_NUMERIC_FIELDS.has(field) && !NUMERIC_INPUT_REGEX.test(value)) {
       return;
@@ -583,6 +616,7 @@ export function useAdvancedPricingRulesState({
     handleTextSegmentRulesChange,
     handleTextSegmentConfigChange,
     handleMediaTaskConfigChange,
+    handleAdvancedRuleSetJsonApply,
     handlePreviewInputChange,
     handleSave,
     fixedBillingModePerRequest: FIXED_BILLING_MODE_PER_REQUEST,
