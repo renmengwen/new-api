@@ -32,6 +32,7 @@ import {
   Table,
   Tag,
   TextArea,
+  Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
 import { IconCopy, IconDelete, IconEdit, IconPlus } from '@douyinfe/semi-icons';
@@ -55,6 +56,7 @@ import { useIsMobile } from '../../../../../hooks/common/useIsMobile';
 const { Text } = Typography;
 const INTEGER_INPUT_REGEX = /^\d*$/;
 const DECIMAL_INPUT_REGEX = /^(\d+(\.\d*)?|\.\d*)?$/;
+const CONDITION_SUMMARY_MAX_WIDTH = 520;
 const EMPTY_MEDIA_TASK_PREVIEW_INPUT = {
   rawAction: '',
   inferenceMode: '',
@@ -85,6 +87,26 @@ const updateConfigRuleSetField = (config, field, value) => ({
   ruleType: MEDIA_TASK_RULE_TYPE,
   [field]: value,
 });
+
+function ConditionSummaryTag({ summary }) {
+  return (
+    <Tooltip content={summary}>
+      <Tag
+        color='cyan'
+        style={{
+          maxWidth: CONDITION_SUMMARY_MAX_WIDTH,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          display: 'inline-block',
+          verticalAlign: 'middle',
+        }}
+      >
+        {summary || '-'}
+      </Tag>
+    </Tooltip>
+  );
+}
 
 function RuleSetJsonEditorModal({
   visible,
@@ -538,8 +560,9 @@ export default function MediaTaskRuleEditor({
       {
         title: t('条件摘要'),
         key: 'conditionSummary',
+        width: CONDITION_SUMMARY_MAX_WIDTH + 32,
         render: (_, record) => (
-          <Tag color='cyan'>{buildMediaTaskConditionSummary(record)}</Tag>
+          <ConditionSummaryTag summary={buildMediaTaskConditionSummary(record)} />
         ),
       },
       {

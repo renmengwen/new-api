@@ -41,6 +41,21 @@ test('text segment rule editor keeps the preview input state, reset, and binding
   assert.match(source, /field: 'toolOveragePrice'/);
 });
 
+test('text segment rule editor truncates long condition summaries with hover detail', () => {
+  assert.match(
+    source,
+    /import \{[\s\S]*Tooltip,[\s\S]*\} from '@douyinfe\/semi-ui';/,
+  );
+  assert.match(source, /const CONDITION_SUMMARY_MAX_WIDTH = 520/);
+  assert.match(source, /function ConditionSummaryTag\(\{ summary \}\)/);
+  assert.match(source, /content=\{summary\}/);
+  assert.match(source, /maxWidth: CONDITION_SUMMARY_MAX_WIDTH/);
+  assert.match(source, /overflow: 'hidden'/);
+  assert.match(source, /textOverflow: 'ellipsis'/);
+  assert.match(source, /whiteSpace: 'nowrap'/);
+  assert.match(source, /<ConditionSummaryTag summary=\{buildTextSegmentConditionSummary\(record\)\} \/>/);
+});
+
 test('text segment rule editor uses readable UTF-8 Chinese labels for advanced pricing fields', () => {
   assert.match(
     source,

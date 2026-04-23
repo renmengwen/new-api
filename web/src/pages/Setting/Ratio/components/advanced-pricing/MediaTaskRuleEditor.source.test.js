@@ -91,6 +91,21 @@ test('media task rule editor keeps delete closures fresh and uses candidate prev
   );
 });
 
+test('media task rule editor truncates long condition summaries with hover detail', () => {
+  assert.match(
+    source,
+    /import \{[\s\S]*Tooltip,[\s\S]*\} from '@douyinfe\/semi-ui';/,
+  );
+  assert.match(source, /const CONDITION_SUMMARY_MAX_WIDTH = 520/);
+  assert.match(source, /function ConditionSummaryTag\(\{ summary \}\)/);
+  assert.match(source, /content=\{summary\}/);
+  assert.match(source, /maxWidth: CONDITION_SUMMARY_MAX_WIDTH/);
+  assert.match(source, /overflow: 'hidden'/);
+  assert.match(source, /textOverflow: 'ellipsis'/);
+  assert.match(source, /whiteSpace: 'nowrap'/);
+  assert.match(source, /<ConditionSummaryTag summary=\{buildMediaTaskConditionSummary\(record\)\} \/>/);
+});
+
 test('media task rule editor matches duplicate priority validation errors exactly', () => {
   assert.match(
     source,

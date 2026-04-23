@@ -32,6 +32,7 @@ import {
   Table,
   Tag,
   TextArea,
+  Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
 import { IconCopy, IconDelete, IconEdit, IconPlus } from '@douyinfe/semi-icons';
@@ -60,6 +61,7 @@ const TEXT_SEGMENT_PREVIEW_NUMERIC_FIELDS = new Set([
   'outputTokens',
   'toolUsageCount',
 ]);
+const CONDITION_SUMMARY_MAX_WIDTH = 520;
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const TEXT_SEGMENT_FIELDS = [
@@ -178,6 +180,26 @@ const TEXT_SEGMENT_FIELDS = [
     regex: INTEGER_INPUT_REGEX,
   },
 ];
+
+function ConditionSummaryTag({ summary }) {
+  return (
+    <Tooltip content={summary}>
+      <Tag
+        color='cyan'
+        style={{
+          maxWidth: CONDITION_SUMMARY_MAX_WIDTH,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          display: 'inline-block',
+          verticalAlign: 'middle',
+        }}
+      >
+        {summary || '-'}
+      </Tag>
+    </Tooltip>
+  );
+}
 
 function RuleSetJsonEditorModal({
   visible,
@@ -412,8 +434,9 @@ function TextSegmentRulesEditor({
       {
         title: t('条件摘要'),
         key: 'conditionSummary',
+        width: CONDITION_SUMMARY_MAX_WIDTH + 32,
         render: (_, record) => (
-          <Tag color='cyan'>{buildTextSegmentConditionSummary(record)}</Tag>
+          <ConditionSummaryTag summary={buildTextSegmentConditionSummary(record)} />
         ),
       },
       {
