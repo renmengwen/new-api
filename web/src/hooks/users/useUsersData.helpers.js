@@ -33,6 +33,27 @@ export const normalizeUserPageData = (data, fallbackPage = 1) => {
   };
 };
 
+export const shouldUseUserSearch = ({
+  isManagedMode,
+  searchKeyword = '',
+  searchGroup = '',
+  searchRole = '',
+  searchStatus = '',
+}) => {
+  const normalizedKeyword = String(searchKeyword || '').trim();
+
+  if (isManagedMode) {
+    return normalizedKeyword !== '';
+  }
+
+  return (
+    normalizedKeyword !== '' ||
+    searchGroup !== '' ||
+    searchRole !== '' ||
+    searchStatus !== ''
+  );
+};
+
 export const toGroupOptions = (payload) => {
   if (!payload?.success || !Array.isArray(payload?.data)) {
     return [];

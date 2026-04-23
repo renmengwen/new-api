@@ -143,6 +143,8 @@ const UsersPage = ({ mode = 'legacy', capabilities = {} }) => {
               loading={loading}
               searching={searching}
               showGroupFilter={!isManagedMode}
+              showRoleFilter={!isManagedMode}
+              showStatusFilter={!isManagedMode}
               t={t}
             />
           </div>

@@ -24,6 +24,7 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import {
   normalizeUserPageData,
+  shouldUseUserSearch,
   toGroupOptions,
   toManagedGroupOptions,
 } from './useUsersData.helpers';
@@ -54,6 +55,8 @@ export const useUsersData = (mode = 'legacy') => {
   const formInitValues = {
     searchKeyword: '',
     searchGroup: '',
+    searchRole: '',
+    searchStatus: '',
   };
 
   // Form API reference
@@ -65,6 +68,8 @@ export const useUsersData = (mode = 'legacy') => {
     return {
       searchKeyword: formValues.searchKeyword || '',
       searchGroup: formValues.searchGroup || '',
+      searchRole: formValues.searchRole || '',
+      searchStatus: formValues.searchStatus || '',
     };
   };
 
@@ -105,23 +110,56 @@ export const useUsersData = (mode = 'legacy') => {
     pageSize,
     searchKeyword = null,
     searchGroup = null,
+    searchRole = null,
+    searchStatus = null,
   ) => {
     // If no parameters passed, get values from form
-    if (searchKeyword === null || searchGroup === null) {
+    if (
+      searchKeyword === null ||
+      searchGroup === null ||
+      searchRole === null ||
+      searchStatus === null
+    ) {
       const formValues = getFormValues();
       searchKeyword = formValues.searchKeyword;
       searchGroup = formValues.searchGroup;
+      searchRole = formValues.searchRole;
+      searchStatus = formValues.searchStatus;
     }
 
-    if (searchKeyword === '' && searchGroup === '') {
+    const shouldSearch = shouldUseUserSearch({
+      isManagedMode,
+      searchKeyword,
+      searchGroup,
+      searchRole,
+      searchStatus,
+    });
+
+    if (!shouldSearch) {
       // If keyword is blank, load files instead
       await loadUsers(startIdx, pageSize);
       return;
     }
     setSearching(true);
+    const params = new URLSearchParams({
+      p: String(startIdx),
+      page_size: String(pageSize),
+    });
+    if (searchKeyword !== '') {
+      params.set('keyword', searchKeyword);
+    }
+    if (!isManagedMode && searchGroup !== '') {
+      params.set('group', searchGroup);
+    }
+    if (!isManagedMode && searchRole !== '') {
+      params.set('role', searchRole);
+    }
+    if (!isManagedMode && searchStatus !== '') {
+      params.set('status', searchStatus);
+    }
     const endpoint = isManagedMode
-      ? `/api/admin/users?keyword=${encodeURIComponent(searchKeyword)}&p=${startIdx}&page_size=${pageSize}`
-      : `/api/user/search?keyword=${encodeURIComponent(searchKeyword)}&group=${encodeURIComponent(searchGroup)}&p=${startIdx}&page_size=${pageSize}`;
+      ? `/api/admin/users?${params.toString()}`
+      : `/api/user/search?${params.toString()}`;
     const res = await API.get(endpoint);
     const { success, message, data } = res.data;
     if (success) {
@@ -247,11 +285,26 @@ export const useUsersData = (mode = 'legacy') => {
   // Handle page change
   const handlePageChange = (page) => {
     setActivePage(page);
-    const { searchKeyword, searchGroup } = getFormValues();
-    if (searchKeyword === '' && searchGroup === '') {
+    const { searchKeyword, searchGroup, searchRole, searchStatus } =
+      getFormValues();
+    const shouldSearch = shouldUseUserSearch({
+      isManagedMode,
+      searchKeyword,
+      searchGroup,
+      searchRole,
+      searchStatus,
+    });
+    if (!shouldSearch) {
       loadUsers(page, pageSize).then();
     } else {
-      searchUsers(page, pageSize, searchKeyword, searchGroup).then();
+      searchUsers(
+        page,
+        pageSize,
+        searchKeyword,
+        searchGroup,
+        searchRole,
+        searchStatus,
+      ).then();
     }
   };
 
@@ -260,11 +313,29 @@ export const useUsersData = (mode = 'legacy') => {
     localStorage.setItem('page-size', size + '');
     setPageSize(size);
     setActivePage(1);
-    loadUsers(activePage, size)
-      .then()
-      .catch((reason) => {
-        showError(reason);
-      });
+    const { searchKeyword, searchGroup, searchRole, searchStatus } =
+      getFormValues();
+    const shouldSearch = shouldUseUserSearch({
+      isManagedMode,
+      searchKeyword,
+      searchGroup,
+      searchRole,
+      searchStatus,
+    });
+    const request =
+      shouldSearch
+        ? searchUsers(
+            1,
+            size,
+            searchKeyword,
+            searchGroup,
+            searchRole,
+            searchStatus,
+          )
+        : loadUsers(1, size);
+    request.then().catch((reason) => {
+      showError(reason);
+    });
   };
 
   // Handle table row styling for disabled/deleted users
@@ -282,11 +353,26 @@ export const useUsersData = (mode = 'legacy') => {
 
   // Refresh data
   const refresh = async (page = activePage) => {
-    const { searchKeyword, searchGroup } = getFormValues();
-    if (searchKeyword === '' && searchGroup === '') {
+    const { searchKeyword, searchGroup, searchRole, searchStatus } =
+      getFormValues();
+    const shouldSearch = shouldUseUserSearch({
+      isManagedMode,
+      searchKeyword,
+      searchGroup,
+      searchRole,
+      searchStatus,
+    });
+    if (!shouldSearch) {
       await loadUsers(page, pageSize);
     } else {
-      await searchUsers(page, pageSize, searchKeyword, searchGroup);
+      await searchUsers(
+        page,
+        pageSize,
+        searchKeyword,
+        searchGroup,
+        searchRole,
+        searchStatus,
+      );
     }
   };
 
