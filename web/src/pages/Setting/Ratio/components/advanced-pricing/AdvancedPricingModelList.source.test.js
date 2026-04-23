@@ -38,7 +38,7 @@ test('advanced pricing model list accepts the page hook field names while preser
   );
   assert.match(source, /getBillingModeColor\(billingMode\)/);
   assert.match(source, /getBillingModeText\(billingMode, t\)/);
-  assert.match(source, /Tag color=\{ruleType \? 'blue' : 'grey'\}/);
+  assert.match(source, /color=\{ruleType \? 'blue' : 'grey'\}/);
   assert.match(source, /hasBasePricing \?/);
 });
 
@@ -54,4 +54,12 @@ test('advanced pricing model list truncates long model names without horizontal 
   assert.match(source, /textOverflow: 'ellipsis'/);
   assert.match(source, /whiteSpace: 'nowrap'/);
   assert.match(source, /flexShrink: 0/);
+});
+
+test('advanced pricing model list constrains semi button internals to the sidebar width', () => {
+  assert.match(source, /className='advanced-pricing-model-list'/);
+  assert.match(source, /className='advanced-pricing-model-list-item'/);
+  assert.match(source, /\.advanced-pricing-model-list-item \.semi-button-content/);
+  assert.match(source, /boxSizing: 'border-box'/);
+  assert.doesNotMatch(source, /<Space vertical/);
 });

@@ -23,7 +23,6 @@ import {
   Card,
   Empty,
   Input,
-  Space,
   Tag,
   Tooltip,
   Typography,
@@ -37,6 +36,43 @@ import {
 } from '../../hooks/modelPricingEditorHelpers';
 
 const { Text } = Typography;
+
+const MODEL_LIST_CONSTRAINT_STYLE = `
+.advanced-pricing-model-list,
+.advanced-pricing-model-list .semi-card-body,
+.advanced-pricing-model-list-scroll,
+.advanced-pricing-model-list-items,
+.advanced-pricing-model-list-item,
+.advanced-pricing-model-list-item .semi-button-content {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.advanced-pricing-model-list {
+  overflow: hidden;
+}
+
+.advanced-pricing-model-list .semi-card-body {
+  overflow: hidden;
+}
+
+.advanced-pricing-model-list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.advanced-pricing-model-list-item {
+  box-sizing: border-box;
+}
+
+.advanced-pricing-model-list-item .semi-button-content {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+}
+`;
 
 const getBillingModeText = (billingMode, t) => {
   if (billingMode === BILLING_MODE_ADVANCED) {
@@ -76,10 +112,17 @@ export default function AdvancedPricingModelList({
 
   return (
     <Card
+      className='advanced-pricing-model-list'
       title={t('模型列表')}
-      bodyStyle={{ padding: 0 }}
-      style={{ height: '100%' }}
+      bodyStyle={{ padding: 0, minWidth: 0, overflow: 'hidden' }}
+      style={{
+        height: '100%',
+        minWidth: 0,
+        maxWidth: '100%',
+        overflow: 'hidden',
+      }}
     >
+      <style>{MODEL_LIST_CONSTRAINT_STYLE}</style>
       <div style={{ padding: 16, borderBottom: '1px solid var(--semi-color-border)' }}>
         <Input
           prefix={<IconSearch />}
@@ -98,6 +141,7 @@ export default function AdvancedPricingModelList({
         </div>
       ) : (
         <div
+          className='advanced-pricing-model-list-scroll'
           style={{
             maxHeight: 720,
             overflowY: 'auto',
@@ -105,7 +149,10 @@ export default function AdvancedPricingModelList({
             padding: 12,
           }}
         >
-          <Space vertical align='start' style={{ width: '100%', minWidth: 0 }}>
+          <div
+            className='advanced-pricing-model-list-items'
+            style={{ width: '100%', minWidth: 0, maxWidth: '100%' }}
+          >
             {models.map((model) => {
               const selected = model.name === selectedModelName;
               const billingMode =
@@ -117,12 +164,16 @@ export default function AdvancedPricingModelList({
               return (
                 <Button
                   key={model.name}
+                  className='advanced-pricing-model-list-item'
                   theme='borderless'
                   type='tertiary'
                   onClick={() => onSelectModel(model.name)}
                   style={{
+                    boxSizing: 'border-box',
+                    display: 'flex',
                     width: '100%',
                     maxWidth: '100%',
+                    minWidth: 0,
                     padding: 12,
                     height: 'auto',
                     justifyContent: 'flex-start',
@@ -145,9 +196,10 @@ export default function AdvancedPricingModelList({
                         justifyContent: 'space-between',
                         gap: 8,
                         minWidth: 0,
+                        maxWidth: '100%',
                       }}
                     >
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ flex: '1 1 auto', minWidth: 0, maxWidth: '100%' }}>
                         <Tooltip content={model.name}>
                           <Text
                             strong
@@ -182,20 +234,28 @@ export default function AdvancedPricingModelList({
                         overflow: 'hidden',
                       }}
                     >
-                      <Tag color={ruleType ? 'blue' : 'grey'}>
+                      <Tag
+                        color={ruleType ? 'blue' : 'grey'}
+                        style={{ maxWidth: '100%', overflow: 'hidden' }}
+                      >
                         {ruleType
                           ? getRuleTypeText(ruleType, t)
                           : t('未配置规则')}
                       </Tag>
                       {hasBasePricing ? (
-                        <Tag color='cyan'>{t('已有基础定价')}</Tag>
+                        <Tag
+                          color='cyan'
+                          style={{ maxWidth: '100%', overflow: 'hidden' }}
+                        >
+                          {t('已有基础定价')}
+                        </Tag>
                       ) : null}
                     </div>
                   </div>
                 </Button>
               );
             })}
-          </Space>
+          </div>
         </div>
       )}
     </Card>
