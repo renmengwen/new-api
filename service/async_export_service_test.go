@@ -1,25 +1,36 @@
 package service
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func setupAsyncExportServiceTestDB(t *testing.T) *gorm.DB {
+	return setupAsyncExportServiceTestDBWithLogger(t, nil)
+}
+
+func setupAsyncExportServiceTestDBWithLogger(t *testing.T, gormLogger logger.Interface) *gorm.DB {
 	t.Helper()
 
 	common.UsingSQLite = true
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
 	common.RedisEnabled = false
-	gormDB, err := gorm.Open(sqlite.Open("file:async_export_service?mode=memory&cache=shared"), &gorm.Config{})
+	config := &gorm.Config{}
+	if gormLogger != nil {
+		config.Logger = gormLogger
+	}
+	gormDB, err := gorm.Open(sqlite.Open("file:async_export_service?mode=memory&cache=shared"), config)
 	require.NoError(t, err)
 
 	model.DB = gormDB
@@ -38,6 +49,32 @@ func setupAsyncExportServiceTestDB(t *testing.T) *gorm.DB {
 	})
 
 	return gormDB
+}
+
+type recordNotFoundTraceLogger struct {
+	logger.Interface
+	tracedErrors []error
+}
+
+func (l *recordNotFoundTraceLogger) LogMode(level logger.LogLevel) logger.Interface {
+	l.Interface = l.Interface.LogMode(level)
+	return l
+}
+
+func (l *recordNotFoundTraceLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	if err != nil {
+		l.tracedErrors = append(l.tracedErrors, err)
+	}
+	l.Interface.Trace(ctx, begin, fc, err)
+}
+
+func (l *recordNotFoundTraceLogger) sawRecordNotFound() bool {
+	for _, err := range l.tracedErrors {
+		if err == gorm.ErrRecordNotFound {
+			return true
+		}
+	}
+	return false
 }
 
 func TestAsyncExportCreateJobStoresQueuedMetadata(t *testing.T) {
@@ -129,4 +166,16 @@ func TestAsyncExportCleanupExpiredArtifacts(t *testing.T) {
 	require.Empty(t, persisted.FilePath)
 	require.Empty(t, persisted.FileName)
 	require.Zero(t, persisted.FileSize)
+}
+
+func TestClaimNextAsyncExportJobReturnsNotFoundWithoutGormQueryErrorOnEmptyQueue(t *testing.T) {
+	traceLogger := &recordNotFoundTraceLogger{
+		Interface: logger.Default.LogMode(logger.Info),
+	}
+	setupAsyncExportServiceTestDBWithLogger(t, traceLogger)
+
+	job, err := ClaimNextAsyncExportJob()
+	require.Nil(t, job)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	require.False(t, traceLogger.sawRecordNotFound())
 }

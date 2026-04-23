@@ -15,6 +15,7 @@ import (
 )
 
 const asyncExportArtifactTTLSeconds int64 = 24 * 3600
+const asyncExportRunningStaleTimeoutSeconds int64 = 30 * 60
 
 type AsyncExportExecutor func(job *model.AsyncExportJob) error
 
@@ -114,13 +115,46 @@ func BuildAsyncExportArtifactPath(jobID int64, fileNamePrefix string) string {
 	return filepath.Join(baseDir, fileName)
 }
 
-func ClaimNextAsyncExportJob() (*model.AsyncExportJob, error) {
-	var job model.AsyncExportJob
-	if err := model.DB.Where("status = ?", model.AsyncExportStatusQueued).Order("id asc").First(&job).Error; err != nil {
-		return nil, err
+func asyncExportLimitReached(offset int, limit int) bool {
+	return limit > 0 && offset >= limit
+}
+
+func trimAsyncExportItemsToLimit[T any](items []T, offset int, limit int) []T {
+	if limit <= 0 {
+		return items
 	}
+	remaining := limit - offset
+	if remaining <= 0 {
+		return items[:0]
+	}
+	if len(items) > remaining {
+		return items[:remaining]
+	}
+	return items
+}
+
+func isAsyncExportPageDone(rowCount int, pageSize int, offset int, limit int, total int64) bool {
+	if rowCount == 0 || rowCount < pageSize {
+		return true
+	}
+	if limit > 0 && offset+rowCount >= limit {
+		return true
+	}
+	return total > 0 && int64(offset+rowCount) >= total
+}
+
+func ClaimNextAsyncExportJob() (*model.AsyncExportJob, error) {
+	var jobs []model.AsyncExportJob
+	result := model.DB.Where("status = ?", model.AsyncExportStatusQueued).Order("id asc").Limit(1).Find(&jobs)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if len(jobs) == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	job := jobs[0]
 	now := common.GetTimestamp()
-	result := model.DB.Model(&model.AsyncExportJob{}).
+	result = model.DB.Model(&model.AsyncExportJob{}).
 		Where("id = ? AND status = ?", job.Id, model.AsyncExportStatusQueued).
 		Updates(map[string]any{
 			"status":     model.AsyncExportStatusRunning,
@@ -135,6 +169,26 @@ func ClaimNextAsyncExportJob() (*model.AsyncExportJob, error) {
 	job.Status = model.AsyncExportStatusRunning
 	job.StartedAtTs = now
 	return &job, nil
+}
+
+func RequeueStaleAsyncExportJobs(now int64) (int64, error) {
+	staleBefore := now - asyncExportRunningStaleTimeoutSeconds
+	if staleBefore <= 0 {
+		return 0, nil
+	}
+
+	result := model.DB.Model(&model.AsyncExportJob{}).
+		Where("status = ? AND started_at > 0 AND started_at <= ?", model.AsyncExportStatusRunning, staleBefore).
+		Updates(map[string]any{
+			"status":        model.AsyncExportStatusQueued,
+			"started_at":    0,
+			"completed_at":  0,
+			"error_message": "",
+		})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
 }
 
 func FinalizeAsyncExportJob(jobID int64, fileName string, filePath string, rowCount int64) error {

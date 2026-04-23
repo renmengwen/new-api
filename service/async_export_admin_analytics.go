@@ -55,9 +55,6 @@ func executeAdminAnalyticsExportJob(job *model.AsyncExportJob) error {
 	if payload.JobType == "" {
 		payload.JobType = job.JobType
 	}
-	if payload.Limit <= 0 {
-		payload.Limit = normalizeAsyncExportLimit(payload.Limit)
-	}
 
 	jobType, filePrefix, sheetName, err := resolveAdminAnalyticsExportTarget(payload.JobType)
 	if err != nil {
@@ -97,7 +94,7 @@ func resolveAdminAnalyticsExportTarget(view string) (jobType string, filePrefix 
 
 func fetchAdminAnalyticsModelExportPage(requesterUserID int, requesterRole int, payload asyncAdminAnalyticsExportPayload, page int, pageSize int) (AsyncExportPage, error) {
 	offset := (page - 1) * pageSize
-	if offset >= payload.Limit {
+	if asyncExportLimitReached(offset, payload.Limit) {
 		return AsyncExportPage{Done: true}, nil
 	}
 
@@ -110,23 +107,20 @@ func fetchAdminAnalyticsModelExportPage(requesterUserID int, requesterRole int, 
 		return AsyncExportPage{}, err
 	}
 
-	remaining := payload.Limit - offset
-	if remaining <= 0 {
+	items = trimAsyncExportItemsToLimit(items, offset, payload.Limit)
+	if len(items) == 0 {
 		return AsyncExportPage{Done: true}, nil
-	}
-	if len(items) > remaining {
-		items = items[:remaining]
 	}
 
 	return AsyncExportPage{
 		Rows: buildAsyncAdminAnalyticsModelExportRows(items, payload.QuotaDisplayType),
-		Done: len(items) == 0 || len(items) < pageSize || offset+len(items) >= payload.Limit || int64(offset+len(items)) >= total,
+		Done: isAsyncExportPageDone(len(items), pageSize, offset, payload.Limit, total),
 	}, nil
 }
 
 func fetchAdminAnalyticsUserExportPage(requesterUserID int, requesterRole int, payload asyncAdminAnalyticsExportPayload, page int, pageSize int) (AsyncExportPage, error) {
 	offset := (page - 1) * pageSize
-	if offset >= payload.Limit {
+	if asyncExportLimitReached(offset, payload.Limit) {
 		return AsyncExportPage{Done: true}, nil
 	}
 
@@ -139,17 +133,14 @@ func fetchAdminAnalyticsUserExportPage(requesterUserID int, requesterRole int, p
 		return AsyncExportPage{}, err
 	}
 
-	remaining := payload.Limit - offset
-	if remaining <= 0 {
+	items = trimAsyncExportItemsToLimit(items, offset, payload.Limit)
+	if len(items) == 0 {
 		return AsyncExportPage{Done: true}, nil
-	}
-	if len(items) > remaining {
-		items = items[:remaining]
 	}
 
 	return AsyncExportPage{
 		Rows: buildAsyncAdminAnalyticsUserExportRows(items, payload.QuotaDisplayType),
-		Done: len(items) == 0 || len(items) < pageSize || offset+len(items) >= payload.Limit || int64(offset+len(items)) >= total,
+		Done: isAsyncExportPageDone(len(items), pageSize, offset, payload.Limit, total),
 	}, nil
 }
 

@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	asyncAdminAuditFilePrefix = "瀹¤鏃ュ織"
-	asyncAdminAuditSheetName  = "瀹¤鏃ュ織"
+	asyncAdminAuditFilePrefix = "审计日志"
+	asyncAdminAuditSheetName  = "审计日志"
 )
 
 type asyncAdminAuditExportPayload struct {
@@ -18,7 +18,7 @@ type asyncAdminAuditExportPayload struct {
 	Limit   int                         `json:"limit"`
 }
 
-var asyncAdminAuditExportHeaders = []string{"ID", "鎿嶄綔浜?", "鍔ㄤ綔妯″潡", "鍔ㄤ綔绫诲瀷", "鐩爣", "IP", "鏃堕棿"}
+var asyncAdminAuditExportHeaders = []string{"ID", "操作人", "动作模块", "动作类型", "目标", "IP", "时间"}
 
 func init() {
 	RegisterAsyncExportExecutor(SmartExportJobTypeAdminAuditLogs, executeAdminAuditExportJob)
@@ -47,7 +47,7 @@ func executeAdminAuditExportJob(job *model.AsyncExportJob) error {
 
 	return writeAsyncExportJobFile(job, asyncAdminAuditFilePrefix, asyncAdminAuditSheetName, asyncAdminAuditExportHeaders, func(page int, pageSize int) (AsyncExportPage, error) {
 		offset := (page - 1) * pageSize
-		if offset >= payload.Limit {
+		if asyncExportLimitReached(offset, payload.Limit) {
 			return AsyncExportPage{Done: true}, nil
 		}
 
@@ -60,17 +60,14 @@ func executeAdminAuditExportJob(job *model.AsyncExportJob) error {
 			return AsyncExportPage{}, err
 		}
 
-		remaining := payload.Limit - offset
-		if remaining <= 0 {
+		items = trimAsyncExportItemsToLimit(items, offset, payload.Limit)
+		if len(items) == 0 {
 			return AsyncExportPage{Done: true}, nil
-		}
-		if len(items) > remaining {
-			items = items[:remaining]
 		}
 
 		return AsyncExportPage{
 			Rows: buildAsyncAdminAuditExportRows(items),
-			Done: len(items) == 0 || len(items) < pageSize || offset+len(items) >= payload.Limit,
+			Done: isAsyncExportPageDone(len(items), pageSize, offset, payload.Limit, 0),
 		}, nil
 	})
 }

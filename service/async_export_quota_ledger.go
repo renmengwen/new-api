@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	asyncQuotaLedgerFilePrefix = "棰濆害娴佹按"
-	asyncQuotaLedgerSheetName  = "棰濆害娴佹按"
+	asyncQuotaLedgerFilePrefix = "额度流水"
+	asyncQuotaLedgerSheetName  = "额度流水"
 )
 
 type asyncQuotaLedgerExportPayload struct {
@@ -17,7 +17,7 @@ type asyncQuotaLedgerExportPayload struct {
 	Limit   int                               `json:"limit"`
 }
 
-var asyncQuotaLedgerExportHeaders = []string{"ID", "璐︽埛", "鎿嶄綔浜?", "绫诲瀷", "鏂瑰悜", "棰濆害", "鍙樻洿鍓?", "鍙樻洿鍚?", "妯″瀷鍚嶇О", "鏉ユ簮", "鍘熷洜", "澶囨敞", "鏃堕棿"}
+var asyncQuotaLedgerExportHeaders = []string{"ID", "账户", "操作人", "类型", "方向", "额度", "变更前", "变更后", "模型名称", "来源", "原因", "备注", "时间"}
 
 func init() {
 	RegisterAsyncExportExecutor(SmartExportJobTypeQuotaLedger, executeQuotaLedgerExportJob)
@@ -46,7 +46,7 @@ func executeQuotaLedgerExportJob(job *model.AsyncExportJob) error {
 
 	return writeAsyncExportJobFile(job, asyncQuotaLedgerFilePrefix, asyncQuotaLedgerSheetName, asyncQuotaLedgerExportHeaders, func(page int, pageSize int) (AsyncExportPage, error) {
 		offset := (page - 1) * pageSize
-		if offset >= payload.Limit {
+		if asyncExportLimitReached(offset, payload.Limit) {
 			return AsyncExportPage{Done: true}, nil
 		}
 
@@ -59,17 +59,14 @@ func executeQuotaLedgerExportJob(job *model.AsyncExportJob) error {
 			return AsyncExportPage{}, err
 		}
 
-		remaining := payload.Limit - offset
-		if remaining <= 0 {
+		items = trimAsyncExportItemsToLimit(items, offset, payload.Limit)
+		if len(items) == 0 {
 			return AsyncExportPage{Done: true}, nil
-		}
-		if len(items) > remaining {
-			items = items[:remaining]
 		}
 
 		return AsyncExportPage{
 			Rows: buildAsyncQuotaLedgerExportRows(items),
-			Done: len(items) == 0 || len(items) < pageSize || offset+len(items) >= payload.Limit,
+			Done: isAsyncExportPageDone(len(items), pageSize, offset, payload.Limit, 0),
 		}, nil
 	})
 }

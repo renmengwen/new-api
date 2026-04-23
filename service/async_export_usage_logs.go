@@ -15,10 +15,9 @@ import (
 )
 
 const (
-	asyncExportDefaultLimit     = 2000
 	asyncExportWriterPageSize   = 1000
-	asyncUsageLogsFilePrefix    = "浣跨敤鏃ュ織"
-	asyncUsageLogsSheetName     = "浣跨敤鏃ュ織"
+	asyncUsageLogsFilePrefix    = "使用日志"
+	asyncUsageLogsSheetName     = "使用日志"
 	asyncUsageLogAdminViewScope = "admin"
 	asyncUsageLogSelfViewScope  = "self"
 )
@@ -37,73 +36,73 @@ type asyncUsageLogExportColumn struct {
 
 var asyncUsageLogExportColumns = map[string]asyncUsageLogExportColumn{
 	"time": {
-		Header: "鏃堕棿",
+		Header: "时间",
 		Value: func(log *model.Log, _ string) string {
 			return formatAsyncExportTimestamp(log.CreatedAt)
 		},
 	},
 	"channel": {
-		Header: "娓犻亾",
+		Header: "渠道",
 		Value: func(log *model.Log, _ string) string {
 			return formatAsyncUsageLogChannel(log)
 		},
 	},
 	"username": {
-		Header: "鐢ㄦ埛",
+		Header: "用户",
 		Value: func(log *model.Log, _ string) string {
 			return log.Username
 		},
 	},
 	"token": {
-		Header: "浠ょ墝",
+		Header: "令牌",
 		Value: func(log *model.Log, _ string) string {
 			return log.TokenName
 		},
 	},
 	"group": {
-		Header: "鍒嗙粍",
+		Header: "分组",
 		Value: func(log *model.Log, _ string) string {
 			return log.Group
 		},
 	},
 	"type": {
-		Header: "绫诲瀷",
+		Header: "类型",
 		Value: func(log *model.Log, _ string) string {
 			return formatAsyncUsageLogType(log.Type)
 		},
 	},
 	"model": {
-		Header: "妯″瀷",
+		Header: "模型",
 		Value: func(log *model.Log, _ string) string {
 			return GetUsageLogExportModelLabel(log)
 		},
 	},
 	"use_time": {
-		Header: "鐢ㄦ椂/棣栧瓧",
+		Header: "用时/首字",
 		Value: func(log *model.Log, _ string) string {
 			return GetUsageLogExportUseTimeLabel(log)
 		},
 	},
 	"prompt": {
-		Header: "杈撳叆",
+		Header: "输入",
 		Value: func(log *model.Log, _ string) string {
 			return strconv.Itoa(log.PromptTokens)
 		},
 	},
 	"completion": {
-		Header: "杈撳嚭",
+		Header: "输出",
 		Value: func(log *model.Log, _ string) string {
 			return strconv.Itoa(log.CompletionTokens)
 		},
 	},
 	"cost": {
-		Header: "鑺辫垂",
+		Header: "花费",
 		Value: func(log *model.Log, quotaDisplayType string) string {
 			return GetUsageLogExportCostLabel(log, quotaDisplayType)
 		},
 	},
 	"retry": {
-		Header: "閲嶈瘯",
+		Header: "重试",
 		Value: func(log *model.Log, _ string) string {
 			return formatAsyncUsageLogRetry(log.Other)
 		},
@@ -115,7 +114,7 @@ var asyncUsageLogExportColumns = map[string]asyncUsageLogExportColumn{
 		},
 	},
 	"details": {
-		Header: "璇︽儏",
+		Header: "详情",
 		Value: func(log *model.Log, _ string) string {
 			return log.Content
 		},
@@ -227,7 +226,7 @@ func executeUsageLogAsyncExportJob(job *model.AsyncExportJob) error {
 
 func fetchAdminUsageLogExportPage(requesterUserID int, requesterRole int, payload asyncUsageLogExportPayload, page int, pageSize int) (AsyncExportPage, error) {
 	offset := (page - 1) * pageSize
-	if offset >= payload.Limit {
+	if asyncExportLimitReached(offset, payload.Limit) {
 		return AsyncExportPage{Done: true}, nil
 	}
 
@@ -259,7 +258,7 @@ func fetchAdminUsageLogExportPage(requesterUserID int, requesterRole int, payloa
 
 func fetchSelfUsageLogExportPage(requesterUserID int, payload asyncUsageLogExportPayload, page int, pageSize int) (AsyncExportPage, error) {
 	offset := (page - 1) * pageSize
-	if offset >= payload.Limit {
+	if asyncExportLimitReached(offset, payload.Limit) {
 		return AsyncExportPage{Done: true}, nil
 	}
 
@@ -283,16 +282,16 @@ func fetchSelfUsageLogExportPage(requesterUserID int, payload asyncUsageLogExpor
 }
 
 func buildAsyncUsageLogExportPage(logs []*model.Log, columnKeys []string, quotaDisplayType string, offset int, limit int, total int64) AsyncExportPage {
-	remaining := limit - offset
-	if remaining <= 0 || len(logs) == 0 {
+	if len(logs) == 0 {
 		return AsyncExportPage{Done: true}
 	}
-	if len(logs) > remaining {
-		logs = logs[:remaining]
+	logs = trimAsyncExportItemsToLimit(logs, offset, limit)
+	if len(logs) == 0 {
+		return AsyncExportPage{Done: true}
 	}
 
 	rows := buildAsyncUsageLogExportRows(logs, columnKeys, quotaDisplayType)
-	done := len(logs) < asyncExportWriterPageSize || offset+len(logs) >= limit || int64(offset+len(logs)) >= total
+	done := isAsyncExportPageDone(len(logs), asyncExportWriterPageSize, offset, limit, total)
 	return AsyncExportPage{
 		Rows: rows,
 		Done: done,
@@ -372,19 +371,19 @@ func formatAsyncUsageLogChannel(log *model.Log) string {
 func formatAsyncUsageLogType(logType int) string {
 	switch logType {
 	case model.LogTypeTopup:
-		return "鍏呭€?"
+		return "充值"
 	case model.LogTypeConsume:
-		return "娑堣垂"
+		return "消费"
 	case model.LogTypeManage:
-		return "绠＄悊"
+		return "管理"
 	case model.LogTypeSystem:
-		return "绯荤粺"
+		return "系统"
 	case model.LogTypeError:
-		return "閿欒"
+		return "错误"
 	case model.LogTypeRefund:
-		return "閫€娆?"
+		return "退款"
 	default:
-		return "鏈煡"
+		return "未知"
 	}
 }
 
@@ -419,7 +418,7 @@ func formatAsyncUsageLogRetry(otherJSON string) string {
 
 func normalizeAsyncExportLimit(limit int) int {
 	if limit <= 0 {
-		return asyncExportDefaultLimit
+		return 0
 	}
 	return limit
 }

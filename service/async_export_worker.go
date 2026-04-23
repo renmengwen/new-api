@@ -34,6 +34,7 @@ func StartAsyncExportWorker() {
 			defer processTicker.Stop()
 			defer cleanupTicker.Stop()
 
+			runAsyncExportRecoveryOnce()
 			runAsyncExportWorkerOnce()
 			for {
 				select {
@@ -45,6 +46,12 @@ func StartAsyncExportWorker() {
 			}
 		})
 	})
+}
+
+func runAsyncExportRecoveryOnce() {
+	if _, err := RequeueStaleAsyncExportJobs(common.GetTimestamp()); err != nil {
+		common.SysError("requeue stale async export jobs failed: " + err.Error())
+	}
 }
 
 func runAsyncExportWorkerOnce() {
@@ -74,6 +81,7 @@ func runAsyncExportWorkerOnce() {
 }
 
 func runAsyncExportCleanupOnce() {
+	runAsyncExportRecoveryOnce()
 	if _, err := CleanupExpiredAsyncExportJobs(common.GetTimestamp()); err != nil {
 		common.SysError("cleanup async export jobs failed: " + err.Error())
 	}
