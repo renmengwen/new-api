@@ -57,7 +57,7 @@ jobs:
     needs: build_image
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy production to old server
+      - name: Deploy production web1
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -70,7 +70,22 @@ jobs:
             docker compose pull new-api
             docker compose up -d
             docker image prune -f
-            echo "Production deployed"
+            echo "Production web1 deployed"
+
+      - name: Deploy production web2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST_2 }}
+          port: ${{ secrets.DEPLOY_PORT_2 || 22 }}
+          username: root
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            cd /root/new-api
+            docker compose pull new-api
+            docker compose up -d
+            docker image prune -f
+            echo "Production web2 deployed"
 
   deploy_test:
     if: github.ref_name == 'test'
