@@ -8,15 +8,23 @@ const usersPageSource = fs.readFileSync(
   'utf8',
 );
 
-test('users page enables allowed token group controls outside managed mode', () => {
+test('users page shows allowed token group controls outside managed mode', () => {
   assert.ok(
     usersPageSource.includes(
       'const supportsAllowedTokenGroups = capabilities.supportsAllowedTokenGroups !== false;',
     ),
   );
   assert.ok(
+    usersPageSource.includes('const hideAllowedTokenGroupFields = false;'),
+  );
+  assert.ok(
     usersPageSource.includes(
       'supportsAllowedTokenGroups={supportsAllowedTokenGroups}',
+    ),
+  );
+  assert.ok(
+    usersPageSource.includes(
+      'hideAllowedTokenGroupFields={hideAllowedTokenGroupFields}',
     ),
   );
   assert.ok(
