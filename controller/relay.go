@@ -72,6 +72,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	var (
 		newAPIError *types.NewAPIError
+		relayInfo   *relaycommon.RelayInfo
 		ws          *websocket.Conn
 	)
 
@@ -88,6 +89,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
+			recordRelayErrorLogOnce(c, relayInfo, newAPIError)
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
@@ -116,7 +118,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
-	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
+	relayInfo, err = relaycommon.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
@@ -239,6 +241,76 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		retryLogStr := fmt.Sprintf("重试：%s", strings.Trim(strings.Join(strings.Fields(fmt.Sprint(useChannel)), "->"), "[]"))
 		logger.LogInfo(c, retryLogStr)
 	}
+}
+
+const relayErrorLogRecordedKey = "relay_error_log_recorded"
+
+func recordRelayErrorLogOnce(c *gin.Context, info *relaycommon.RelayInfo, err *types.NewAPIError) {
+	if c == nil || err == nil {
+		return
+	}
+	if !constant.ErrorLogEnabled || !types.IsRecordErrorLog(err) || c.GetBool(relayErrorLogRecordedKey) {
+		return
+	}
+
+	userId := c.GetInt("id")
+	modelName := c.GetString("original_model")
+	tokenName := c.GetString("token_name")
+	tokenId := c.GetInt("token_id")
+	userGroup := c.GetString("group")
+	channelId := c.GetInt("channel_id")
+	isStream := false
+
+	if info != nil {
+		if info.UserId != 0 {
+			userId = info.UserId
+		}
+		if info.OriginModelName != "" {
+			modelName = info.OriginModelName
+		}
+		if info.TokenId != 0 {
+			tokenId = info.TokenId
+		}
+		if info.UsingGroup != "" {
+			userGroup = info.UsingGroup
+		}
+		isStream = info.IsStream
+		if info.ChannelMeta != nil && info.ChannelId != 0 {
+			channelId = info.ChannelId
+		}
+	}
+
+	other := make(map[string]interface{})
+	if c.Request != nil && c.Request.URL != nil {
+		other["request_path"] = c.Request.URL.Path
+	}
+	other["error_type"] = err.GetErrorType()
+	other["error_code"] = err.GetErrorCode()
+	other["status_code"] = err.StatusCode
+	other["channel_id"] = channelId
+	other["channel_name"] = c.GetString("channel_name")
+	other["channel_type"] = c.GetInt("channel_type")
+
+	adminInfo := make(map[string]interface{})
+	adminInfo["use_channel"] = c.GetStringSlice("use_channel")
+	isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
+	if isMultiKey {
+		adminInfo["is_multi_key"] = true
+		adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
+	}
+	service.AppendChannelAffinityAdminInfo(c, adminInfo)
+	other["admin_info"] = adminInfo
+
+	startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
+	if startTime.IsZero() && info != nil {
+		startTime = info.StartTime
+	}
+	if startTime.IsZero() {
+		startTime = time.Now()
+	}
+	useTimeSeconds := int(time.Since(startTime).Seconds())
+	model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, isStream, userGroup, other)
+	c.Set(relayErrorLogRecordedKey, true)
 }
 
 var upgrader = websocket.Upgrader{
@@ -390,6 +462,7 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
 		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, false, userGroup, other)
+		c.Set(relayErrorLogRecordedKey, true)
 	}
 
 }
