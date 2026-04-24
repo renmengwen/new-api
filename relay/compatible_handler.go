@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	claudechannel "github.com/QuantumNous/new-api/relay/channel/claude"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -105,6 +106,11 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 				println("requestBody: ", string(debugBytes))
 			}
 		}
+		if info.ApiType == constant.APITypeAnthropic {
+			if bodyBytes, bErr := storage.Bytes(); bErr == nil {
+				claudechannel.MarkClaudeTaskBudgetBetaFromBody(c, bodyBytes)
+			}
+		}
 		requestBody = common.ReaderOnly(storage)
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIRequest(c, info, request)
@@ -172,6 +178,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 			if err != nil {
 				return newAPIErrorFromParamOverride(err)
 			}
+		}
+		if _, ok := convertedRequest.(*dto.ClaudeRequest); ok {
+			claudechannel.MarkClaudeTaskBudgetBetaFromBody(c, jsonData)
 		}
 
 		logger.LogDebug(c, fmt.Sprintf("text request body: %s", string(jsonData)))

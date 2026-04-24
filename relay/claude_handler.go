@@ -2,7 +2,6 @@ package relay
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	claudechannel "github.com/QuantumNous/new-api/relay/channel/claude"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
@@ -53,17 +53,36 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	}
 
 	if baseModel, effortLevel, ok := reasoning.TrimEffortSuffix(request.Model); ok && effortLevel != "" &&
-		strings.HasPrefix(request.Model, "claude-opus-4-6") {
+		(strings.HasPrefix(request.Model, "claude-opus-4-6") || claudechannel.IsOpus47Model(request.Model)) {
 		request.Model = baseModel
 		request.Thinking = &dto.Thinking{
 			Type: "adaptive",
 		}
-		request.OutputConfig = json.RawMessage(fmt.Sprintf(`{"effort":"%s"}`, effortLevel))
-		request.Temperature = common.GetPointer[float64](1.0)
+		if claudechannel.IsOpus47Model(request.Model) {
+			if err := claudechannel.NormalizeOpus47Request(request, effortLevel); err != nil {
+				return types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+			}
+		} else {
+			request.OutputConfig, err = claudechannel.MergeOutputConfigEffort(request.OutputConfig, effortLevel)
+			if err != nil {
+				return types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+			}
+			request.Temperature = common.GetPointer[float64](1.0)
+		}
 		info.UpstreamModelName = request.Model
 	} else if model_setting.GetClaudeSettings().ThinkingAdapterEnabled &&
 		strings.HasSuffix(request.Model, "-thinking") {
-		if request.Thinking == nil {
+		if claudechannel.IsOpus47Model(request.Model) {
+			request.Model = strings.TrimSuffix(request.Model, "-thinking")
+			if request.Thinking == nil {
+				request.Thinking = &dto.Thinking{
+					Type: "adaptive",
+				}
+			}
+			if err := claudechannel.NormalizeOpus47Request(request, "high"); err != nil {
+				return types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+			}
+		} else if request.Thinking == nil {
 			// 因为BudgetTokens 必须大于1024
 			if request.MaxTokens == nil || *request.MaxTokens < 1280 {
 				request.MaxTokens = common.GetPointer[uint](1280)
@@ -83,6 +102,11 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		}
 		info.UpstreamModelName = request.Model
 	}
+
+	if err := claudechannel.NormalizeOpus47Request(request, ""); err != nil {
+		return types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+	}
+	claudechannel.MarkClaudeTaskBudgetBeta(c, request.OutputConfig)
 
 	if info.ChannelSetting.SystemPrompt != "" {
 		if request.System == nil {
@@ -132,6 +156,9 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
+		if bodyBytes, bErr := storage.Bytes(); bErr == nil {
+			claudechannel.MarkClaudeTaskBudgetBetaFromBody(c, bodyBytes)
+		}
 		requestBody = common.ReaderOnly(storage)
 	} else {
 		convertedRequest, err := adaptor.ConvertClaudeRequest(c, info, request)
@@ -157,6 +184,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 				return newAPIErrorFromParamOverride(err)
 			}
 		}
+		claudechannel.MarkClaudeTaskBudgetBetaFromBody(c, jsonData)
 
 		if common.DebugEnabled {
 			println("requestBody: ", string(jsonData))

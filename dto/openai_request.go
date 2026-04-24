@@ -50,6 +50,7 @@ type GeneralOpenAIRequest struct {
 	FrequencyPenalty    *float64          `json:"frequency_penalty,omitempty"`
 	PresencePenalty     *float64          `json:"presence_penalty,omitempty"`
 	ResponseFormat      *ResponseFormat   `json:"response_format,omitempty"`
+	OutputConfig        json.RawMessage   `json:"output_config,omitempty"`
 	EncodingFormat      json.RawMessage   `json:"encoding_format,omitempty"`
 	Seed                *float64          `json:"seed,omitempty"`
 	ParallelTooCalls    *bool             `json:"parallel_tool_calls,omitempty"`

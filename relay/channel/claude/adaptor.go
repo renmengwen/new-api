@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
@@ -18,6 +19,8 @@ import (
 
 type Adaptor struct {
 }
+
+const contextKeyClaudeTaskBudgetBeta = "claude_task_budget_beta"
 
 func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dto.GeminiChatRequest) (any, error) {
 	//TODO implement me
@@ -72,11 +75,49 @@ func shouldAppendClaudeBetaQuery(info *relaycommon.RelayInfo) bool {
 
 func CommonClaudeHeadersOperation(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) {
 	// common headers operation
-	anthropicBeta := c.Request.Header.Get("anthropic-beta")
-	if anthropicBeta != "" {
-		req.Set("anthropic-beta", anthropicBeta)
+	if c != nil && c.Request != nil {
+		anthropicBeta := c.Request.Header.Get("anthropic-beta")
+		if anthropicBeta != "" {
+			req.Set("anthropic-beta", anthropicBeta)
+		}
+		if c.GetBool(contextKeyClaudeTaskBudgetBeta) {
+			appendAnthropicBeta(req, taskBudgetBetaHeader)
+		}
 	}
-	model_setting.GetClaudeSettings().WriteHeaders(info.OriginModelName, req)
+	if info != nil {
+		model_setting.GetClaudeSettings().WriteHeaders(info.OriginModelName, req)
+	}
+}
+
+func MarkClaudeTaskBudgetBeta(c *gin.Context, outputConfig []byte) {
+	if c == nil {
+		return
+	}
+	c.Set(contextKeyClaudeTaskBudgetBeta, OutputConfigHasTaskBudget(outputConfig))
+}
+
+func MarkClaudeTaskBudgetBetaFromBody(c *gin.Context, body []byte) {
+	if c == nil {
+		return
+	}
+	c.Set(contextKeyClaudeTaskBudgetBeta, RequestBodyHasTaskBudget(body))
+}
+
+func appendAnthropicBeta(req *http.Header, beta string) {
+	if req == nil || beta == "" {
+		return
+	}
+	current := req.Get("anthropic-beta")
+	if current == "" {
+		req.Set("anthropic-beta", beta)
+		return
+	}
+	for _, part := range strings.Split(current, ",") {
+		if strings.TrimSpace(part) == beta {
+			return
+		}
+	}
+	req.Set("anthropic-beta", current+","+beta)
 }
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
