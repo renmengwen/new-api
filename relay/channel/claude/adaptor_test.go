@@ -44,3 +44,26 @@ func TestSetupRequestHeaderDeleteHeaderRemovesAnthropicBeta(t *testing.T) {
 	relaychannel.ApplyDeletedHeadersToHeader(&reqHeaders, info)
 	require.Empty(t, reqHeaders.Get("anthropic-beta"))
 }
+
+func TestCommonClaudeHeadersOperationTaskBudgetBetaTracksFinalBody(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "claude-opus-4-7",
+	}
+
+	MarkClaudeTaskBudgetBetaFromBody(ctx, []byte(`{"output_config":{"task_budget":"standard"}}`))
+	reqHeaders := http.Header{}
+	CommonClaudeHeadersOperation(ctx, &reqHeaders, info)
+	require.Contains(t, reqHeaders.Get("anthropic-beta"), "task-budgets-2026-03-13")
+
+	MarkClaudeTaskBudgetBetaFromBody(ctx, []byte(`{"output_config":{"effort":"high"}}`))
+	reqHeaders = http.Header{}
+	CommonClaudeHeadersOperation(ctx, &reqHeaders, info)
+	require.NotContains(t, reqHeaders.Get("anthropic-beta"), "task-budgets-2026-03-13")
+}
