@@ -103,6 +103,33 @@ func TestGetUserGroupsModeTokenUsesAllowedTokenGroupsWhenEnabled(t *testing.T) {
 	require.Equal(t, 1.7, response.Data["beta"]["ratio"])
 }
 
+func TestGetUserGroupsModeTokenReturnsOnlyPrimaryGroupWhenDisabled(t *testing.T) {
+	db := setupGroupControllerTestDB(t)
+	withGroupControllerConfig(t, `{"default":"Default","vip":"VIP","beta":"Beta"}`, `{"default":1,"vip":2,"beta":3}`)
+
+	user := model.User{
+		Username: "token_mode_primary_only_user",
+		Password: "hashed-password",
+		Group:    "vip",
+		Status:   common.UserStatusEnabled,
+		Role:     common.RoleCommonUser,
+		AffCode:  "tokenmodeprimary",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	ctx, recorder := newUserGroupsContext(t, "/api/user/self/groups?mode=token", user.Id, user.Role)
+	GetUserGroups(ctx)
+
+	var response userGroupsResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+	require.Len(t, response.Data, 1)
+	require.Contains(t, response.Data, "vip")
+	require.NotContains(t, response.Data, "default")
+	require.NotContains(t, response.Data, "beta")
+	require.Equal(t, float64(2), response.Data["vip"]["ratio"])
+}
+
 func TestGetUserGroupsModeAssignableTokenReturnsOperatorDelegableGroups(t *testing.T) {
 	db := setupGroupControllerTestDB(t)
 	withGroupControllerConfig(t, `{"default":"Default","vip":"VIP","beta":"Beta"}`, `{"default":1,"vip":2,"beta":3}`)

@@ -40,19 +40,16 @@ func withTokenGroupScopeConfig(t *testing.T) {
 	}
 }
 
-func TestResolveUserTokenSelectableGroupsFallsBackToLegacyWhenDisabled(t *testing.T) {
+func TestResolveUserTokenSelectableGroupsReturnsOnlyPrimaryGroupWhenDisabled(t *testing.T) {
 	withTokenGroupScopeConfig(t)
 
 	settingMap := dto.UserSetting{}
 	groups := ResolveUserTokenSelectableGroups("vip", settingMap)
-	legacyGroups := GetUserTokenSelectableGroups("vip")
-	if len(groups) != len(legacyGroups) {
-		t.Fatalf("expected legacy group count %d, got %d", len(legacyGroups), len(groups))
+	if len(groups) != 1 {
+		t.Fatalf("expected only primary group, got %v", groups)
 	}
-	for name, desc := range legacyGroups {
-		if groups[name] != desc {
-			t.Fatalf("expected legacy group %s desc %q, got %q", name, desc, groups[name])
-		}
+	if groups["vip"] != "VIP" {
+		t.Fatalf("expected primary group vip to be preserved, got %v", groups)
 	}
 }
 

@@ -27,6 +27,16 @@ type ModelRequest struct {
 	Group string `json:"group,omitempty"`
 }
 
+func playgroundGroupAllowed(user *model.User, requestedGroup string) bool {
+	requestedGroup = strings.TrimSpace(requestedGroup)
+	if requestedGroup == "" || user == nil {
+		return false
+	}
+	allowedGroups := service.ResolveUserTokenSelectableGroups(user.Group, user.GetSetting())
+	_, ok := allowedGroups[requestedGroup]
+	return ok
+}
+
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		var channel *model.Channel
@@ -90,7 +100,8 @@ func Distribute() func(c *gin.Context) {
 						return
 					}
 					if playgroundRequest.Group != "" {
-						if !service.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
+						user, err := model.GetUserById(c.GetInt("id"), false)
+						if err != nil || !playgroundGroupAllowed(user, playgroundRequest.Group) {
 							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
 							return
 						}

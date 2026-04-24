@@ -596,12 +596,12 @@ func GetUserModels(c *gin.Context) {
 	if err != nil {
 		id = c.GetInt("id")
 	}
-	user, err := model.GetUserCache(id)
+	user, err := model.GetUserById(id, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	groups := service.GetUserUsableGroups(user.Group)
+	groups := service.ResolveUserTokenSelectableGroups(user.Group, user.GetSetting())
 	selectedGroup := strings.TrimSpace(c.Query("group"))
 	var models []string
 	filteredBySelectedGroup := false
@@ -615,9 +615,11 @@ func GetUserModels(c *gin.Context) {
 
 	if selectedGroup != "" {
 		if selectedGroup == "auto" {
-			filteredBySelectedGroup = true
-			for _, group := range service.GetUserAutoGroup(user.Group) {
-				appendGroupModels(group)
+			if _, ok := groups[selectedGroup]; ok {
+				filteredBySelectedGroup = true
+				for _, group := range service.GetUserAutoGroup(user.Group) {
+					appendGroupModels(group)
+				}
 			}
 		} else if _, ok := groups[selectedGroup]; ok {
 			filteredBySelectedGroup = true
@@ -627,6 +629,12 @@ func GetUserModels(c *gin.Context) {
 
 	if !filteredBySelectedGroup {
 		for group := range groups {
+			if group == "auto" {
+				for _, autoGroup := range service.GetUserAutoGroup(user.Group) {
+					appendGroupModels(autoGroup)
+				}
+				continue
+			}
 			appendGroupModels(group)
 		}
 	}

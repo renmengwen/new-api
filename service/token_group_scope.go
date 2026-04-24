@@ -49,7 +49,13 @@ func currentTokenGroupDefinitions() map[string]string {
 
 func ResolveUserTokenSelectableGroups(userGroup string, userSetting dto.UserSetting) map[string]string {
 	if !userSetting.AllowedTokenGroupsEnabled {
-		return GetUserTokenSelectableGroups(userGroup)
+		userGroup = strings.TrimSpace(userGroup)
+		if userGroup == "" {
+			return map[string]string{}
+		}
+		return map[string]string{
+			userGroup: setting.GetUsableGroupDescription(userGroup),
+		}
 	}
 	definitions := currentTokenGroupDefinitions()
 	resolved := make(map[string]string)

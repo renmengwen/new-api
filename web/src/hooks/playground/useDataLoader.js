@@ -58,7 +58,9 @@ export const useDataLoader = (
 
   const loadGroups = useCallback(async () => {
     try {
-      const res = await API.get(API_ENDPOINTS.USER_GROUPS);
+      const res = await API.get(API_ENDPOINTS.USER_GROUPS, {
+        params: { mode: 'token' },
+      });
       const { success, message, data } = res.data;
 
       if (success) {
