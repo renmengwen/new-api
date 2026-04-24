@@ -28,16 +28,17 @@ export default function GroupTable({
   const [rows, setRows] = useState(() =>
     buildGroupTableRows(groupRatio, userUsableGroups),
   );
+  const rowsRef = useRef(rows);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
   const emitChange = useCallback((updater) => {
-    setRows((previousRows) => {
-      const nextRows =
-        typeof updater === 'function' ? updater(previousRows) : updater;
-      onChangeRef.current?.(serializeGroupTableRows(nextRows));
-      return nextRows;
-    });
+    const previousRows = rowsRef.current;
+    const nextRows =
+      typeof updater === 'function' ? updater(previousRows) : updater;
+    rowsRef.current = nextRows;
+    setRows(nextRows);
+    onChangeRef.current?.(serializeGroupTableRows(nextRows));
   }, []);
 
   const updateRow = useCallback(

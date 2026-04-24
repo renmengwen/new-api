@@ -110,7 +110,8 @@ export default function GroupRatioSettingsVisual(props) {
   const [editMode, setEditMode] = useState('visual');
   const [showGuide, setShowGuide] = useState(false);
   const [inputs, setInputs] = useState(DEFAULT_INPUTS);
-  const [inputsRow, setInputsRow] = useState(DEFAULT_INPUTS);
+  const inputsRef = useRef(DEFAULT_INPUTS);
+  const inputsRowRef = useRef(DEFAULT_INPUTS);
   const refForm = useRef();
   const dataVersionRef = useRef(0);
 
@@ -123,6 +124,14 @@ export default function GroupRatioSettingsVisual(props) {
     );
   }, [inputs.GroupRatio]);
 
+  const updateInputs = useCallback((updater) => {
+    const nextInputs =
+      typeof updater === 'function' ? updater(inputsRef.current) : updater;
+    inputsRef.current = nextInputs;
+    setInputs(nextInputs);
+    return nextInputs;
+  }, []);
+
   const onSubmit = async () => {
     if (editMode === 'manual') {
       try {
@@ -133,7 +142,8 @@ export default function GroupRatioSettingsVisual(props) {
       }
     }
 
-    const updateArray = compareObjects(inputs, inputsRow);
+    const currentInputs = inputsRef.current;
+    const updateArray = compareObjects(currentInputs, inputsRowRef.current);
     if (!updateArray.length) {
       showWarning(t('你似乎并没有修改什么'));
       return;
@@ -141,9 +151,9 @@ export default function GroupRatioSettingsVisual(props) {
 
     const requestQueue = updateArray.map((item) => {
       const value =
-        typeof inputs[item.key] === 'boolean'
-          ? String(inputs[item.key])
-          : inputs[item.key];
+        typeof currentInputs[item.key] === 'boolean'
+          ? String(currentInputs[item.key])
+          : currentInputs[item.key];
       return API.put('/api/option/', {
         key: item.key,
         value,
@@ -185,8 +195,9 @@ export default function GroupRatioSettingsVisual(props) {
       }
     });
 
+    inputsRef.current = currentInputs;
+    inputsRowRef.current = structuredClone(currentInputs);
     setInputs(currentInputs);
-    setInputsRow(structuredClone(currentInputs));
     dataVersionRef.current += 1;
 
     if (refForm.current) {
@@ -201,36 +212,36 @@ export default function GroupRatioSettingsVisual(props) {
   }, [editMode, inputs]);
 
   const handleGroupTableChange = useCallback(({ GroupRatio, UserUsableGroups }) => {
-    setInputs((previousInputs) => ({
+    updateInputs((previousInputs) => ({
       ...previousInputs,
       GroupRatio,
       UserUsableGroups,
     }));
-  }, []);
+  }, [updateInputs]);
 
   const handleAutoGroupsChange = useCallback((AutoGroups) => {
-    setInputs((previousInputs) => ({
+    updateInputs((previousInputs) => ({
       ...previousInputs,
       AutoGroups,
     }));
-  }, []);
+  }, [updateInputs]);
 
   const handleGroupGroupRatioChange = useCallback((GroupGroupRatio) => {
-    setInputs((previousInputs) => ({
+    updateInputs((previousInputs) => ({
       ...previousInputs,
       GroupGroupRatio,
     }));
-  }, []);
+  }, [updateInputs]);
 
   const handleSpecialUsableChange = useCallback(
     (groupSpecialUsableGroup) => {
-      setInputs((previousInputs) => ({
+      updateInputs((previousInputs) => ({
         ...previousInputs,
         'group_ratio_setting.group_special_usable_group':
           groupSpecialUsableGroup,
       }));
     },
-    [],
+    [updateInputs],
   );
 
   const dataVersion = dataVersionRef.current;
@@ -275,7 +286,7 @@ export default function GroupRatioSettingsVisual(props) {
                   uncheckedText='〇'
                   size='default'
                   onChange={(value) =>
-                    setInputs((previousInputs) => ({
+                    updateInputs((previousInputs) => ({
                       ...previousInputs,
                       DefaultUseAutoGroup: value,
                     }))
@@ -363,7 +374,7 @@ export default function GroupRatioSettingsVisual(props) {
                 },
               ]}
               onChange={(value) =>
-                setInputs((previousInputs) => ({
+                updateInputs((previousInputs) => ({
                   ...previousInputs,
                   GroupRatio: value,
                 }))
@@ -390,7 +401,7 @@ export default function GroupRatioSettingsVisual(props) {
                 },
               ]}
               onChange={(value) =>
-                setInputs((previousInputs) => ({
+                updateInputs((previousInputs) => ({
                   ...previousInputs,
                   UserUsableGroups: value,
                 }))
@@ -417,7 +428,7 @@ export default function GroupRatioSettingsVisual(props) {
                 },
               ]}
               onChange={(value) =>
-                setInputs((previousInputs) => ({
+                updateInputs((previousInputs) => ({
                   ...previousInputs,
                   GroupGroupRatio: value,
                 }))
@@ -444,7 +455,7 @@ export default function GroupRatioSettingsVisual(props) {
                 },
               ]}
               onChange={(value) =>
-                setInputs((previousInputs) => ({
+                updateInputs((previousInputs) => ({
                   ...previousInputs,
                   'group_ratio_setting.group_special_usable_group': value,
                 }))
@@ -478,7 +489,7 @@ export default function GroupRatioSettingsVisual(props) {
                 },
               ]}
               onChange={(value) =>
-                setInputs((previousInputs) => ({
+                updateInputs((previousInputs) => ({
                   ...previousInputs,
                   AutoGroups: value,
                 }))
@@ -494,7 +505,7 @@ export default function GroupRatioSettingsVisual(props) {
               )}
               field='DefaultUseAutoGroup'
               onChange={(value) =>
-                setInputs((previousInputs) => ({
+                updateInputs((previousInputs) => ({
                   ...previousInputs,
                   DefaultUseAutoGroup: value,
                 }))
