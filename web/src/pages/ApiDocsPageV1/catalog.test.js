@@ -40,6 +40,7 @@ const REQUIRED_DOC_IDS = [
   'videos-get-task',
   'videos-jimeng',
   'videos-kling',
+  'videos-seedance',
   'videos-sora',
 ];
 
@@ -171,6 +172,7 @@ test('catalog video and realtime docs stay aligned with the relay contract', () 
   const getTaskDoc = getAiModelDocById('videos-get-task');
   const jimengDoc = getAiModelDocById('videos-jimeng');
   const klingDoc = getAiModelDocById('videos-kling');
+  const seedanceDoc = getAiModelDocById('videos-seedance');
   const soraDoc = getAiModelDocById('videos-sora');
   const realtimeDoc = getAiModelDocById('realtime-native-openai');
 
@@ -183,6 +185,8 @@ test('catalog video and realtime docs stay aligned with the relay contract', () 
 
   assert.equal(jimengDoc.path, '/jimeng/');
   assert.equal(klingDoc.path, '/kling/v1/videos/text2video');
+  assert.equal(seedanceDoc.path, '/v1/video/generations');
+  assert.equal(seedanceDoc.contentType, 'markdown');
   assert.equal(soraDoc.path, '/v1/videos');
 
   assert.equal(realtimeDoc.path, '/v1/realtime');

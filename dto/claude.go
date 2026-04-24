@@ -416,7 +416,7 @@ func (c *ClaudeRequest) GetTools() []any {
 
 func (c *ClaudeRequest) GetEfforts() string {
 	var OutputConfig OutputConfigForEffort
-	if err := json.Unmarshal(c.OutputConfig, &OutputConfig); err == nil {
+	if err := common.Unmarshal(c.OutputConfig, &OutputConfig); err == nil {
 		effort := OutputConfig.Effort
 		return effort
 	}
@@ -448,8 +448,9 @@ func ProcessTools(tools []any) ([]*Tool, []*ClaudeWebSearchTool) {
 }
 
 type Thinking struct {
-	Type         string `json:"type,omitempty"`
-	BudgetTokens *int   `json:"budget_tokens,omitempty"`
+	Type         string  `json:"type,omitempty"`
+	BudgetTokens *int    `json:"budget_tokens,omitempty"`
+	Display      *string `json:"display,omitempty"`
 }
 
 func (c *Thinking) GetBudgetTokens() int {

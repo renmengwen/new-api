@@ -1,7 +1,6 @@
 package claude
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -85,7 +84,7 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 
 			// 解析 UserLocation JSON
 			var userLocationMap map[string]interface{}
-			if err := json.Unmarshal(textRequest.WebSearchOptions.UserLocation, &userLocationMap); err == nil {
+			if err := common.Unmarshal(textRequest.WebSearchOptions.UserLocation, &userLocationMap); err == nil {
 				// 检查是否有 approximate 字段
 				if approximateData, ok := userLocationMap["approximate"].(map[string]interface{}); ok {
 					if timezone, ok := approximateData["timezone"].(string); ok && timezone != "" {
@@ -126,6 +125,7 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 		StopSequences: nil,
 		Temperature:   textRequest.Temperature,
 		Tools:         claudeTools,
+		OutputConfig:  textRequest.OutputConfig,
 	}
 	if maxTokens := textRequest.GetMaxTokens(); maxTokens > 0 {
 		claudeRequest.MaxTokens = common.GetPointer(maxTokens)
@@ -154,52 +154,81 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 	}
 
 	if baseModel, effortLevel, ok := reasoning.TrimEffortSuffix(textRequest.Model); ok && effortLevel != "" &&
-		strings.HasPrefix(textRequest.Model, "claude-opus-4-6") {
+		(strings.HasPrefix(textRequest.Model, "claude-opus-4-6") || IsOpus47Model(textRequest.Model)) {
 		claudeRequest.Model = baseModel
 		claudeRequest.Thinking = &dto.Thinking{
 			Type: "adaptive",
 		}
-		claudeRequest.OutputConfig = json.RawMessage(fmt.Sprintf(`{"effort":"%s"}`, effortLevel))
-		claudeRequest.TopP = common.GetPointer[float64](0)
-		claudeRequest.Temperature = common.GetPointer[float64](1.0)
+		if IsOpus47Model(textRequest.Model) {
+			if err := NormalizeOpus47Request(&claudeRequest, effortLevel); err != nil {
+				return nil, err
+			}
+		} else {
+			outputConfig, err := MergeOutputConfigEffort(claudeRequest.OutputConfig, effortLevel)
+			if err != nil {
+				return nil, err
+			}
+			claudeRequest.OutputConfig = outputConfig
+			claudeRequest.TopP = common.GetPointer[float64](0)
+			claudeRequest.Temperature = common.GetPointer[float64](1.0)
+		}
 	} else if model_setting.GetClaudeSettings().ThinkingAdapterEnabled &&
 		strings.HasSuffix(textRequest.Model, "-thinking") {
-
-		// 因为BudgetTokens 必须大于1024
-		if claudeRequest.MaxTokens == nil || *claudeRequest.MaxTokens < 1280 {
-			claudeRequest.MaxTokens = common.GetPointer[uint](1280)
-		}
-
-		// BudgetTokens 为 max_tokens 的 80%
-		claudeRequest.Thinking = &dto.Thinking{
-			Type:         "enabled",
-			BudgetTokens: common.GetPointer[int](int(float64(*claudeRequest.MaxTokens) * model_setting.GetClaudeSettings().ThinkingAdapterBudgetTokensPercentage)),
-		}
-		// TODO: 临时处理
-		// https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#important-considerations-when-using-extended-thinking
-		claudeRequest.TopP = common.GetPointer[float64](0)
-		claudeRequest.Temperature = common.GetPointer[float64](1.0)
-		if !model_setting.ShouldPreserveThinkingSuffix(textRequest.Model) {
+		if IsOpus47Model(textRequest.Model) {
 			claudeRequest.Model = strings.TrimSuffix(textRequest.Model, "-thinking")
+			claudeRequest.Thinking = &dto.Thinking{
+				Type: "adaptive",
+			}
+			if err := NormalizeOpus47Request(&claudeRequest, "high"); err != nil {
+				return nil, err
+			}
+		} else {
+
+			// 因为BudgetTokens 必须大于1024
+			if claudeRequest.MaxTokens == nil || *claudeRequest.MaxTokens < 1280 {
+				claudeRequest.MaxTokens = common.GetPointer[uint](1280)
+			}
+
+			// BudgetTokens 为 max_tokens 的 80%
+			claudeRequest.Thinking = &dto.Thinking{
+				Type:         "enabled",
+				BudgetTokens: common.GetPointer[int](int(float64(*claudeRequest.MaxTokens) * model_setting.GetClaudeSettings().ThinkingAdapterBudgetTokensPercentage)),
+			}
+			// TODO: 临时处理
+			// https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#important-considerations-when-using-extended-thinking
+			claudeRequest.TopP = common.GetPointer[float64](0)
+			claudeRequest.Temperature = common.GetPointer[float64](1.0)
+			if !model_setting.ShouldPreserveThinkingSuffix(textRequest.Model) {
+				claudeRequest.Model = strings.TrimSuffix(textRequest.Model, "-thinking")
+			}
 		}
 	}
 
 	if textRequest.ReasoningEffort != "" {
-		switch textRequest.ReasoningEffort {
-		case "low":
+		if IsOpus47Model(claudeRequest.Model) {
 			claudeRequest.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: common.GetPointer[int](1280),
+				Type: "adaptive",
 			}
-		case "medium":
-			claudeRequest.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: common.GetPointer[int](2048),
+			if err := NormalizeOpus47Request(&claudeRequest, textRequest.ReasoningEffort); err != nil {
+				return nil, err
 			}
-		case "high":
-			claudeRequest.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: common.GetPointer[int](4096),
+		} else {
+			switch textRequest.ReasoningEffort {
+			case "low":
+				claudeRequest.Thinking = &dto.Thinking{
+					Type:         "enabled",
+					BudgetTokens: common.GetPointer[int](1280),
+				}
+			case "medium":
+				claudeRequest.Thinking = &dto.Thinking{
+					Type:         "enabled",
+					BudgetTokens: common.GetPointer[int](2048),
+				}
+			case "high":
+				claudeRequest.Thinking = &dto.Thinking{
+					Type:         "enabled",
+					BudgetTokens: common.GetPointer[int](4096),
+				}
 			}
 		}
 	}
@@ -211,14 +240,34 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 			return nil, err
 		}
 
-		budgetTokens := reasoning.MaxTokens
-		if budgetTokens > 0 {
-			claudeRequest.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: &budgetTokens,
+		if IsOpus47Model(claudeRequest.Model) {
+			effort := strings.TrimSpace(reasoning.Effort)
+			if effort == "" && reasoning.MaxTokens > 0 {
+				effort = "high"
+			}
+			if effort != "" || reasoning.Enabled {
+				claudeRequest.Thinking = &dto.Thinking{
+					Type: "adaptive",
+				}
+			}
+			if err := NormalizeOpus47Request(&claudeRequest, effort); err != nil {
+				return nil, err
+			}
+		} else {
+			budgetTokens := reasoning.MaxTokens
+			if budgetTokens > 0 {
+				claudeRequest.Thinking = &dto.Thinking{
+					Type:         "enabled",
+					BudgetTokens: &budgetTokens,
+				}
 			}
 		}
 	}
+
+	if err := NormalizeOpus47Request(&claudeRequest, ""); err != nil {
+		return nil, err
+	}
+	MarkClaudeTaskBudgetBeta(c, claudeRequest.OutputConfig)
 
 	if textRequest.Stop != nil {
 		// stop maybe string/array string, convert to array string
@@ -373,7 +422,7 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 				if message.ToolCalls != nil {
 					for _, toolCall := range message.ParseToolCalls() {
 						inputObj := make(map[string]any)
-						if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &inputObj); err != nil {
+						if err := common.Unmarshal([]byte(toolCall.Function.Arguments), &inputObj); err != nil {
 							common.SysLog("tool call function arguments is not a map[string]any: " + fmt.Sprintf("%v", toolCall.Function.Arguments))
 							continue
 						}
@@ -507,7 +556,7 @@ func ResponseClaude2OpenAI(claudeResponse *dto.ClaudeResponse) *dto.OpenAITextRe
 	for _, message := range claudeResponse.Content {
 		switch message.Type {
 		case "tool_use":
-			args, _ := json.Marshal(message.Input)
+			args, _ := common.Marshal(message.Input)
 			tools = append(tools, dto.ToolCallResponse{
 				ID:   message.Id,
 				Type: "function", // compatible with other OpenAI derivative applications
@@ -855,7 +904,7 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 	case types.RelayFormatOpenAI:
 		openaiResponse := ResponseClaude2OpenAI(&claudeResponse)
 		openaiResponse.Usage = buildOpenAIStyleUsageFromClaudeUsage(claudeInfo.Usage)
-		responseData, err = json.Marshal(openaiResponse)
+		responseData, err = common.Marshal(openaiResponse)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeBadResponseBody)
 		}

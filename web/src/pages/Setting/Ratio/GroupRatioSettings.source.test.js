@@ -45,3 +45,16 @@ test('group ratio settings visual page includes upstream-style dual-mode editors
   assert.match(visualSource, /title=\{t\('分组设置使用说明'\)\}/);
   assert.match(visualSource, /editMode === 'visual' \? renderVisualMode\(\) : renderManualMode\(\)/);
 });
+
+test('group ratio settings visual save reads the latest synchronous input draft', () => {
+  assert.match(visualSource, /const inputsRef = useRef\(DEFAULT_INPUTS\);/);
+  assert.match(visualSource, /const inputsRowRef = useRef\(DEFAULT_INPUTS\);/);
+  assert.match(
+    visualSource,
+    /const currentInputs = inputsRef\.current;\s*const updateArray = compareObjects\(currentInputs, inputsRowRef\.current\);/s,
+  );
+  assert.match(
+    visualSource,
+    /inputsRef\.current = currentInputs;\s*inputsRowRef\.current = structuredClone\(currentInputs\);/s,
+  );
+});

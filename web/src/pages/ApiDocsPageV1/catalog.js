@@ -62,6 +62,7 @@ const createDoc = ({
   transport = 'json',
   status,
   placeholderMessage,
+  contentType = 'standard',
   requestBody,
   multipartFields,
   requestExample,
@@ -80,6 +81,7 @@ const createDoc = ({
     summary,
     description,
     transport,
+    contentType,
     auth: { ...DEFAULT_AUTH },
     responseExample: makeResponseExample(responseBody),
   };
@@ -574,6 +576,29 @@ export const AI_MODEL_DOC_ITEMS = [
     },
   }),
   createDoc({
+    id: 'videos-seedance',
+    groupKey: 'videos',
+    title: 'Seedance 格式',
+    method: 'POST',
+    path: '/v1/video/generations',
+    summary: 'Seedance 视频任务接口文档。',
+    description: '展示 Seedance 视频生成任务的创建、查询、列表和删除接口。',
+    contentType: 'markdown',
+    requestBody: {
+      model: 'doubao-seedance-2-0-260128',
+      prompt: '第一人称果茶广告，明亮商业短片风格。',
+      metadata: {
+        aspect_ratio: '16:9',
+        resolution: '720p',
+        duration: 5,
+        watermark: false,
+      },
+    },
+    responseBody: {
+      id: 'task_01jsk2v8m4m4g9m2v7n3x8q1af',
+    },
+  }),
+  createDoc({
     id: 'videos-sora',
     groupKey: 'videos',
     title: 'Sora 格式',
@@ -660,6 +685,17 @@ export function getAiModelDocDisplayState(doc) {
       kind: 'placeholder',
       title: doc.title,
       message: doc.placeholderMessage || '该文档仍在补充中。',
+      path: doc.path,
+      method: doc.method,
+    };
+  }
+
+  if (doc.contentType === 'markdown') {
+    return {
+      kind: 'markdown',
+      id: doc.id,
+      title: doc.title,
+      summary: doc.summary,
       path: doc.path,
       method: doc.method,
     };
