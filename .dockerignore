@@ -1,6 +1,7 @@
 .github
 .git
 *.md
+!web/src/pages/ApiDocsPageV1/seedance-video-task-apis.md
 .vscode
 .gitignore
 Makefile

@@ -28,6 +28,9 @@ const readSource = (fileUrl) =>
   fs.existsSync(fileUrl) ? fs.readFileSync(fileUrl, 'utf8') : '';
 
 const appSource = readSource(new URL('../../App.jsx', import.meta.url));
+const dockerIgnoreSource = readSource(
+  new URL('../../../../.dockerignore', import.meta.url),
+);
 const siderBarSource = readSource(
   new URL('../../components/layout/SiderBar.jsx', import.meta.url),
 );
@@ -202,6 +205,16 @@ test('DocsSidebar and index.jsx stay wired to the route helpers', () => {
   assert.match(sidebarSource, /expandAiModelDocGroups/);
   assert.match(sidebarSource, /useEffect/);
   assert.match(sidebarSource, /setExpandedGroups\(\(current\) => expandAiModelDocGroups\(current, activeDocId\)\)/);
+});
+
+test('ApiDocsPageV1 raw markdown imports stay inside the Docker web build context', () => {
+  assert.match(contentSource, /seedance-video-task-apis\.md\?raw/);
+  assert.match(contentSource, /from '\.\/seedance-video-task-apis\.md\?raw'/);
+  assert.doesNotMatch(contentSource, /\.\.\/\.\.\/\.\.\/\.\.\/docs\//);
+  assert.match(
+    dockerIgnoreSource,
+    /^!web\/src\/pages\/ApiDocsPageV1\/seedance-video-task-apis\.md$/m,
+  );
 });
 
 test('App registers the console docs page behind a private route', () => {

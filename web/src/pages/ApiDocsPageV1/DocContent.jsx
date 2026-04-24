@@ -3,7 +3,7 @@ import { Card, Tag, Typography } from '@douyinfe/semi-ui';
 import { marked } from 'marked';
 
 import { getAiModelDocDisplayState } from './catalog';
-import seedanceVideoTaskApis from '../../../../docs/seedance-video-task-apis.md?raw';
+import seedanceVideoTaskApis from './seedance-video-task-apis.md?raw';
 
 const { Title, Text, Paragraph } = Typography;
 
