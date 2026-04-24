@@ -31,6 +31,9 @@ const appSource = readSource(new URL('../../App.jsx', import.meta.url));
 const dockerIgnoreSource = readSource(
   new URL('../../../../.dockerignore', import.meta.url),
 );
+const deployWorkflowSource = readSource(
+  new URL('../../../../.github/workflows/deploy.yml', import.meta.url),
+);
 const siderBarSource = readSource(
   new URL('../../components/layout/SiderBar.jsx', import.meta.url),
 );
@@ -215,6 +218,12 @@ test('ApiDocsPageV1 raw markdown imports stay inside the Docker web build contex
     dockerIgnoreSource,
     /^!web\/src\/pages\/ApiDocsPageV1\/seedance-video-task-apis\.md$/m,
   );
+});
+
+test('deploy image build does not fail on GitHub Actions cache exporter errors', () => {
+  assert.match(deployWorkflowSource, /docker\/build-push-action@v6/);
+  assert.doesNotMatch(deployWorkflowSource, /cache-from:\s*type=gha/);
+  assert.doesNotMatch(deployWorkflowSource, /cache-to:\s*type=gha/);
 });
 
 test('App registers the console docs page behind a private route', () => {

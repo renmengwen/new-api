@@ -49,8 +49,6 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ghcr.io/renmengwen/new-api:${{ steps.tag.outputs.value }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   deploy_prod:
     if: github.ref_name == 'main'
