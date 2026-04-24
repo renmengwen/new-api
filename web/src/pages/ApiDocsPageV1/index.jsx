@@ -35,7 +35,7 @@ const ApiDocsPageV1 = () => {
   );
 
   return (
-    <div className='min-h-[calc(100vh-60px)] bg-[var(--semi-color-bg-0)]'>
+    <div className='min-h-[calc(100vh-64px)] bg-[var(--semi-color-bg-0)] pt-16'>
       <div className='mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-4 lg:px-6'>
         <div className='flex items-center justify-between gap-3 rounded-2xl border border-[var(--semi-color-border)] bg-[var(--semi-color-fill-0)] px-4 py-3'>
           <div className='min-w-0'>
@@ -56,10 +56,12 @@ const ApiDocsPageV1 = () => {
           )}
         </div>
 
-        <div className='flex gap-4'>
+        <div className='flex items-start gap-4'>
           {!isMobile && (
-            <aside className='w-[320px] shrink-0'>
-              <DocsSidebar activeDocId={doc.id} onSelectDoc={handleSelectDoc} />
+            <aside className='sticky top-[80px] w-[320px] shrink-0'>
+              <div className='max-h-[calc(100vh-96px)] overflow-y-auto pr-2 [scrollbar-color:var(--semi-color-fill-2)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--semi-color-fill-2)] [&::-webkit-scrollbar-track]:bg-transparent'>
+                <DocsSidebar activeDocId={doc.id} onSelectDoc={handleSelectDoc} />
+              </div>
             </aside>
           )}
 

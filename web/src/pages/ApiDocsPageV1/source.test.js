@@ -44,6 +44,21 @@ const pageSource = readSource(new URL('./index.jsx', import.meta.url));
 const sidebarSource = readSource(new URL('./DocsSidebar.jsx', import.meta.url));
 const contentSource = readSource(new URL('./DocContent.jsx', import.meta.url));
 
+const rawTextPlugin = {
+  name: 'raw-text',
+  setup(build) {
+    build.onResolve({ filter: /\?raw$/ }, (args) => ({
+      path: path.resolve(args.resolveDir, args.path.replace(/\?raw$/, '')),
+      namespace: 'raw-text',
+    }));
+
+    build.onLoad({ filter: /.*/, namespace: 'raw-text' }, (args) => ({
+      contents: `export default ${JSON.stringify(fs.readFileSync(args.path, 'utf8'))};`,
+      loader: 'js',
+    }));
+  },
+};
+
 const buildRenderedModule = async (entryUrl) => {
   const entryPath = fileURLToPath(entryUrl);
   const tempDir = fs.mkdtempSync(path.join(path.dirname(entryPath), '.tmp-doc-render-'));
@@ -56,6 +71,7 @@ const buildRenderedModule = async (entryUrl) => {
       format: 'esm',
       platform: 'node',
       outfile,
+      plugins: [rawTextPlugin],
       external: [
         'react',
         'react/jsx-runtime',
@@ -132,6 +148,9 @@ test('ApiDocsPageV1 doc display state switches between complete and placeholder 
   const placeholderState = getAiModelDocDisplayState(
     getAiModelDocById('unimplemented-files'),
   );
+  const markdownState = getAiModelDocDisplayState(
+    getAiModelDocById('videos-seedance'),
+  );
 
   assert.equal(audioState.kind, 'doc');
   assert.equal(chatState.kind, 'doc');
@@ -141,6 +160,9 @@ test('ApiDocsPageV1 doc display state switches between complete and placeholder 
   assert.equal(placeholderState.kind, 'placeholder');
   assert.match(placeholderState.message, /尚未补全|补充/);
   assert.equal(placeholderState.path, '/v1/files');
+
+  assert.equal(markdownState.kind, 'markdown');
+  assert.equal(markdownState.path, '/v1/video/generations');
 });
 
 test('placeholder catalog entries are marked consistently', () => {
@@ -168,6 +190,14 @@ test('DocsSidebar and index.jsx stay wired to the route helpers', () => {
   assert.match(pageSource, /resolveAiModelDocPageState/);
   assert.match(pageSource, /createAiModelDocSelectionHandler/);
   assert.match(pageSource, /if \(routeState\.shouldRedirect\)/);
+  assert.match(pageSource, /pt-16/);
+  assert.match(pageSource, /sticky top-\[80px\]/);
+  assert.match(pageSource, /max-h-\[calc\(100vh-96px\)\]/);
+  assert.match(pageSource, /\[scrollbar-width:thin\]/);
+  assert.match(pageSource, /\[&::-webkit-scrollbar\]:w-1\.5/);
+  assert.match(pageSource, /overflow-y-auto/);
+  assert.doesNotMatch(pageSource, /<aside className='[^']*overflow-y-auto/);
+  assert.doesNotMatch(pageSource, /<main className='[^']*overflow-y-auto/);
 
   assert.match(sidebarSource, /expandAiModelDocGroups/);
   assert.match(sidebarSource, /useEffect/);
@@ -237,12 +267,16 @@ test('DocContent renders full docs and placeholder panels differently', async ()
 
   const completeDoc = getAiModelDocById('chat-openai-chat-completions');
   const placeholderDoc = getAiModelDocById('videos-sora');
+  const markdownDoc = getAiModelDocById('videos-seedance');
 
   const completeHtml = renderToStaticMarkup(
     React.createElement(DocContent, { doc: completeDoc }),
   );
   const placeholderHtml = renderToStaticMarkup(
     React.createElement(DocContent, { doc: placeholderDoc }),
+  );
+  const markdownHtml = renderToStaticMarkup(
+    React.createElement(DocContent, { doc: markdownDoc }),
   );
 
   assert.match(completeHtml, new RegExp(completeDoc.title));
@@ -255,4 +289,8 @@ test('DocContent renders full docs and placeholder panels differently', async ()
   assert.doesNotMatch(placeholderHtml, /接口概览/);
   assert.doesNotMatch(placeholderHtml, /请求示例/);
   assert.doesNotMatch(placeholderHtml, /响应示例/);
+
+  assert.match(markdownHtml, /Seedance 视频任务接口文档/);
+  assert.match(markdownHtml, /POST \/v1\/video\/generations/);
+  assert.match(markdownHtml, /metadata\.input_video=true/);
 });
