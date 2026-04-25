@@ -38,6 +38,7 @@ import { useDataLoader } from '../../hooks/playground/useDataLoader';
 import {
   MESSAGE_ROLES,
   ERROR_MESSAGES,
+  API_ENDPOINTS,
 } from '../../constants/playground.constants';
 import {
   getLogo,
@@ -47,7 +48,9 @@ import {
   createLoadingAssistantMessage,
   getTextContent,
   buildApiPayload,
+  buildImageGenerationPayload,
   encodeToBase64,
+  isImageGenerationModel,
 } from '../../helpers';
 
 // Components
@@ -252,7 +255,17 @@ const Playground = () => {
           const newMessages = [...prevMessage, userMessage, loadingMessage];
 
           // 发送自定义请求体
-          sendRequest(customPayload, customPayload.stream !== false);
+          const endpoint =
+            isImageGenerationModel(customPayload.model) && customPayload.prompt
+              ? API_ENDPOINTS.IMAGE_GENERATIONS
+              : API_ENDPOINTS.CHAT_COMPLETIONS;
+
+          sendRequest(
+            customPayload,
+            endpoint === API_ENDPOINTS.CHAT_COMPLETIONS &&
+              customPayload.stream !== false,
+            endpoint,
+          );
 
           // 发送消息后保存，传入新消息列表
           setTimeout(() => saveMessagesImmediately(newMessages), 0);
@@ -265,6 +278,20 @@ const Playground = () => {
         Toast.error(ERROR_MESSAGES.JSON_PARSE_ERROR);
         return;
       }
+    }
+
+    if (isImageGenerationModel(inputs.model)) {
+      setMessage((prevMessage) => {
+        const newMessages = [...prevMessage, userMessage];
+        const payload = buildImageGenerationPayload(content, inputs);
+        sendRequest(payload, false, API_ENDPOINTS.IMAGE_GENERATIONS);
+
+        const messagesWithLoading = [...newMessages, loadingMessage];
+        setTimeout(() => saveMessagesImmediately(messagesWithLoading), 0);
+
+        return messagesWithLoading;
+      });
+      return;
     }
 
     // 默认模式

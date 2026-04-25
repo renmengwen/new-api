@@ -32,3 +32,4 @@ export * from './passkey';
 export * from './statusCodeRules';
 export * from './settingAudit';
 export * from './exportExcel';
+export * from './playgroundImage';

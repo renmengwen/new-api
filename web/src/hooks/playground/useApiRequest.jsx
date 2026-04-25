@@ -27,6 +27,7 @@ import {
 } from '../../constants/playground.constants';
 import {
   getUserIdFromLocalStorage,
+  buildImageResponseContent,
   handleApiError,
   processThinkTags,
   processIncompleteThinkTags,
@@ -173,9 +174,10 @@ export const useApiRequest = (
 
   // 非流式请求
   const handleNonStreamRequest = useCallback(
-    async (payload) => {
+    async (payload, endpoint = API_ENDPOINTS.CHAT_COMPLETIONS) => {
       setDebugData((prev) => ({
         ...prev,
+        endpoint,
         request: payload,
         timestamp: new Date().toISOString(),
         response: null,
@@ -185,7 +187,7 @@ export const useApiRequest = (
       setActiveDebugTab(DEBUG_TABS.REQUEST);
 
       try {
-        const response = await fetch(API_ENDPOINTS.CHAT_COMPLETIONS, {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -257,6 +259,27 @@ export const useApiRequest = (
             }
             return newMessages;
           });
+        } else if (Array.isArray(data.data)) {
+          const content = buildImageResponseContent(data.data);
+
+          setMessage((prevMessage) => {
+            const newMessages = [...prevMessage];
+            const lastMessage = newMessages[newMessages.length - 1];
+            if (lastMessage?.status === MESSAGE_STATUS.LOADING) {
+              const autoCollapseState = applyAutoCollapseLogic(
+                lastMessage,
+                true,
+              );
+
+              newMessages[newMessages.length - 1] = {
+                ...lastMessage,
+                content,
+                status: MESSAGE_STATUS.COMPLETE,
+                ...autoCollapseState,
+              };
+            }
+            return newMessages;
+          });
         }
       } catch (error) {
         console.error('Non-stream request error:', error);
@@ -290,9 +313,10 @@ export const useApiRequest = (
 
   // SSE请求
   const handleSSE = useCallback(
-    (payload) => {
+    (payload, endpoint = API_ENDPOINTS.CHAT_COMPLETIONS) => {
       setDebugData((prev) => ({
         ...prev,
+        endpoint,
         request: payload,
         timestamp: new Date().toISOString(),
         response: null,
@@ -301,7 +325,7 @@ export const useApiRequest = (
       }));
       setActiveDebugTab(DEBUG_TABS.REQUEST);
 
-      const source = new SSE(API_ENDPOINTS.CHAT_COMPLETIONS, {
+      const source = new SSE(endpoint, {
         headers: {
           'Content-Type': 'application/json',
           'New-Api-User': getUserIdFromLocalStorage(),
@@ -499,11 +523,11 @@ export const useApiRequest = (
 
   // 发送请求
   const sendRequest = useCallback(
-    (payload, isStream) => {
-      if (isStream) {
-        handleSSE(payload);
+    (payload, isStream, endpoint = API_ENDPOINTS.CHAT_COMPLETIONS) => {
+      if (isStream && endpoint === API_ENDPOINTS.CHAT_COMPLETIONS) {
+        handleSSE(payload, endpoint);
       } else {
-        handleNonStreamRequest(payload);
+        handleNonStreamRequest(payload, endpoint);
       }
     },
     [handleSSE, handleNonStreamRequest],
