@@ -176,6 +176,20 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.POST("/migrate_console_setting", controller.MigrateConsoleSetting) // 用于迁移检测的旧键，下个版本会删除
 		}
 
+		modelMonitorRoute := apiRouter.Group("/model_monitor")
+		modelMonitorRoute.Use(middleware.RootAuth())
+		{
+			modelMonitorRoute.GET("", controller.GetModelMonitor)
+			modelMonitorRoute.GET("/", controller.GetModelMonitor)
+			modelMonitorRoute.PUT("", controller.UpdateModelMonitorSetting)
+			modelMonitorRoute.PUT("/", controller.UpdateModelMonitorSetting)
+			modelMonitorRoute.PATCH("", controller.UpdateModelMonitorSetting)
+			modelMonitorRoute.PATCH("/", controller.UpdateModelMonitorSetting)
+			modelMonitorRoute.PUT("/settings", controller.UpdateModelMonitorSetting)
+			modelMonitorRoute.PATCH("/settings", controller.UpdateModelMonitorSetting)
+			modelMonitorRoute.POST("/test", controller.TestModelMonitor)
+		}
+
 		// Custom OAuth provider management (root only)
 		customOAuthRoute := apiRouter.Group("/custom-oauth-provider")
 		customOAuthRoute.Use(middleware.RootAuth())

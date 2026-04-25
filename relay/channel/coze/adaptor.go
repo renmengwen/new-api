@@ -87,6 +87,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *common.RelayInfo, requestBody 
 	c.Set("coze_chat_id", cozeResponse.Data.Id)
 	// 轮询检查消息是否完成
 	for {
+		if err := c.Request.Context().Err(); err != nil {
+			return nil, err
+		}
 		err, isComplete := checkIfChatComplete(a, c, info)
 		if err != nil {
 			return nil, err
@@ -95,7 +98,11 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *common.RelayInfo, requestBody 
 				break
 			}
 		}
-		time.Sleep(time.Second * 1)
+		select {
+		case <-time.After(time.Second):
+		case <-c.Request.Context().Done():
+			return nil, c.Request.Context().Err()
+		}
 	}
 	// 发送获取消息请求
 	return getChatDetail(a, c, info)

@@ -1,0 +1,674 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  Banner,
+  Button,
+  Card,
+  Col,
+  Form,
+  InputNumber,
+  Row,
+  Space,
+  Spin,
+  Switch,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+} from '@douyinfe/semi-ui';
+import { Play, RefreshCw, Save } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { API, showError, showSuccess } from '../../../helpers';
+import {
+  buildChannelTagDisplays,
+  buildModelOverrideSettings,
+  formatResponseTime,
+  getChannelStatusDisplay,
+  getModelOverride,
+  getModelStatusDisplay,
+  patternsToText,
+  textToPatterns,
+} from './modelMonitorDisplay';
+
+const { Text, Title } = Typography;
+
+const DEFAULT_SETTINGS = {
+  enabled: false,
+  interval_minutes: 10,
+  batch_size: 5,
+  default_timeout_seconds: 30,
+  failure_threshold: 3,
+  excluded_model_patterns: [],
+  model_overrides: {},
+};
+
+const DEFAULT_SUMMARY = {
+  total_models: 0,
+  healthy_models: 0,
+  partial_models: 0,
+  unavailable_models: 0,
+  skipped_models: 0,
+  total_channels: 0,
+  failed_channels: 0,
+};
+
+function normalizeBoolean(value) {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return Boolean(value);
+}
+
+function normalizeSettings(settings) {
+  const next = {
+    ...DEFAULT_SETTINGS,
+    ...(settings || {}),
+  };
+
+  return {
+    ...next,
+    enabled: normalizeBoolean(next.enabled),
+    interval_minutes:
+      Number(next.interval_minutes) || DEFAULT_SETTINGS.interval_minutes,
+    batch_size: Number(next.batch_size) || DEFAULT_SETTINGS.batch_size,
+    default_timeout_seconds:
+      Number(next.default_timeout_seconds) ||
+      DEFAULT_SETTINGS.default_timeout_seconds,
+    failure_threshold:
+      Number(next.failure_threshold) || DEFAULT_SETTINGS.failure_threshold,
+    excluded_model_patterns: Array.isArray(next.excluded_model_patterns)
+      ? next.excluded_model_patterns
+      : textToPatterns(next.excluded_model_patterns),
+    model_overrides:
+      next.model_overrides && typeof next.model_overrides === 'object'
+        ? next.model_overrides
+        : {},
+  };
+}
+
+function formatTestedAt(value) {
+  if (!value) return '-';
+  const numeric = Number(value);
+  const date = Number.isFinite(numeric)
+    ? new Date(numeric > 100000000000 ? numeric : numeric * 1000)
+    : new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+function getModelEnabled(settings, record) {
+  const override = getModelOverride(settings, record.model_name);
+  if (Object.prototype.hasOwnProperty.call(override, 'enabled')) {
+    return override.enabled !== false;
+  }
+  return record.enabled !== false;
+}
+
+function getModelTimeout(settings, record) {
+  const override = getModelOverride(settings, record.model_name);
+  return (
+    Number(override.timeout_seconds) ||
+    Number(record.timeout_seconds) ||
+    settings.default_timeout_seconds
+  );
+}
+
+function getModelChannels(record) {
+  return Array.isArray(record?.channels) ? record.channels : [];
+}
+
+function getChannelCount(record) {
+  return Number(record?.channel_count) || getModelChannels(record).length;
+}
+
+function getChannelStatusCounts(record) {
+  const channels = getModelChannels(record);
+  if (
+    record?.success_count !== undefined ||
+    record?.failed_count !== undefined ||
+    record?.skipped_count !== undefined
+  ) {
+    return {
+      success: Number(record.success_count) || 0,
+      failed: Number(record.failed_count) || 0,
+      skipped: Number(record.skipped_count) || 0,
+    };
+  }
+  return channels.reduce(
+    (counts, channel) => {
+      const status = getChannelStatusDisplay(channel.status).value;
+      if (status === 'success') {
+        counts.success += 1;
+      } else if (status === 'skipped') {
+        counts.skipped += 1;
+      } else {
+        counts.failed += 1;
+      }
+      return counts;
+    },
+    { success: 0, failed: 0, skipped: 0 },
+  );
+}
+
+export default function ModelMonitorCenter() {
+  const { t } = useTranslation();
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [summary, setSummary] = useState(DEFAULT_SUMMARY);
+  const [items, setItems] = useState([]);
+  const [excludedPatternsText, setExcludedPatternsText] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const formRef = useRef();
+
+  const fetchMonitorData = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    try {
+      const res = await API.get('/api/model_monitor');
+      const { success, message, data } = res.data;
+      if (!success) {
+        setLoadError(message || t('加载失败'));
+        showError(message || t('加载失败'));
+        return;
+      }
+
+      const nextSettings = normalizeSettings(data?.settings);
+      setSettings(nextSettings);
+      setExcludedPatternsText(
+        patternsToText(nextSettings.excluded_model_patterns),
+      );
+      setSummary({
+        ...DEFAULT_SUMMARY,
+        ...(data?.summary || {}),
+      });
+      setItems(Array.isArray(data?.items) ? data.items : []);
+    } catch (error) {
+      setLoadError(t('加载失败'));
+      showError(t('加载失败'));
+    } finally {
+      setLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    fetchMonitorData();
+  }, [fetchMonitorData]);
+
+  const modelRows = useMemo(
+    () =>
+      items.map((item) => ({
+        ...item,
+        key: item.model_name,
+      })),
+    [items],
+  );
+  const formValues = useMemo(
+    () => ({
+      ...settings,
+      excluded_model_patterns_text: excludedPatternsText,
+    }),
+    [settings, excludedPatternsText],
+  );
+
+  useEffect(() => {
+    if (formRef.current) {
+      formRef.current.setValues(formValues);
+    }
+  }, [formValues]);
+
+  const updateSetting = (key, value) => {
+    setSettings((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  const updateModelOverride = (modelName, patch) => {
+    setSettings((current) =>
+      buildModelOverrideSettings(current, modelName, patch),
+    );
+  };
+
+  const buildSettingsPayload = () => ({
+    ...settings,
+    excluded_model_patterns: textToPatterns(excludedPatternsText),
+  });
+
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      const payload = buildSettingsPayload();
+      const res = await API.put('/api/model_monitor/settings', payload);
+      const { success, message } = res.data;
+      if (!success) {
+        showError(message || t('保存失败，请重试'));
+        return;
+      }
+      showSuccess(t('保存成功'));
+      await fetchMonitorData();
+    } catch (error) {
+      showError(t('保存失败，请重试'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runManualTest = async () => {
+    setTesting(true);
+    try {
+      const res = await API.post('/api/model_monitor/test');
+      const { success, message } = res.data;
+      if (!success) {
+        showError(message || t('测试失败'));
+        return;
+      }
+      showSuccess(message || t('已触发手动测试'));
+      await fetchMonitorData();
+    } catch (error) {
+      showError(t('测试失败'));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const renderStatusTag = (status, enabled) => {
+    const display = getModelStatusDisplay(status, enabled);
+    return (
+      <Tag color={display.color} shape='circle'>
+        {t(display.label)}
+      </Tag>
+    );
+  };
+
+  const renderChannelTags = (channels) => {
+    const { visibleTags, restCount } = buildChannelTagDisplays(channels, 4);
+    if (!visibleTags.length) {
+      return <Text type='tertiary'>-</Text>;
+    }
+
+    return (
+      <Space wrap spacing={4}>
+        {visibleTags.map((tag) => (
+          <Tooltip key={tag.key} content={tag.title}>
+            <Tag color={tag.color} shape='circle'>
+              {tag.label}
+            </Tag>
+          </Tooltip>
+        ))}
+        {restCount > 0 && <Tag shape='circle'>{`+${restCount}`}</Tag>}
+      </Space>
+    );
+  };
+
+  const renderChannelDetails = (record) => {
+    const channels = Array.isArray(record.channels) ? record.channels : [];
+    const channelColumns = [
+      {
+        title: t('渠道'),
+        dataIndex: 'channel_name',
+        render: (value, channel) => (
+          <div className='flex flex-col'>
+            <Text strong>{value || `#${channel.channel_id}`}</Text>
+            <Text type='tertiary' size='small'>
+              {channel.channel_type || '-'}
+            </Text>
+          </div>
+        ),
+      },
+      {
+        title: t('测试结果'),
+        dataIndex: 'status',
+        render: (value) => {
+          const display = getChannelStatusDisplay(value);
+          return (
+            <Tag color={display.color} shape='circle'>
+              {t(display.label)}
+            </Tag>
+          );
+        },
+      },
+      {
+        title: t('响应时间'),
+        dataIndex: 'response_time_ms',
+        render: (value) => formatResponseTime(value),
+      },
+      {
+        title: t('连续失败'),
+        dataIndex: 'consecutive_failures',
+        render: (value) => value ?? 0,
+      },
+      {
+        title: t('测试时间'),
+        dataIndex: 'tested_at',
+        render: (value) => formatTestedAt(value),
+      },
+      {
+        title: t('错误信息'),
+        dataIndex: 'error_message',
+        render: (value) =>
+          value ? (
+            <Text type='danger' ellipsis={{ showTooltip: true }}>
+              {value}
+            </Text>
+          ) : (
+            <Text type='tertiary'>-</Text>
+          ),
+      },
+    ];
+
+    return (
+      <div style={{ padding: '8px 0 8px 28px' }}>
+        <Table
+          columns={channelColumns}
+          dataSource={channels.map((channel) => ({
+            ...channel,
+            key: `${record.model_name}-${channel.channel_id}`,
+          }))}
+          pagination={false}
+          size='small'
+          className='grid-bordered-table'
+        />
+      </div>
+    );
+  };
+
+  const summaryItems = [
+    { label: t('模型总数'), value: summary.total_models },
+    { label: t('正常模型'), value: summary.healthy_models, color: 'green' },
+    { label: t('部分异常'), value: summary.partial_models, color: 'yellow' },
+    { label: t('不可用'), value: summary.unavailable_models, color: 'red' },
+    { label: t('已跳过'), value: summary.skipped_models, color: 'grey' },
+    { label: t('渠道总数'), value: summary.total_channels },
+    { label: t('失败渠道'), value: summary.failed_channels, color: 'red' },
+  ];
+
+  const columns = [
+    {
+      title: t('模型名称'),
+      dataIndex: 'model_name',
+      width: 240,
+      fixed: 'left',
+      render: (value, record) => (
+        <div className='flex flex-col'>
+          <Text strong ellipsis={{ showTooltip: true }}>
+            {value}
+          </Text>
+          <Text type='tertiary' size='small'>
+            {t('所属渠道')} {getChannelCount(record)}
+          </Text>
+        </div>
+      ),
+    },
+    {
+      title: t('所属渠道'),
+      dataIndex: 'channels',
+      width: 260,
+      render: renderChannelTags,
+    },
+    {
+      title: t('状态'),
+      dataIndex: 'status',
+      width: 110,
+      render: (value, record) =>
+        renderStatusTag(value, getModelEnabled(settings, record)),
+    },
+    {
+      title: t('成功/失败'),
+      dataIndex: 'success_count',
+      width: 130,
+      render: (_, record) => {
+        const counts = getChannelStatusCounts(record);
+        return (
+          <Space spacing={4}>
+            <Tag color='green' shape='circle'>
+              {counts.success}
+            </Tag>
+            <Tag color='red' shape='circle'>
+              {counts.failed}
+            </Tag>
+            {counts.skipped > 0 && (
+              <Tag color='grey' shape='circle'>
+                {counts.skipped}
+              </Tag>
+            )}
+          </Space>
+        );
+      },
+    },
+    {
+      title: t('最长响应'),
+      dataIndex: 'timeout_seconds',
+      width: 170,
+      render: (_, record) => (
+        <Space spacing={6}>
+          <InputNumber
+            size='small'
+            min={1}
+            step={1}
+            value={getModelTimeout(settings, record)}
+            onChange={(value) =>
+              updateModelOverride(record.model_name, {
+                timeout_seconds:
+                  Number(value) || settings.default_timeout_seconds,
+              })
+            }
+            style={{ width: 96 }}
+          />
+          <Text type='tertiary'>{t('秒')}</Text>
+        </Space>
+      ),
+    },
+    {
+      title: t('定时测试'),
+      dataIndex: 'enabled',
+      width: 110,
+      render: (_, record) => (
+        <Switch
+          size='small'
+          checked={getModelEnabled(settings, record)}
+          checkedText='｜'
+          uncheckedText='〇'
+          onChange={(value) =>
+            updateModelOverride(record.model_name, {
+              enabled: value,
+            })
+          }
+        />
+      ),
+    },
+    {
+      title: t('操作'),
+      dataIndex: 'operate',
+      width: 110,
+      fixed: 'right',
+      render: () => (
+        <Button
+          size='small'
+          type='tertiary'
+          onClick={saveSettings}
+          loading={saving}
+        >
+          {t('保存')}
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <Spin spinning={loading} size='large'>
+      <Card style={{ marginTop: '10px' }}>
+        <div className='flex flex-col gap-3'>
+          <div className='flex flex-col md:flex-row md:items-center md:justify-between gap-2'>
+            <div>
+              <Title heading={5} style={{ margin: 0 }}>
+                {t('模型监控')}
+              </Title>
+              <Text type='tertiary'>
+                {t('按模型聚合展示各所属渠道的最近测试结果')}
+              </Text>
+            </div>
+            <Space wrap>
+              <Button
+                icon={<RefreshCw size={16} />}
+                onClick={fetchMonitorData}
+                loading={loading}
+              >
+                {t('刷新')}
+              </Button>
+              <Button
+                type='primary'
+                icon={<Play size={16} />}
+                onClick={runManualTest}
+                loading={testing}
+              >
+                {t('手动测试')}
+              </Button>
+              <Button
+                icon={<Save size={16} />}
+                onClick={saveSettings}
+                loading={saving}
+              >
+                {t('保存设置')}
+              </Button>
+            </Space>
+          </div>
+
+          {loadError && <Banner type='warning' description={loadError} />}
+
+          <Form
+            values={formValues}
+            getFormApi={(formAPI) => (formRef.current = formAPI)}
+          >
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={6}>
+                <Form.Switch
+                  field='enabled'
+                  label={t('启用模型监控')}
+                  checkedText='｜'
+                  uncheckedText='〇'
+                  onChange={(value) => updateSetting('enabled', value)}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={6}>
+                <Form.InputNumber
+                  field='interval_minutes'
+                  label={t('测试间隔')}
+                  min={1}
+                  step={1}
+                  suffix={t('分钟')}
+                  onChange={(value) =>
+                    updateSetting('interval_minutes', Number(value) || 1)
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={6}>
+                <Form.InputNumber
+                  field='batch_size'
+                  label={t('批量大小')}
+                  min={1}
+                  step={1}
+                  onChange={(value) =>
+                    updateSetting('batch_size', Number(value) || 1)
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={6}>
+                <Form.InputNumber
+                  field='default_timeout_seconds'
+                  label={t('默认最长响应')}
+                  min={1}
+                  step={1}
+                  suffix={t('秒')}
+                  onChange={(value) =>
+                    updateSetting('default_timeout_seconds', Number(value) || 1)
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={6}>
+                <Form.InputNumber
+                  field='failure_threshold'
+                  label={t('失败阈值')}
+                  min={1}
+                  step={1}
+                  onChange={(value) =>
+                    updateSetting('failure_threshold', Number(value) || 1)
+                  }
+                />
+              </Col>
+              <Col xs={24} md={16} lg={18}>
+                <Form.TextArea
+                  field='excluded_model_patterns_text'
+                  label={t('排除模型规则')}
+                  placeholder={t('一行一个或用逗号分隔，例如：*image*')}
+                  autosize={{ minRows: 2, maxRows: 5 }}
+                  onChange={setExcludedPatternsText}
+                />
+              </Col>
+            </Row>
+          </Form>
+        </div>
+      </Card>
+
+      <Card style={{ marginTop: '10px' }}>
+        <div className='flex flex-col gap-3'>
+          <Space wrap>
+            {summaryItems.map((item) => (
+              <Tag
+                key={item.label}
+                color={item.color}
+                shape='circle'
+                style={{ padding: '6px 10px' }}
+              >
+                {item.label}: {item.value ?? 0}
+              </Tag>
+            ))}
+          </Space>
+
+          <Table
+            columns={columns}
+            dataSource={modelRows}
+            rowKey='model_name'
+            expandedRowRender={renderChannelDetails}
+            rowExpandable={(record) =>
+              Array.isArray(record.channels) && record.channels.length > 0
+            }
+            expandRowByClick
+            pagination={{
+              pageSize: 20,
+              showSizeChanger: true,
+              pageSizeOptions: [10, 20, 50, 100],
+            }}
+            size='small'
+            scroll={{ x: 'max-content' }}
+            className='grid-bordered-table'
+          />
+        </div>
+      </Card>
+    </Spin>
+  );
+}

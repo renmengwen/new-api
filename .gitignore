@@ -31,3 +31,4 @@ tmp/
 .gomodcache/
 .gocache-temp
 .gopath
+.codex-go-build/
