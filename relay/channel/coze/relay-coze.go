@@ -218,7 +218,7 @@ func checkIfChatComplete(a *Adaptor, c *gin.Context, info *relaycommon.RelayInfo
 
 	requestURL = requestURL + "?conversation_id=" + c.GetString("coze_conversation_id") + "&chat_id=" + c.GetString("coze_chat_id")
 	// 将 conversationId和chatId作为参数发送get请求
-	req, err := http.NewRequest("GET", requestURL, nil)
+	req, err := http.NewRequestWithContext(c.Request.Context(), "GET", requestURL, nil)
 	if err != nil {
 		return err, false
 	}
@@ -263,7 +263,7 @@ func getChatDetail(a *Adaptor, c *gin.Context, info *relaycommon.RelayInfo) (*ht
 	requestURL := fmt.Sprintf("%s/v3/chat/message/list", info.ChannelBaseUrl)
 
 	requestURL = requestURL + "?conversation_id=" + c.GetString("coze_conversation_id") + "&chat_id=" + c.GetString("coze_chat_id")
-	req, err := http.NewRequest("GET", requestURL, nil)
+	req, err := http.NewRequestWithContext(c.Request.Context(), "GET", requestURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
@@ -288,6 +288,9 @@ func doRequest(req *http.Request, info *relaycommon.RelayInfo) (*http.Response, 
 		}
 	} else {
 		client = service.GetHttpClient()
+		if client == nil {
+			client = http.DefaultClient
+		}
 	}
 	resp, err := client.Do(req)
 	if err != nil { // 增加对 client.Do(req) 返回错误的检查

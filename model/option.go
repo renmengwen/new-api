@@ -715,6 +715,12 @@ func handleConfigUpdate(key, value string) bool {
 	configMap := map[string]string{
 		configKey: value,
 	}
+	if configName == "model_monitor_setting" {
+		if err := operation_setting.UpdateModelMonitorSettingFromMap(configMap); err != nil {
+			common.SysError("failed to update model monitor setting: " + err.Error())
+		}
+		return true
+	}
 	config.UpdateConfigFromMap(cfg, configMap)
 
 	// 特定配置的后处理
