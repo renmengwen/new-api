@@ -1,13 +1,14 @@
 package dto
 
 type ModelMonitorSettingsUpdateRequest struct {
-	Enabled               bool                                    `json:"enabled"`
-	IntervalMinutes       int                                     `json:"interval_minutes"`
-	BatchSize             int                                     `json:"batch_size"`
-	DefaultTimeoutSeconds int                                     `json:"default_timeout_seconds"`
-	FailureThreshold      int                                     `json:"failure_threshold"`
-	ExcludedModelPatterns []string                                `json:"excluded_model_patterns"`
-	ModelOverrides        map[string]ModelMonitorModelOverrideDTO `json:"model_overrides"`
+	Enabled                     bool                                    `json:"enabled"`
+	IntervalMinutes             int                                     `json:"interval_minutes"`
+	BatchSize                   int                                     `json:"batch_size"`
+	DefaultTimeoutSeconds       int                                     `json:"default_timeout_seconds"`
+	FailureThreshold            int                                     `json:"failure_threshold"`
+	ExcludedModelPatterns       []string                                `json:"excluded_model_patterns"`
+	ModelOverrides              map[string]ModelMonitorModelOverrideDTO `json:"model_overrides"`
+	NotificationDisabledUserIds []int                                   `json:"notification_disabled_user_ids"`
 }
 
 type ModelMonitorModelOverrideDTO struct {
@@ -20,6 +21,18 @@ type ModelMonitorResponse struct {
 	Summary  ModelMonitorSummary               `json:"summary"`
 	Items    []ModelMonitorItem                `json:"items"`
 	Running  bool                              `json:"running"`
+}
+
+type ModelMonitorNotificationUser struct {
+	Id                  int    `json:"id"`
+	Username            string `json:"username"`
+	DisplayName         string `json:"display_name"`
+	Email               string `json:"email"`
+	Role                int    `json:"role"`
+	UserType            string `json:"user_type"`
+	CanReceive          bool   `json:"can_receive"`
+	DisabledReason      string `json:"disabled_reason,omitempty"`
+	NotificationEnabled bool   `json:"notification_enabled"`
 }
 
 type ModelMonitorSummary struct {

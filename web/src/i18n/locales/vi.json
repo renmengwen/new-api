@@ -3889,6 +3889,13 @@
     "自然周同比 新增": "WoW theo tuần dương lịch: mới",
     "自然周同比 -": "WoW theo tuần dương lịch -",
     "自然周同比": "WoW theo tuần dương lịch",
-    "自然周同比仅在近7天展示": "WoW theo tuần dương lịch chỉ hiển thị trong 7 ngày gần nhất"
+    "自然周同比仅在近7天展示": "WoW theo tuần dương lịch chỉ hiển thị trong 7 ngày gần nhất",
+    "通知人管理": "Quản lý người nhận",
+    "接收通知": "Nhận thông báo",
+    "接收": "Nhận",
+    "不可接收": "Không thể nhận",
+    "未配置邮箱": "Chưa cấu hình email",
+    "无模型监控查看权限": "Không có quyền xem giám sát mô hình",
+    "取消勾选后，模型失败邮件不会发送给对应管理员。": "Sau khi bỏ chọn, email lỗi mô hình sẽ không được gửi cho quản trị viên tương ứng."
   }
 }

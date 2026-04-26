@@ -181,6 +181,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			modelMonitorRoute.GET("", controller.GetModelMonitor)
 			modelMonitorRoute.GET("/", controller.GetModelMonitor)
+			modelMonitorRoute.GET("/notification-users", controller.GetModelMonitorNotificationUsers)
 			modelMonitorRoute.PUT("", controller.UpdateModelMonitorSetting)
 			modelMonitorRoute.PUT("/", controller.UpdateModelMonitorSetting)
 			modelMonitorRoute.PATCH("", controller.UpdateModelMonitorSetting)
