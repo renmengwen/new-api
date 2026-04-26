@@ -700,7 +700,8 @@ export default function ModelMonitorCenter() {
   ];
 
   return (
-    <Spin spinning={permissionLoading || loading} size='large'>
+    <div className='mt-[60px] px-2'>
+      <Spin spinning={permissionLoading || loading} size='large'>
       {!permissionLoading && !canRead && (
         <Banner
           style={{ marginTop: '10px' }}
@@ -870,6 +871,7 @@ export default function ModelMonitorCenter() {
           </Card>
         </>
       )}
-    </Spin>
+      </Spin>
+    </div>
   );
 }
