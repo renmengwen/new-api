@@ -2149,6 +2149,7 @@
     "点击复制ID": "Click to copy ID",
     "点击复制模型名称": "Nhấp để sao chép tên mô hình",
     "点击复制渠道名称": "Nhấp để sao chép tên kênh",
+    "该模型已命中排除规则，无法单独开启定时测试": "Mô hình này khớp với quy tắc loại trừ nên không thể bật kiểm tra định kỳ riêng lẻ",
     "点击查看": "Nhấp để xem",
     "点击查看差异": "Nhấp để xem sự khác biệt",
     "点击查看详细错误信息": "Nhấp để xem thông tin lỗi chi tiết",

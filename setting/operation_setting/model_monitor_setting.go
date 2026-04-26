@@ -128,11 +128,11 @@ func (s *ModelMonitorSetting) ModelEnabled(modelName string) bool {
 		return false
 	}
 	s.Normalize()
-	if override, ok := s.modelOverride(modelName); ok && override.Enabled != nil {
-		return *override.Enabled
-	}
 	if s.modelExcluded(modelName) {
 		return false
+	}
+	if override, ok := s.modelOverride(modelName); ok && override.Enabled != nil {
+		return *override.Enabled
 	}
 	return strings.TrimSpace(modelName) != ""
 }

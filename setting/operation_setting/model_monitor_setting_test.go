@@ -32,8 +32,9 @@ func TestModelMonitorSettingModelEnabledAndTimeoutOverrides(t *testing.T) {
 		FailureThreshold:      3,
 		ExcludedModelPatterns: []string{"legacy-*", "exact-skip"},
 		ModelOverrides: map[string]ModelMonitorModelOverride{
-			"gpt-4o": {Enabled: &disabled, TimeoutSeconds: 12},
-			"o3-*":   {Enabled: &enabled, TimeoutSeconds: 45},
+			"gpt-4o":      {Enabled: &disabled, TimeoutSeconds: 12},
+			"legacy-chat": {Enabled: &enabled, TimeoutSeconds: 60},
+			"o3-*":        {Enabled: &enabled, TimeoutSeconds: 45},
 		},
 	}
 

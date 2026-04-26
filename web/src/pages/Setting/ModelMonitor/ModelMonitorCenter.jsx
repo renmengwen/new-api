@@ -50,9 +50,11 @@ import {
   formatResponseTime,
   getChannelCopyText,
   getChannelStatusDisplay,
+  getEffectiveModelEnabled,
   getModelCopyText,
   getModelOverride,
   getModelStatusDisplay,
+  isModelExcludedByPatterns,
   patternsToText,
   textToPatterns,
 } from './modelMonitorDisplay';
@@ -123,11 +125,7 @@ function formatTestedAt(value) {
 }
 
 function getModelEnabled(settings, record) {
-  const override = getModelOverride(settings, record.model_name);
-  if (Object.prototype.hasOwnProperty.call(override, 'enabled')) {
-    return override.enabled !== false;
-  }
-  return record.enabled !== false;
+  return getEffectiveModelEnabled(settings, record);
 }
 
 function getModelTimeout(settings, record) {
@@ -288,6 +286,13 @@ export default function ModelMonitorCenter() {
     () => ({
       ...settings,
       excluded_model_patterns_text: excludedPatternsText,
+    }),
+    [settings, excludedPatternsText],
+  );
+  const displaySettings = useMemo(
+    () => ({
+      ...settings,
+      excluded_model_patterns: textToPatterns(excludedPatternsText),
     }),
     [settings, excludedPatternsText],
   );
@@ -593,7 +598,7 @@ export default function ModelMonitorCenter() {
       dataIndex: 'status',
       width: 110,
       render: (value, record) =>
-        renderStatusTag(value, getModelEnabled(settings, record)),
+        renderStatusTag(value, getModelEnabled(displaySettings, record)),
     },
     {
       title: t('成功/失败'),
@@ -646,20 +651,34 @@ export default function ModelMonitorCenter() {
       title: t('定时测试'),
       dataIndex: 'enabled',
       width: 110,
-      render: (_, record) => (
-        <Switch
-          size='small'
-          checked={getModelEnabled(settings, record)}
-          checkedText='｜'
-          uncheckedText='〇'
-          disabled={!canUpdate}
-          onChange={(value) =>
-            updateModelOverride(record.model_name, {
-              enabled: value,
-            })
-          }
-        />
-      ),
+      render: (_, record) => {
+        const excluded = isModelExcludedByPatterns(
+          displaySettings,
+          record.model_name,
+        );
+        const switchNode = (
+          <Switch
+            size='small'
+            checked={getModelEnabled(displaySettings, record)}
+            checkedText='｜'
+            uncheckedText='〇'
+            disabled={!canUpdate || excluded}
+            onChange={(value) =>
+              updateModelOverride(record.model_name, {
+                enabled: value,
+              })
+            }
+          />
+        );
+        if (!excluded) {
+          return switchNode;
+        }
+        return (
+          <Tooltip content={t('该模型已命中排除规则，无法单独开启定时测试')}>
+            <span>{switchNode}</span>
+          </Tooltip>
+        );
+      },
     },
     {
       title: t('操作'),

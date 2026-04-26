@@ -170,6 +170,64 @@ export function getModelOverride(settings, modelName) {
   return override && typeof override === 'object' ? { ...override } : {};
 }
 
+export function modelMonitorPatternMatches(pattern, modelName) {
+  const normalizedPattern = String(pattern || '').trim();
+  const value = String(modelName || '');
+  if (!normalizedPattern) {
+    return false;
+  }
+  if (normalizedPattern === value) {
+    return true;
+  }
+  if (!normalizedPattern.includes('*')) {
+    return false;
+  }
+
+  const parts = normalizedPattern.split('*');
+  let position = 0;
+  if (parts[0] !== '') {
+    if (!value.startsWith(parts[0])) {
+      return false;
+    }
+    position = parts[0].length;
+  }
+
+  const lastIndex = parts.length - 1;
+  for (let index = 1; index < lastIndex; index += 1) {
+    const part = parts[index];
+    if (part === '') {
+      continue;
+    }
+    const nextPosition = value.indexOf(part, position);
+    if (nextPosition < 0) {
+      return false;
+    }
+    position = nextPosition + part.length;
+  }
+
+  const lastPart = parts[lastIndex];
+  return lastPart === '' || value.slice(position).endsWith(lastPart);
+}
+
+export function isModelExcludedByPatterns(settings, modelName) {
+  const patterns = Array.isArray(settings?.excluded_model_patterns)
+    ? settings.excluded_model_patterns
+    : textToPatterns(settings?.excluded_model_patterns);
+  return patterns.some((pattern) => modelMonitorPatternMatches(pattern, modelName));
+}
+
+export function getEffectiveModelEnabled(settings, record) {
+  const modelName = record?.model_name || '';
+  if (isModelExcludedByPatterns(settings, modelName)) {
+    return false;
+  }
+  const override = getModelOverride(settings, modelName);
+  if (Object.prototype.hasOwnProperty.call(override, 'enabled')) {
+    return override.enabled !== false;
+  }
+  return record?.enabled !== false;
+}
+
 export function buildModelOverrideSettings(settings, modelName, patch) {
   return {
     ...(settings || {}),

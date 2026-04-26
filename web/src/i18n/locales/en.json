@@ -2054,6 +2054,7 @@
     "点击复制ID": "Click to copy ID",
     "点击复制模型名称": "Click to copy model name",
     "点击复制渠道名称": "Click to copy channel name",
+    "该模型已命中排除规则，无法单独开启定时测试": "This model matches an exclusion rule and cannot enable scheduled testing individually",
     "点击查看差异": "Click to view differences",
     "点击此处": "click here",
     "点击预览视频": "Click to preview video",

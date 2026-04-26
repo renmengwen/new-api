@@ -25,7 +25,11 @@ import { fileURLToPath } from 'node:url';
 
 const localeDir = join(dirname(fileURLToPath(import.meta.url)), 'locales');
 
-const requiredModelMonitorCopyKeys = ['点击复制渠道名称', '已复制渠道名称'];
+const requiredModelMonitorCopyKeys = [
+  '点击复制渠道名称',
+  '已复制渠道名称',
+  '该模型已命中排除规则，无法单独开启定时测试',
+];
 
 test('all locales include model monitor channel copy keys', () => {
   const localeFiles = readdirSync(localeDir).filter((file) =>

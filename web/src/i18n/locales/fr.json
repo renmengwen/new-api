@@ -2034,6 +2034,7 @@
     "点击复制ID": "Click to copy ID",
     "点击复制模型名称": "Cliquez pour copier le nom du modèle",
     "点击复制渠道名称": "Cliquez pour copier le nom du canal",
+    "该模型已命中排除规则，无法单独开启定时测试": "Ce modèle correspond à une règle d'exclusion et ne peut pas activer le test planifié individuellement",
     "点击查看差异": "Cliquez pour voir les différences",
     "点击此处": "cliquez ici",
     "点击预览视频": "Cliquez pour prévisualiser la vidéo",

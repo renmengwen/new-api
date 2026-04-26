@@ -24,9 +24,11 @@ import {
   buildChannelTagDisplays,
   getChannelCopyText,
   getChannelStatusDisplay,
+  getEffectiveModelEnabled,
   getModelCopyText,
   getModelOverride,
   getModelStatusDisplay,
+  isModelExcludedByPatterns,
   textToPatterns,
 } from './modelMonitorDisplay.js';
 
@@ -116,6 +118,27 @@ test('textToPatterns accepts comma and newline separated excluded patterns', () 
     '*video*',
     'realtime*',
   ]);
+});
+
+test('excluded model patterns force scheduled testing off', () => {
+  const settings = {
+    excluded_model_patterns: ['legacy-*', '*image*'],
+    model_overrides: {
+      'legacy-chat': {
+        enabled: true,
+      },
+    },
+  };
+
+  assert.equal(isModelExcludedByPatterns(settings, 'legacy-chat'), true);
+  assert.equal(isModelExcludedByPatterns(settings, 'openai/gpt-image-1'), true);
+  assert.equal(
+    getEffectiveModelEnabled(settings, {
+      model_name: 'legacy-chat',
+      enabled: true,
+    }),
+    false,
+  );
 });
 
 test('copy text helpers return stable model and channel labels', () => {
