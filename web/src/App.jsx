@@ -48,6 +48,7 @@ const Pricing = lazy(() => import('./pages/Pricing'));
 const Task = lazy(() => import('./pages/Task'));
 const ModelPage = lazy(() => import('./pages/Model'));
 const ModelDeploymentPage = lazy(() => import('./pages/ModelDeployment'));
+const ModelMonitorPage = lazy(() => import('./pages/Setting/ModelMonitor/ModelMonitorCenter'));
 const Playground = lazy(() => import('./pages/Playground'));
 const Subscription = lazy(() => import('./pages/Subscription'));
 const OAuth2Callback = lazy(() => import('./components/auth/OAuth2Callback'));
@@ -316,6 +317,16 @@ function App() {
             <AdminRoute>
               <Suspense fallback={<Loading></Loading>} key={location.pathname}>
                 <Setting />
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/model-monitor'
+          element={
+            <AdminRoute>
+              <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <ModelMonitorPage />
               </Suspense>
             </AdminRoute>
           }

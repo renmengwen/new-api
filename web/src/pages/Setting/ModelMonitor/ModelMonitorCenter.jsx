@@ -43,13 +43,18 @@ import {
 import { Play, RefreshCw, Save } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../../helpers';
+import { useUserPermissions } from '../../../hooks/common/useUserPermissions';
 import {
   buildChannelTagDisplays,
   buildModelOverrideSettings,
   formatResponseTime,
+  getChannelCopyText,
   getChannelStatusDisplay,
+  getEffectiveModelEnabled,
+  getModelCopyText,
   getModelOverride,
   getModelStatusDisplay,
+  isModelExcludedByPatterns,
   patternsToText,
   textToPatterns,
 } from './modelMonitorDisplay';
@@ -120,11 +125,7 @@ function formatTestedAt(value) {
 }
 
 function getModelEnabled(settings, record) {
-  const override = getModelOverride(settings, record.model_name);
-  if (Object.prototype.hasOwnProperty.call(override, 'enabled')) {
-    return override.enabled !== false;
-  }
-  return record.enabled !== false;
+  return getEffectiveModelEnabled(settings, record);
 }
 
 function getModelTimeout(settings, record) {
@@ -173,8 +174,42 @@ function getChannelStatusCounts(record) {
   );
 }
 
+async function writeClipboardText(text) {
+  const value = String(text || '').trim();
+  if (!value) {
+    return false;
+  }
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch (error) {
+      // Fall through to the textarea fallback for browsers without clipboard permission.
+    }
+  }
+  if (typeof document === 'undefined') {
+    return false;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    return document.execCommand('copy');
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 export default function ModelMonitorCenter() {
   const { t } = useTranslation();
+  const {
+    loading: permissionLoading,
+    hasActionPermission,
+  } = useUserPermissions();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -185,8 +220,30 @@ export default function ModelMonitorCenter() {
   const [loadError, setLoadError] = useState('');
   const formRef = useRef();
 
-  const fetchMonitorData = useCallback(async () => {
-    setLoading(true);
+  const canRead = hasActionPermission('model_monitor_management', 'read');
+  const canUpdate = hasActionPermission('model_monitor_management', 'update');
+  const canTest = hasActionPermission('model_monitor_management', 'test');
+
+  const applyMonitorData = useCallback((data) => {
+    const nextSettings = normalizeSettings(data?.settings);
+    setSettings(nextSettings);
+    setExcludedPatternsText(
+      patternsToText(nextSettings.excluded_model_patterns),
+    );
+    setSummary({
+      ...DEFAULT_SUMMARY,
+      ...(data?.summary || {}),
+    });
+    setItems(Array.isArray(data?.items) ? data.items : []);
+  }, []);
+
+  const fetchMonitorData = useCallback(async ({ showLoading = true } = {}) => {
+    if (!canRead) {
+      return null;
+    }
+    if (showLoading) {
+      setLoading(true);
+    }
     setLoadError('');
     try {
       const res = await API.get('/api/model_monitor');
@@ -194,30 +251,28 @@ export default function ModelMonitorCenter() {
       if (!success) {
         setLoadError(message || t('加载失败'));
         showError(message || t('加载失败'));
-        return;
+        return null;
       }
 
-      const nextSettings = normalizeSettings(data?.settings);
-      setSettings(nextSettings);
-      setExcludedPatternsText(
-        patternsToText(nextSettings.excluded_model_patterns),
-      );
-      setSummary({
-        ...DEFAULT_SUMMARY,
-        ...(data?.summary || {}),
-      });
-      setItems(Array.isArray(data?.items) ? data.items : []);
+      applyMonitorData(data);
+      return data;
     } catch (error) {
       setLoadError(t('加载失败'));
       showError(t('加载失败'));
+      return null;
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
-  }, [t]);
+  }, [applyMonitorData, canRead, t]);
 
   useEffect(() => {
+    if (permissionLoading || !canRead) {
+      return;
+    }
     fetchMonitorData();
-  }, [fetchMonitorData]);
+  }, [canRead, fetchMonitorData, permissionLoading]);
 
   const modelRows = useMemo(
     () =>
@@ -231,6 +286,13 @@ export default function ModelMonitorCenter() {
     () => ({
       ...settings,
       excluded_model_patterns_text: excludedPatternsText,
+    }),
+    [settings, excludedPatternsText],
+  );
+  const displaySettings = useMemo(
+    () => ({
+      ...settings,
+      excluded_model_patterns: textToPatterns(excludedPatternsText),
     }),
     [settings, excludedPatternsText],
   );
@@ -260,6 +322,10 @@ export default function ModelMonitorCenter() {
   });
 
   const saveSettings = async () => {
+    if (!canUpdate) {
+      showError(t('您无权访问此页面，请联系管理员'));
+      return;
+    }
     setSaving(true);
     try {
       const payload = buildSettingsPayload();
@@ -278,23 +344,61 @@ export default function ModelMonitorCenter() {
     }
   };
 
+  const waitForManualTestResult = useCallback(async () => {
+    const maxAttempts = 120;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const data = await fetchMonitorData({ showLoading: false });
+      if (!data?.running) {
+        return;
+      }
+    }
+  }, [fetchMonitorData]);
+
   const runManualTest = async () => {
+    if (!canTest) {
+      showError(t('您无权访问此页面，请联系管理员'));
+      return;
+    }
     setTesting(true);
     try {
       const res = await API.post('/api/model_monitor/test');
-      const { success, message } = res.data;
+      const { success, message, data } = res.data;
       if (!success) {
         showError(message || t('测试失败'));
         return;
       }
+      if (data) {
+        applyMonitorData(data);
+      }
       showSuccess(message || t('已触发手动测试'));
-      await fetchMonitorData();
+      if (data?.running !== false) {
+        await waitForManualTestResult();
+      } else {
+        await fetchMonitorData({ showLoading: false });
+      }
     } catch (error) {
       showError(t('测试失败'));
     } finally {
       setTesting(false);
     }
   };
+
+  const copyMonitorText = useCallback(
+    async (text, successMessage) => {
+      try {
+        const copied = await writeClipboardText(text);
+        if (!copied) {
+          showError(t('复制失败'));
+          return;
+        }
+        showSuccess(successMessage);
+      } catch (error) {
+        showError(t('复制失败'));
+      }
+    },
+    [t],
+  );
 
   const renderStatusTag = (status, enabled) => {
     const display = getModelStatusDisplay(status, enabled);
@@ -314,8 +418,19 @@ export default function ModelMonitorCenter() {
     return (
       <Space wrap spacing={4}>
         {visibleTags.map((tag) => (
-          <Tooltip key={tag.key} content={tag.title}>
-            <Tag color={tag.color} shape='circle'>
+          <Tooltip
+            key={tag.key}
+            content={`${tag.title} · ${t('点击复制渠道名称')}`}
+          >
+            <Tag
+              color={tag.color}
+              shape='circle'
+              onClick={(event) => {
+                event.stopPropagation();
+                copyMonitorText(tag.copyText, t('已复制渠道名称'));
+              }}
+              style={{ cursor: 'pointer' }}
+            >
               {tag.label}
             </Tag>
           </Tooltip>
@@ -333,7 +448,33 @@ export default function ModelMonitorCenter() {
         dataIndex: 'channel_name',
         render: (value, channel) => (
           <div className='flex flex-col'>
-            <Text strong>{value || `#${channel.channel_id}`}</Text>
+            <Tooltip content={t('点击复制渠道名称')}>
+              <Text
+                strong
+                role='button'
+                tabIndex={0}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  copyMonitorText(
+                    getChannelCopyText(channel),
+                    t('已复制渠道名称'),
+                  );
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    copyMonitorText(
+                      getChannelCopyText(channel),
+                      t('已复制渠道名称'),
+                    );
+                  }
+                }}
+                style={{ cursor: 'pointer' }}
+              >
+                {value || `#${channel.channel_id}`}
+              </Text>
+            </Tooltip>
             <Text type='tertiary' size='small'>
               {channel.channel_type || '-'}
             </Text>
@@ -415,9 +556,31 @@ export default function ModelMonitorCenter() {
       fixed: 'left',
       render: (value, record) => (
         <div className='flex flex-col'>
-          <Text strong ellipsis={{ showTooltip: true }}>
-            {value}
-          </Text>
+          <Tooltip content={t('点击复制模型名称')}>
+            <Text
+              strong
+              ellipsis={{ showTooltip: true }}
+              role='button'
+              tabIndex={0}
+              onClick={(event) => {
+                event.stopPropagation();
+                copyMonitorText(getModelCopyText(record), t('已复制模型名称'));
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  copyMonitorText(
+                    getModelCopyText(record),
+                    t('已复制模型名称'),
+                  );
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            >
+              {value}
+            </Text>
+          </Tooltip>
           <Text type='tertiary' size='small'>
             {t('所属渠道')} {getChannelCount(record)}
           </Text>
@@ -435,7 +598,7 @@ export default function ModelMonitorCenter() {
       dataIndex: 'status',
       width: 110,
       render: (value, record) =>
-        renderStatusTag(value, getModelEnabled(settings, record)),
+        renderStatusTag(value, getModelEnabled(displaySettings, record)),
     },
     {
       title: t('成功/失败'),
@@ -471,6 +634,7 @@ export default function ModelMonitorCenter() {
             min={1}
             step={1}
             value={getModelTimeout(settings, record)}
+            disabled={!canUpdate}
             onChange={(value) =>
               updateModelOverride(record.model_name, {
                 timeout_seconds:
@@ -487,19 +651,34 @@ export default function ModelMonitorCenter() {
       title: t('定时测试'),
       dataIndex: 'enabled',
       width: 110,
-      render: (_, record) => (
-        <Switch
-          size='small'
-          checked={getModelEnabled(settings, record)}
-          checkedText='｜'
-          uncheckedText='〇'
-          onChange={(value) =>
-            updateModelOverride(record.model_name, {
-              enabled: value,
-            })
-          }
-        />
-      ),
+      render: (_, record) => {
+        const excluded = isModelExcludedByPatterns(
+          displaySettings,
+          record.model_name,
+        );
+        const switchNode = (
+          <Switch
+            size='small'
+            checked={getModelEnabled(displaySettings, record)}
+            checkedText='｜'
+            uncheckedText='〇'
+            disabled={!canUpdate || excluded}
+            onChange={(value) =>
+              updateModelOverride(record.model_name, {
+                enabled: value,
+              })
+            }
+          />
+        );
+        if (!excluded) {
+          return switchNode;
+        }
+        return (
+          <Tooltip content={t('该模型已命中排除规则，无法单独开启定时测试')}>
+            <span>{switchNode}</span>
+          </Tooltip>
+        );
+      },
     },
     {
       title: t('操作'),
@@ -512,6 +691,7 @@ export default function ModelMonitorCenter() {
           type='tertiary'
           onClick={saveSettings}
           loading={saving}
+          disabled={!canUpdate}
         >
           {t('保存')}
         </Button>
@@ -520,155 +700,178 @@ export default function ModelMonitorCenter() {
   ];
 
   return (
-    <Spin spinning={loading} size='large'>
-      <Card style={{ marginTop: '10px' }}>
-        <div className='flex flex-col gap-3'>
-          <div className='flex flex-col md:flex-row md:items-center md:justify-between gap-2'>
-            <div>
-              <Title heading={5} style={{ margin: 0 }}>
-                {t('模型监控')}
-              </Title>
-              <Text type='tertiary'>
-                {t('按模型聚合展示各所属渠道的最近测试结果')}
-              </Text>
+    <div className='mt-[60px] px-2'>
+      <Spin spinning={permissionLoading || loading} size='large'>
+      {!permissionLoading && !canRead && (
+        <Banner
+          style={{ marginTop: '10px' }}
+          type='warning'
+          description={t('您无权访问此页面，请联系管理员')}
+        />
+      )}
+
+      {canRead && (
+        <>
+          <Card style={{ marginTop: '10px' }}>
+            <div className='flex flex-col gap-3'>
+              <div className='flex flex-col md:flex-row md:items-center md:justify-between gap-2'>
+                <div>
+                  <Title heading={5} style={{ margin: 0 }}>
+                    {t('模型监控')}
+                  </Title>
+                  <Text type='tertiary'>
+                    {t('按模型聚合展示各所属渠道的最近测试结果')}
+                  </Text>
+                </div>
+                <Space wrap>
+                  <Button
+                    icon={<RefreshCw size={16} />}
+                    onClick={fetchMonitorData}
+                    loading={loading}
+                    disabled={!canRead}
+                  >
+                    {t('刷新')}
+                  </Button>
+                  <Button
+                    type='primary'
+                    icon={<Play size={16} />}
+                    onClick={runManualTest}
+                    loading={testing}
+                    disabled={!canTest}
+                  >
+                    {t('手动测试')}
+                  </Button>
+                  <Button
+                    icon={<Save size={16} />}
+                    onClick={saveSettings}
+                    loading={saving}
+                    disabled={!canUpdate}
+                  >
+                    {t('保存设置')}
+                  </Button>
+                </Space>
+              </div>
+
+              {loadError && <Banner type='warning' description={loadError} />}
+
+              <Form
+                values={formValues}
+                getFormApi={(formAPI) => (formRef.current = formAPI)}
+              >
+                <Row gutter={16}>
+                  <Col xs={24} sm={12} md={8} lg={6}>
+                    <Form.Switch
+                      field='enabled'
+                      label={t('启用模型监控')}
+                      checkedText='｜'
+                      uncheckedText='〇'
+                      disabled={!canUpdate}
+                      onChange={(value) => updateSetting('enabled', value)}
+                    />
+                  </Col>
+                  <Col xs={24} sm={12} md={8} lg={6}>
+                    <Form.InputNumber
+                      field='interval_minutes'
+                      label={t('测试间隔')}
+                      min={1}
+                      step={1}
+                      suffix={t('分钟')}
+                      disabled={!canUpdate}
+                      onChange={(value) =>
+                        updateSetting('interval_minutes', Number(value) || 1)
+                      }
+                    />
+                  </Col>
+                  <Col xs={24} sm={12} md={8} lg={6}>
+                    <Form.InputNumber
+                      field='batch_size'
+                      label={t('批量大小')}
+                      min={1}
+                      step={1}
+                      disabled={!canUpdate}
+                      onChange={(value) =>
+                        updateSetting('batch_size', Number(value) || 1)
+                      }
+                    />
+                  </Col>
+                  <Col xs={24} sm={12} md={8} lg={6}>
+                    <Form.InputNumber
+                      field='default_timeout_seconds'
+                      label={t('默认最长响应')}
+                      min={1}
+                      step={1}
+                      suffix={t('秒')}
+                      disabled={!canUpdate}
+                      onChange={(value) =>
+                        updateSetting('default_timeout_seconds', Number(value) || 1)
+                      }
+                    />
+                  </Col>
+                  <Col xs={24} sm={12} md={8} lg={6}>
+                    <Form.InputNumber
+                      field='failure_threshold'
+                      label={t('失败阈值')}
+                      min={1}
+                      step={1}
+                      disabled={!canUpdate}
+                      onChange={(value) =>
+                        updateSetting('failure_threshold', Number(value) || 1)
+                      }
+                    />
+                  </Col>
+                  <Col xs={24} md={16} lg={18}>
+                    <Form.TextArea
+                      field='excluded_model_patterns_text'
+                      label={t('排除模型规则')}
+                      placeholder={t('一行一个或用逗号分隔，例如：*image*')}
+                      autosize={{ minRows: 2, maxRows: 5 }}
+                      disabled={!canUpdate}
+                      onChange={setExcludedPatternsText}
+                    />
+                  </Col>
+                </Row>
+              </Form>
             </div>
-            <Space wrap>
-              <Button
-                icon={<RefreshCw size={16} />}
-                onClick={fetchMonitorData}
-                loading={loading}
-              >
-                {t('刷新')}
-              </Button>
-              <Button
-                type='primary'
-                icon={<Play size={16} />}
-                onClick={runManualTest}
-                loading={testing}
-              >
-                {t('手动测试')}
-              </Button>
-              <Button
-                icon={<Save size={16} />}
-                onClick={saveSettings}
-                loading={saving}
-              >
-                {t('保存设置')}
-              </Button>
-            </Space>
-          </div>
+          </Card>
 
-          {loadError && <Banner type='warning' description={loadError} />}
+          <Card style={{ marginTop: '10px' }}>
+            <div className='flex flex-col gap-3'>
+              <Space wrap>
+                {summaryItems.map((item) => (
+                  <Tag
+                    key={item.label}
+                    color={item.color}
+                    shape='circle'
+                    style={{ padding: '6px 10px' }}
+                  >
+                    {item.label}: {item.value ?? 0}
+                  </Tag>
+                ))}
+              </Space>
 
-          <Form
-            values={formValues}
-            getFormApi={(formAPI) => (formRef.current = formAPI)}
-          >
-            <Row gutter={16}>
-              <Col xs={24} sm={12} md={8} lg={6}>
-                <Form.Switch
-                  field='enabled'
-                  label={t('启用模型监控')}
-                  checkedText='｜'
-                  uncheckedText='〇'
-                  onChange={(value) => updateSetting('enabled', value)}
-                />
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={6}>
-                <Form.InputNumber
-                  field='interval_minutes'
-                  label={t('测试间隔')}
-                  min={1}
-                  step={1}
-                  suffix={t('分钟')}
-                  onChange={(value) =>
-                    updateSetting('interval_minutes', Number(value) || 1)
-                  }
-                />
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={6}>
-                <Form.InputNumber
-                  field='batch_size'
-                  label={t('批量大小')}
-                  min={1}
-                  step={1}
-                  onChange={(value) =>
-                    updateSetting('batch_size', Number(value) || 1)
-                  }
-                />
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={6}>
-                <Form.InputNumber
-                  field='default_timeout_seconds'
-                  label={t('默认最长响应')}
-                  min={1}
-                  step={1}
-                  suffix={t('秒')}
-                  onChange={(value) =>
-                    updateSetting('default_timeout_seconds', Number(value) || 1)
-                  }
-                />
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={6}>
-                <Form.InputNumber
-                  field='failure_threshold'
-                  label={t('失败阈值')}
-                  min={1}
-                  step={1}
-                  onChange={(value) =>
-                    updateSetting('failure_threshold', Number(value) || 1)
-                  }
-                />
-              </Col>
-              <Col xs={24} md={16} lg={18}>
-                <Form.TextArea
-                  field='excluded_model_patterns_text'
-                  label={t('排除模型规则')}
-                  placeholder={t('一行一个或用逗号分隔，例如：*image*')}
-                  autosize={{ minRows: 2, maxRows: 5 }}
-                  onChange={setExcludedPatternsText}
-                />
-              </Col>
-            </Row>
-          </Form>
-        </div>
-      </Card>
-
-      <Card style={{ marginTop: '10px' }}>
-        <div className='flex flex-col gap-3'>
-          <Space wrap>
-            {summaryItems.map((item) => (
-              <Tag
-                key={item.label}
-                color={item.color}
-                shape='circle'
-                style={{ padding: '6px 10px' }}
-              >
-                {item.label}: {item.value ?? 0}
-              </Tag>
-            ))}
-          </Space>
-
-          <Table
-            columns={columns}
-            dataSource={modelRows}
-            rowKey='model_name'
-            expandedRowRender={renderChannelDetails}
-            rowExpandable={(record) =>
-              Array.isArray(record.channels) && record.channels.length > 0
-            }
-            expandRowByClick
-            pagination={{
-              pageSize: 20,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50, 100],
-            }}
-            size='small'
-            scroll={{ x: 'max-content' }}
-            className='grid-bordered-table'
-          />
-        </div>
-      </Card>
-    </Spin>
+              <Table
+                columns={columns}
+                dataSource={modelRows}
+                rowKey='model_name'
+                expandedRowRender={renderChannelDetails}
+                rowExpandable={(record) =>
+                  Array.isArray(record.channels) && record.channels.length > 0
+                }
+                expandRowByClick
+                pagination={{
+                  pageSize: 20,
+                  showSizeChanger: true,
+                  pageSizeOptions: [10, 20, 50, 100],
+                }}
+                size='small'
+                scroll={{ x: 'max-content' }}
+                className='grid-bordered-table'
+              />
+            </div>
+          </Card>
+        </>
+      )}
+      </Spin>
+    </div>
   );
 }

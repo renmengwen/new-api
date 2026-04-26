@@ -22,9 +22,13 @@ import assert from 'node:assert/strict';
 
 import {
   buildChannelTagDisplays,
+  getChannelCopyText,
   getChannelStatusDisplay,
+  getEffectiveModelEnabled,
+  getModelCopyText,
   getModelOverride,
   getModelStatusDisplay,
+  isModelExcludedByPatterns,
   textToPatterns,
 } from './modelMonitorDisplay.js';
 
@@ -114,4 +118,38 @@ test('textToPatterns accepts comma and newline separated excluded patterns', () 
     '*video*',
     'realtime*',
   ]);
+});
+
+test('excluded model patterns force scheduled testing off', () => {
+  const settings = {
+    excluded_model_patterns: ['legacy-*', '*image*'],
+    model_overrides: {
+      'legacy-chat': {
+        enabled: true,
+      },
+    },
+  };
+
+  assert.equal(isModelExcludedByPatterns(settings, 'legacy-chat'), true);
+  assert.equal(isModelExcludedByPatterns(settings, 'openai/gpt-image-1'), true);
+  assert.equal(
+    getEffectiveModelEnabled(settings, {
+      model_name: 'legacy-chat',
+      enabled: true,
+    }),
+    false,
+  );
+});
+
+test('copy text helpers return stable model and channel labels', () => {
+  assert.equal(
+    getModelCopyText({ model_name: 'anthropic/claude-opus-4-7' }),
+    'anthropic/claude-opus-4-7',
+  );
+  assert.equal(
+    getChannelCopyText({ channel_id: 12, channel_name: 'Claude 主渠道' }),
+    'Claude 主渠道',
+  );
+  assert.equal(getChannelCopyText({ id: 7, name: '' }), '#7');
+  assert.equal(getChannelCopyText({}), '');
 });

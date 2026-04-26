@@ -19,3 +19,12 @@ func TestAdminActionCatalogIncludesAllUserManagementActions(t *testing.T) {
 		"manage_bindings",
 	}, adminActionCatalog[ResourceUserManagement])
 }
+
+func TestAdminActionCatalogIncludesModelMonitorPermissions(t *testing.T) {
+	require.Equal(t, []string{
+		ActionRead,
+		ActionUpdate,
+		ActionTest,
+	}, adminActionCatalog[ResourceModelMonitorManagement])
+	require.Contains(t, adminSidebarModuleCatalog["admin"], "model-monitor")
+}

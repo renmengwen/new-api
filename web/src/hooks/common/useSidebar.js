@@ -65,6 +65,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     'quota-ledger': true,
     'audit-logs': true,
     'operations-analytics': true,
+    'model-monitor': true,
     subscription: true,
     setting: true,
   },

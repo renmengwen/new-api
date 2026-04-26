@@ -10,13 +10,14 @@ import (
 )
 
 const (
-	ResourcePermissionManagement = "permission_management"
-	ResourceAgentManagement      = "agent_management"
-	ResourceAdminManagement      = "admin_management"
-	ResourceAnalyticsManagement  = "analytics_management"
-	ResourceUserManagement       = "user_management"
-	ResourceQuotaManagement      = "quota_management"
-	ResourceAuditManagement      = "audit_management"
+	ResourcePermissionManagement   = "permission_management"
+	ResourceAgentManagement        = "agent_management"
+	ResourceAdminManagement        = "admin_management"
+	ResourceAnalyticsManagement    = "analytics_management"
+	ResourceModelMonitorManagement = "model_monitor_management"
+	ResourceUserManagement         = "user_management"
+	ResourceQuotaManagement        = "quota_management"
+	ResourceAuditManagement        = "audit_management"
 )
 
 const (
@@ -35,13 +36,15 @@ const (
 	ActionAdjust       = "adjust"
 	ActionAdjustBatch  = "adjust_batch"
 	ActionLedgerRead   = "ledger_read"
+	ActionTest         = "test"
 )
 
 var adminActionCatalog = map[string][]string{
-	ResourcePermissionManagement: {ActionRead, ActionBindProfile},
-	ResourceAgentManagement:      {ActionRead, ActionCreate, ActionUpdate, ActionUpdateStatus},
-	ResourceAdminManagement:      {ActionRead, ActionCreate, ActionUpdate, ActionUpdateStatus},
-	ResourceAnalyticsManagement:  {ActionRead, ActionExport},
+	ResourcePermissionManagement:   {ActionRead, ActionBindProfile},
+	ResourceAgentManagement:        {ActionRead, ActionCreate, ActionUpdate, ActionUpdateStatus},
+	ResourceAdminManagement:        {ActionRead, ActionCreate, ActionUpdate, ActionUpdateStatus},
+	ResourceAnalyticsManagement:    {ActionRead, ActionExport},
+	ResourceModelMonitorManagement: {ActionRead, ActionUpdate, ActionTest},
 	ResourceUserManagement: {
 		ActionRead,
 		ActionCreate,
@@ -67,6 +70,7 @@ var adminSidebarModuleCatalog = map[string][]string{
 		"quota-ledger",
 		"audit-logs",
 		"operations-analytics",
+		"model-monitor",
 		"channel",
 		"subscription",
 		"models",

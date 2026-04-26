@@ -19,6 +19,7 @@ type ModelMonitorResponse struct {
 	Settings ModelMonitorSettingsUpdateRequest `json:"settings"`
 	Summary  ModelMonitorSummary               `json:"summary"`
 	Items    []ModelMonitorItem                `json:"items"`
+	Running  bool                              `json:"running"`
 }
 
 type ModelMonitorSummary struct {
