@@ -22,7 +22,9 @@ import assert from 'node:assert/strict';
 
 import {
   buildChannelTagDisplays,
+  getChannelCopyText,
   getChannelStatusDisplay,
+  getModelCopyText,
   getModelOverride,
   getModelStatusDisplay,
   textToPatterns,
@@ -114,4 +116,17 @@ test('textToPatterns accepts comma and newline separated excluded patterns', () 
     '*video*',
     'realtime*',
   ]);
+});
+
+test('copy text helpers return stable model and channel labels', () => {
+  assert.equal(
+    getModelCopyText({ model_name: 'anthropic/claude-opus-4-7' }),
+    'anthropic/claude-opus-4-7',
+  );
+  assert.equal(
+    getChannelCopyText({ channel_id: 12, channel_name: 'Claude 主渠道' }),
+    'Claude 主渠道',
+  );
+  assert.equal(getChannelCopyText({ id: 7, name: '' }), '#7');
+  assert.equal(getChannelCopyText({}), '');
 });

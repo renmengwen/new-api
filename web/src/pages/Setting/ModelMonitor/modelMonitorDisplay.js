@@ -130,6 +130,7 @@ export function getChannelTagDisplay(channel, index = 0) {
   return {
     key: `${channelId || index}-${label}`,
     label,
+    copyText: getChannelCopyText(channel),
     color: statusDisplay.color,
     statusLabel: statusDisplay.label,
     title: titleParts.join(' · '),
@@ -180,4 +181,17 @@ export function buildModelOverrideSettings(settings, modelName, patch) {
       },
     },
   };
+}
+
+export function getModelCopyText(record) {
+  return String(record?.model_name || '').trim();
+}
+
+export function getChannelCopyText(channel) {
+  const channelName = channel?.channel_name || channel?.name || '';
+  if (channelName) {
+    return channelName;
+  }
+  const channelId = channel?.channel_id ?? channel?.id ?? '';
+  return channelId !== '' ? `#${channelId}` : '';
 }

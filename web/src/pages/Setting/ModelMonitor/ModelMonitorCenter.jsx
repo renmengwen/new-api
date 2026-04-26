@@ -47,7 +47,9 @@ import {
   buildChannelTagDisplays,
   buildModelOverrideSettings,
   formatResponseTime,
+  getChannelCopyText,
   getChannelStatusDisplay,
+  getModelCopyText,
   getModelOverride,
   getModelStatusDisplay,
   patternsToText,
@@ -173,6 +175,36 @@ function getChannelStatusCounts(record) {
   );
 }
 
+async function writeClipboardText(text) {
+  const value = String(text || '').trim();
+  if (!value) {
+    return false;
+  }
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch (error) {
+      // Fall through to the textarea fallback for browsers without clipboard permission.
+    }
+  }
+  if (typeof document === 'undefined') {
+    return false;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    return document.execCommand('copy');
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 export default function ModelMonitorCenter() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
@@ -296,6 +328,22 @@ export default function ModelMonitorCenter() {
     }
   };
 
+  const copyMonitorText = useCallback(
+    async (text, successMessage) => {
+      try {
+        const copied = await writeClipboardText(text);
+        if (!copied) {
+          showError(t('复制失败'));
+          return;
+        }
+        showSuccess(successMessage);
+      } catch (error) {
+        showError(t('复制失败'));
+      }
+    },
+    [t],
+  );
+
   const renderStatusTag = (status, enabled) => {
     const display = getModelStatusDisplay(status, enabled);
     return (
@@ -314,8 +362,19 @@ export default function ModelMonitorCenter() {
     return (
       <Space wrap spacing={4}>
         {visibleTags.map((tag) => (
-          <Tooltip key={tag.key} content={tag.title}>
-            <Tag color={tag.color} shape='circle'>
+          <Tooltip
+            key={tag.key}
+            content={`${tag.title} · ${t('点击复制渠道名称')}`}
+          >
+            <Tag
+              color={tag.color}
+              shape='circle'
+              onClick={(event) => {
+                event.stopPropagation();
+                copyMonitorText(tag.copyText, t('已复制渠道名称'));
+              }}
+              style={{ cursor: 'pointer' }}
+            >
               {tag.label}
             </Tag>
           </Tooltip>
@@ -333,7 +392,33 @@ export default function ModelMonitorCenter() {
         dataIndex: 'channel_name',
         render: (value, channel) => (
           <div className='flex flex-col'>
-            <Text strong>{value || `#${channel.channel_id}`}</Text>
+            <Tooltip content={t('点击复制渠道名称')}>
+              <Text
+                strong
+                role='button'
+                tabIndex={0}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  copyMonitorText(
+                    getChannelCopyText(channel),
+                    t('已复制渠道名称'),
+                  );
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    copyMonitorText(
+                      getChannelCopyText(channel),
+                      t('已复制渠道名称'),
+                    );
+                  }
+                }}
+                style={{ cursor: 'pointer' }}
+              >
+                {value || `#${channel.channel_id}`}
+              </Text>
+            </Tooltip>
             <Text type='tertiary' size='small'>
               {channel.channel_type || '-'}
             </Text>
@@ -415,9 +500,31 @@ export default function ModelMonitorCenter() {
       fixed: 'left',
       render: (value, record) => (
         <div className='flex flex-col'>
-          <Text strong ellipsis={{ showTooltip: true }}>
-            {value}
-          </Text>
+          <Tooltip content={t('点击复制模型名称')}>
+            <Text
+              strong
+              ellipsis={{ showTooltip: true }}
+              role='button'
+              tabIndex={0}
+              onClick={(event) => {
+                event.stopPropagation();
+                copyMonitorText(getModelCopyText(record), t('已复制模型名称'));
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  copyMonitorText(
+                    getModelCopyText(record),
+                    t('已复制模型名称'),
+                  );
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            >
+              {value}
+            </Text>
+          </Tooltip>
           <Text type='tertiary' size='small'>
             {t('所属渠道')} {getChannelCount(record)}
           </Text>
