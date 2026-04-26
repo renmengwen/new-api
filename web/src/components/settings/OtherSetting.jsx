@@ -33,6 +33,7 @@ import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
 import { StatusContext } from '../../context/Status';
 import Text from '@douyinfe/semi-ui/lib/es/typography/text';
+import AnnouncementEmailBroadcastModal from './AnnouncementEmailBroadcastModal';
 
 const LEGAL_USER_AGREEMENT_KEY = 'legal.user_agreement';
 const LEGAL_PRIVACY_POLICY_KEY = 'legal.privacy_policy';
@@ -51,6 +52,10 @@ const OtherSetting = () => {
   });
   let [loading, setLoading] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [noticeEmailConfirmVisible, setNoticeEmailConfirmVisible] =
+    useState(false);
+  const [noticeEmailModalVisible, setNoticeEmailModalVisible] = useState(false);
+  const [noticeEmailDraft, setNoticeEmailDraft] = useState('');
   const [statusState, statusDispatch] = useContext(StatusContext);
   const [updateData, setUpdateData] = useState({
     tag_name: '',
@@ -96,6 +101,8 @@ const OtherSetting = () => {
       setLoadingInput((loadingInput) => ({ ...loadingInput, Notice: true }));
       await updateOption('Notice', inputs.Notice);
       showSuccess(t('公告已更新'));
+      setNoticeEmailDraft(inputs.Notice || '');
+      setNoticeEmailConfirmVisible(true);
     } catch (error) {
       console.error(t('公告更新失败'), error);
       showError(t('公告更新失败'));
@@ -498,6 +505,26 @@ const OtherSetting = () => {
           </Card>
         </Form>
       </Col>
+      <Modal
+        title={t('发送邮件确认')}
+        visible={noticeEmailConfirmVisible}
+        onOk={() => {
+          setNoticeEmailConfirmVisible(false);
+          setNoticeEmailModalVisible(true);
+        }}
+        onCancel={() => setNoticeEmailConfirmVisible(false)}
+        okText={t('是')}
+        cancelText={t('否')}
+      >
+        <Text>{t('是否把此次通知以邮件形式发送？')}</Text>
+      </Modal>
+      <AnnouncementEmailBroadcastModal
+        visible={noticeEmailModalVisible}
+        source='notice'
+        defaultTitle={t('系统通知')}
+        defaultContent={noticeEmailDraft}
+        onClose={() => setNoticeEmailModalVisible(false)}
+      />
       <Modal
         title={t('新版本') + '：' + updateData.tag_name}
         visible={showUpdateModal}
