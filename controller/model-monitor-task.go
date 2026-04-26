@@ -23,6 +23,8 @@ const (
 var (
 	modelMonitorTaskOnce    sync.Once
 	modelMonitorTaskRunning atomic.Bool
+
+	notifyModelMonitorAdminsByEmail = service.NotifyAdminUsersByEmail
 )
 
 type modelMonitorRunOptions struct {
@@ -143,7 +145,7 @@ func runModelMonitorOnceLocked(opts modelMonitorRunOptions) (modelMonitorStateRe
 		notifyModelMonitorFailures(threshold, notifications)
 	}
 
-	state := buildModelMonitorStateFromTargets(setting, targets, statusMap)
+	state := withModelMonitorRunning(buildModelMonitorStateFromTargets(setting, targets, statusMap))
 	if processed > 0 || common.DebugEnabled {
 		common.SysLog(fmt.Sprintf(
 			"model monitor run done: models=%d targets=%d success=%d failed=%d timeout=%d",
@@ -360,5 +362,5 @@ func notifyModelMonitorFailures(threshold int, items []modelMonitorFailureNotifi
 	if len(items) > displayCount {
 		builder.WriteString(fmt.Sprintf("\n- omitted_targets=%d", len(items)-displayCount))
 	}
-	service.NotifyRootUser(dto.NotifyTypeModelMonitor, "Model monitor failure threshold reached", builder.String())
+	notifyModelMonitorAdminsByEmail(dto.NotifyTypeModelMonitor, "Model monitor failure threshold reached", builder.String())
 }

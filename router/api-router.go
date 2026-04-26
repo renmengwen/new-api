@@ -177,7 +177,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		modelMonitorRoute := apiRouter.Group("/model_monitor")
-		modelMonitorRoute.Use(middleware.RootAuth())
+		modelMonitorRoute.Use(middleware.AdminAuth())
 		{
 			modelMonitorRoute.GET("", controller.GetModelMonitor)
 			modelMonitorRoute.GET("/", controller.GetModelMonitor)

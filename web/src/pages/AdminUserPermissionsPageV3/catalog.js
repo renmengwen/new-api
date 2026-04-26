@@ -83,6 +83,15 @@ export const ADMIN_PERMISSION_RESOURCES = [
       { actionKey: 'export', label: '导出' },
     ],
   },
+  {
+    resourceKey: 'model_monitor_management',
+    label: '模型监控',
+    actions: [
+      { actionKey: 'read', label: '查看' },
+      { actionKey: 'update', label: '配置' },
+      { actionKey: 'test', label: '测试' },
+    ],
+  },
 ];
 
 export const ADMIN_MENU_OPTIONS = [
@@ -94,6 +103,7 @@ export const ADMIN_MENU_OPTIONS = [
   { sectionKey: 'admin', moduleKey: 'quota-ledger', label: '额度流水' },
   { sectionKey: 'admin', moduleKey: 'audit-logs', label: '审计日志' },
   { sectionKey: 'admin', moduleKey: 'operations-analytics', label: '运营分析台' },
+  { sectionKey: 'admin', moduleKey: 'model-monitor', label: '模型监控' },
   { sectionKey: 'admin', moduleKey: 'channel', label: '渠道管理' },
   { sectionKey: 'admin', moduleKey: 'subscription', label: '订阅管理' },
   { sectionKey: 'admin', moduleKey: 'models', label: '模型管理' },

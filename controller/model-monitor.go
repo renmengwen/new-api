@@ -9,8 +9,10 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
@@ -116,16 +118,30 @@ func modelMonitorFailureThreshold(setting *operation_setting.ModelMonitorSetting
 	return setting.FailureThreshold
 }
 
+func isUnsupportedModelMonitorTarget(channel *model.Channel, modelName string) bool {
+	if channel == nil {
+		return true
+	}
+	if isUnsupportedChannelTestType(channel.Type) {
+		return true
+	}
+	resolvedModelName := resolveChannelTestModelName(channel, strings.TrimSpace(modelName))
+	return channel.Type == constant.ChannelTypeVolcEngine && isSeedanceChannelTestModel(resolvedModelName)
+}
+
 func buildModelMonitorTargets(channels []*model.Channel, _ modelMonitorModelFilter) []modelMonitorTarget {
 	grouped := make(map[string][]modelMonitorChannelTarget)
 	for _, channel := range channels {
-		if channel == nil || channel.Status != common.ChannelStatusEnabled || isUnsupportedChannelTestType(channel.Type) {
+		if channel == nil || channel.Status != common.ChannelStatusEnabled {
 			continue
 		}
 		seenInChannel := make(map[string]struct{})
 		for _, rawModelName := range channel.GetModels() {
 			modelName := strings.TrimSpace(rawModelName)
 			if modelName == "" {
+				continue
+			}
+			if isUnsupportedModelMonitorTarget(channel, modelName) {
 				continue
 			}
 			if _, exists := seenInChannel[modelName]; exists {
@@ -370,6 +386,11 @@ func buildModelMonitorStateFromTargets(setting *operation_setting.ModelMonitorSe
 	}
 }
 
+func withModelMonitorRunning(state modelMonitorStateResponse) modelMonitorStateResponse {
+	state.Running = modelMonitorTaskRunning.Load()
+	return state
+}
+
 func loadModelMonitorState() (modelMonitorStateResponse, error) {
 	setting := currentModelMonitorSetting()
 	channels, err := model.GetAllChannels(0, 0, true, false)
@@ -381,7 +402,7 @@ func loadModelMonitorState() (modelMonitorStateResponse, error) {
 	if err != nil {
 		return modelMonitorStateResponse{}, err
 	}
-	return buildModelMonitorStateFromTargets(setting, targets, buildModelMonitorStatusMap(records)), nil
+	return withModelMonitorRunning(buildModelMonitorStateFromTargets(setting, targets, buildModelMonitorStatusMap(records))), nil
 }
 
 type modelMonitorFilterAdapter struct {
@@ -393,6 +414,9 @@ func (a modelMonitorFilterAdapter) ModelEnabled(modelName string) bool {
 }
 
 func GetModelMonitor(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceModelMonitorManagement, service.ActionRead) {
+		return
+	}
 	state, err := loadModelMonitorState()
 	if err != nil {
 		common.ApiError(c, err)
@@ -402,6 +426,9 @@ func GetModelMonitor(c *gin.Context) {
 }
 
 func UpdateModelMonitorSetting(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceModelMonitorManagement, service.ActionUpdate) {
+		return
+	}
 	var req map[string]any
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -484,6 +511,12 @@ func modelMonitorOptionValue(value any) (string, error) {
 }
 
 func TestModelMonitor(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceModelMonitorManagement, service.ActionTest) {
+		return
+	}
+	if !requireAdminActionPermission(c, service.ResourceModelMonitorManagement, service.ActionRead) {
+		return
+	}
 	req := modelMonitorTestRequest{}
 	if c.Request != nil && c.Request.Body != nil && c.Request.ContentLength != 0 {
 		if err := common.DecodeJson(c.Request.Body, &req); err != nil && !errors.Is(err, io.EOF) {

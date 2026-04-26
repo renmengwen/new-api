@@ -22,6 +22,57 @@ func NotifyRootUser(t string, subject string, content string) {
 	}
 }
 
+func NotifyAdminUsersByEmail(t string, subject string, content string) {
+	var users []model.User
+	if err := model.DB.
+		Select("id", "email", "role", "status", "setting").
+		Where("status = ? AND role >= ?", common.UserStatusEnabled, common.RoleAdminUser).
+		Find(&users).Error; err != nil {
+		common.SysLog(fmt.Sprintf("failed to query admin notification users: %s", err.Error()))
+		return
+	}
+
+	notification := dto.NewNotify(t, subject, content, nil)
+	sentCount := 0
+	for _, user := range users {
+		if t == dto.NotifyTypeModelMonitor && !canAdminUserReadModelMonitor(user) {
+			common.SysLog(fmt.Sprintf("admin user %d has no model monitor read permission, skip model monitor email", user.Id))
+			continue
+		}
+		userSetting := user.GetSetting()
+		emailToUse := strings.TrimSpace(userSetting.NotificationEmail)
+		if emailToUse == "" {
+			emailToUse = strings.TrimSpace(user.Email)
+		}
+		if emailToUse == "" {
+			common.SysLog(fmt.Sprintf("admin user %d has no email, skip model monitor email", user.Id))
+			continue
+		}
+		canSend, err := CheckNotificationLimit(user.Id, notification.Type)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("failed to check model monitor email limit for user %d: %s", user.Id, err.Error()))
+			continue
+		}
+		if !canSend {
+			common.SysLog(fmt.Sprintf("model monitor email limit exceeded for admin user %d", user.Id))
+			continue
+		}
+		if err := sendEmailNotify(emailToUse, notification); err != nil {
+			common.SysLog(fmt.Sprintf("failed to notify admin user %d for model monitor: %s", user.Id, err.Error()))
+			continue
+		}
+		sentCount++
+	}
+	common.SysLog(fmt.Sprintf("model monitor admin email notifications sent: %d", sentCount))
+}
+
+func canAdminUserReadModelMonitor(user model.User) bool {
+	if user.Role == common.RoleRootUser || user.GetUserType() == model.UserTypeRoot {
+		return true
+	}
+	return RequirePermissionAction(user.Id, user.Role, ResourceModelMonitorManagement, ActionRead) == nil
+}
+
 func NotifyUpstreamModelUpdateWatchers(subject string, content string) {
 	var users []model.User
 	if err := model.DB.
@@ -105,7 +156,7 @@ func NotifyUser(userId int, userEmail string, userSetting dto.UserSetting, data 
 	return nil
 }
 
-func sendEmailNotify(userEmail string, data dto.Notify) error {
+var sendEmailNotify = func(userEmail string, data dto.Notify) error {
 	// make email content
 	content := data.Content
 	// 处理占位符

@@ -1,12 +1,18 @@
 package controller
 
 import (
+	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,6 +46,84 @@ func TestBuildModelMonitorTargetsGroupsByModelAndKeepsChannelPairs(t *testing.T)
 	require.Equal(t, []int{2}, []int{targets[2].Channels[0].Channel.Id})
 	require.Equal(t, "gpt-4o-mini", targets[3].Model)
 	require.Equal(t, []int{1}, []int{targets[3].Channels[0].Channel.Id})
+}
+
+func TestBuildModelMonitorTargetsSkipsUnsupportedVolcEngineSeedanceModels(t *testing.T) {
+	channels := []*model.Channel{
+		{
+			Id:     1,
+			Name:   "volcengine",
+			Type:   constant.ChannelTypeVolcEngine,
+			Status: common.ChannelStatusEnabled,
+			Models: "doubao-seedance-2-0-260128,doubao-seedream-3-0-t2i",
+		},
+	}
+
+	targets := buildModelMonitorTargets(channels, fakeModelMonitorSetting{})
+
+	require.Len(t, targets, 1)
+	require.Equal(t, "doubao-seedream-3-0-t2i", targets[0].Model)
+	require.Equal(t, []int{1}, []int{targets[0].Channels[0].Channel.Id})
+}
+
+func TestTestModelMonitorRequiresReadPermissionBeforeReturningState(t *testing.T) {
+	db := setupAdminPermissionTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.ModelMonitorStatus{}))
+
+	operator := model.User{
+		Username: "model_monitor_test_only_admin",
+		Password: "hashed-password",
+		Role:     common.RoleAdminUser,
+		Status:   common.UserStatusEnabled,
+		UserType: model.UserTypeAdmin,
+		Group:    "default",
+	}
+	require.NoError(t, db.Create(&operator).Error)
+	profile := model.PermissionProfile{
+		ProfileName: "Model Monitor Test Only",
+		ProfileType: model.UserTypeAdmin,
+		Status:      model.CommonStatusEnabled,
+	}
+	require.NoError(t, db.Create(&profile).Error)
+	require.NoError(t, db.Create(&model.PermissionProfileItem{
+		ProfileId:   profile.Id,
+		ResourceKey: service.ResourceModelMonitorManagement,
+		ActionKey:   service.ActionTest,
+		Allowed:     true,
+	}).Error)
+	require.NoError(t, db.Create(&model.UserPermissionBinding{
+		UserId:    operator.Id,
+		ProfileId: profile.Id,
+		Status:    model.CommonStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Name:   "secret-channel",
+		Type:   constant.ChannelTypeOpenAI,
+		Key:    "test-key",
+		Status: common.ChannelStatusEnabled,
+		Models: "secret-model",
+		Group:  "default",
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	payload := []byte(`{"model":"not-configured"}`)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/model_monitor/test", io.NopCloser(bytes.NewReader(payload)))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Set("id", operator.Id)
+	ctx.Set("role", operator.Role)
+
+	TestModelMonitor(ctx)
+
+	var response struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+	require.Equal(t, "permission denied", response.Message)
+	require.NotContains(t, recorder.Body.String(), "secret-channel")
+	require.NotContains(t, recorder.Body.String(), "secret-model")
 }
 
 func TestAggregateModelMonitorItemStatusRules(t *testing.T) {
