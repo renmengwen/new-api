@@ -179,6 +179,8 @@ func setupSmartExportTestDB(t *testing.T) *gorm.DB {
 	originalUsingPostgreSQL := common.UsingPostgreSQL
 	originalRedisEnabled := common.RedisEnabled
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
+	originalDB := model.DB
+	originalLogDB := model.LOG_DB
 
 	common.UsingSQLite = true
 	common.UsingMySQL = false
@@ -201,6 +203,12 @@ func setupSmartExportTestDB(t *testing.T) *gorm.DB {
 	))
 
 	t.Cleanup(func() {
+		model.DB = serviceTestMainDB
+		model.LOG_DB = serviceTestMainLogDB
+		if serviceTestMainDB == nil {
+			model.DB = originalDB
+			model.LOG_DB = originalLogDB
+		}
 		common.UsingSQLite = originalUsingSQLite
 		common.UsingMySQL = originalUsingMySQL
 		common.UsingPostgreSQL = originalUsingPostgreSQL
