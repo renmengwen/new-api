@@ -135,3 +135,26 @@ func TestBuildModelMonitorStateMarksDisabledModelsSkipped(t *testing.T) {
 	require.Equal(t, 2, state.Items[0].SkippedCount)
 	require.Equal(t, 1, state.Summary.SkippedModels)
 }
+
+func TestBuildModelMonitorStateLeavesUntestedTargetsUnknown(t *testing.T) {
+	targets := []modelMonitorTarget{
+		{
+			Model: "new-model",
+			Channels: []modelMonitorChannelTarget{
+				{Channel: &model.Channel{Id: 1, Name: "channel-a", Type: 1, Status: common.ChannelStatusEnabled}},
+				{Channel: &model.Channel{Id: 2, Name: "channel-b", Type: 1, Status: common.ChannelStatusEnabled}},
+			},
+		},
+	}
+
+	state := buildModelMonitorStateFromTargets(&operation_setting.ModelMonitorSetting{}, targets, map[modelMonitorStatusKey]modelMonitorStatusRecord{})
+
+	require.Len(t, state.Items, 1)
+	require.True(t, state.Items[0].Enabled)
+	require.Equal(t, "unknown", state.Items[0].Status)
+	require.Equal(t, 0, state.Items[0].FailedCount)
+	require.Equal(t, "unknown", state.Items[0].Channels[0].Status)
+	require.Equal(t, "unknown", state.Items[0].Channels[1].Status)
+	require.Equal(t, 0, state.Summary.UnavailableModels)
+	require.Equal(t, 0, state.Summary.FailedChannels)
+}

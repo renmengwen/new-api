@@ -23,6 +23,7 @@ const (
 	modelMonitorStatusPartial     = "partial"
 	modelMonitorStatusUnavailable = "unavailable"
 	modelMonitorStatusSkipped     = "skipped"
+	modelMonitorStatusUnknown     = "unknown"
 	modelMonitorStatusNoChannels  = "no_channels"
 
 	modelMonitorChannelStatusSuccess     = model.ModelMonitorStatusSuccess
@@ -30,6 +31,7 @@ const (
 	modelMonitorChannelStatusTimeout     = model.ModelMonitorStatusTimeout
 	modelMonitorChannelStatusSkipped     = model.ModelMonitorStatusSkipped
 	modelMonitorChannelStatusUnavailable = "unavailable"
+	modelMonitorChannelStatusUnknown     = "unknown"
 )
 
 type modelMonitorModelFilter interface {
@@ -188,6 +190,7 @@ func aggregateModelMonitorStatus(details []modelMonitorChannelDetail) string {
 	successCount := 0
 	failureCount := 0
 	skippedCount := 0
+	unknownCount := 0
 	for _, detail := range details {
 		switch detail.Status {
 		case modelMonitorChannelStatusSuccess:
@@ -196,18 +199,26 @@ func aggregateModelMonitorStatus(details []modelMonitorChannelDetail) string {
 			failureCount++
 		case modelMonitorChannelStatusSkipped:
 			skippedCount++
+		case modelMonitorChannelStatusUnknown:
+			unknownCount++
 		}
 	}
 	if skippedCount == len(details) {
 		return modelMonitorStatusSkipped
 	}
-	if successCount > 0 && failureCount > 0 {
-		return modelMonitorStatusPartial
-	}
 	if successCount == len(details) {
 		return modelMonitorStatusHealthy
 	}
-	return modelMonitorStatusUnavailable
+	if successCount > 0 && failureCount > 0 {
+		return modelMonitorStatusPartial
+	}
+	if failureCount > 0 {
+		return modelMonitorStatusUnavailable
+	}
+	if unknownCount > 0 {
+		return modelMonitorStatusUnknown
+	}
+	return modelMonitorStatusUnknown
 }
 
 func summarizeModelMonitorItems(items []modelMonitorItem) dto.ModelMonitorSummary {
@@ -321,7 +332,7 @@ func detailFromStatusRecord(target modelMonitorChannelTarget, record modelMonito
 		ChannelId:   channel.Id,
 		ChannelName: channel.Name,
 		ChannelType: channel.Type,
-		Status:      modelMonitorChannelStatusUnavailable,
+		Status:      modelMonitorChannelStatusUnknown,
 	}
 	if !exists {
 		return detail

@@ -1,7 +1,6 @@
 package operation_setting
 
 import (
-	"path"
 	"sort"
 	"strings"
 	"sync"
@@ -189,6 +188,39 @@ func modelMonitorPatternMatches(pattern string, modelName string) bool {
 	if !strings.Contains(pattern, "*") {
 		return false
 	}
-	matched, err := path.Match(pattern, modelName)
-	return err == nil && matched
+	return modelMonitorStarPatternMatches(pattern, modelName)
+}
+
+func modelMonitorStarPatternMatches(pattern string, value string) bool {
+	parts := strings.Split(pattern, "*")
+	if len(parts) == 1 {
+		return pattern == value
+	}
+
+	position := 0
+	if parts[0] != "" {
+		if !strings.HasPrefix(value, parts[0]) {
+			return false
+		}
+		position = len(parts[0])
+	}
+
+	lastIndex := len(parts) - 1
+	for i := 1; i < lastIndex; i++ {
+		part := parts[i]
+		if part == "" {
+			continue
+		}
+		index := strings.Index(value[position:], part)
+		if index < 0 {
+			return false
+		}
+		position += index + len(part)
+	}
+
+	lastPart := parts[lastIndex]
+	if lastPart == "" {
+		return true
+	}
+	return strings.HasSuffix(value[position:], lastPart)
 }

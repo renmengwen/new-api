@@ -112,3 +112,22 @@ func TestUpdateModelMonitorSettingFromMapKeepsOverridesOnInvalidReplacement(t *t
 	require.NotNil(t, current.ModelOverrides["gpt-4o"].Enabled)
 	require.False(t, *current.ModelOverrides["gpt-4o"].Enabled)
 }
+
+func TestModelMonitorSettingPatternsMatchProviderPrefixedModels(t *testing.T) {
+	disabled := false
+	setting := ModelMonitorSetting{
+		DefaultTimeoutSeconds: 30,
+		ExcludedModelPatterns: []string{
+			"*image*",
+		},
+		ModelOverrides: map[string]ModelMonitorModelOverride{
+			"*opus*": {Enabled: &disabled, TimeoutSeconds: 45},
+		},
+	}
+
+	setting.Normalize()
+
+	require.False(t, setting.ModelEnabled("openai/gpt-image-1"))
+	require.False(t, setting.ModelEnabled("anthropic/claude-opus-4-7"))
+	require.Equal(t, 45, setting.TimeoutSecondsForModel("anthropic/claude-opus-4-7"))
+}
