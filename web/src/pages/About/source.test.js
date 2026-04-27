@@ -147,3 +147,13 @@ test('structured about page guards optional aria-labelledby headings', () => {
     /hasText\(group\.title\)[\s\S]*'aria-labelledby': 'about-group-title'/,
   );
 });
+
+test('structured about page translates configured default display copy', () => {
+  const source = readSource('AboutStructuredPage.jsx');
+
+  assert.match(source, /translateAboutPageConfig/);
+  assert.match(
+    source,
+    /useMemo\([\s\S]*translateAboutPageConfig\(config,\s*t\)/,
+  );
+});

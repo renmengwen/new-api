@@ -6,6 +6,7 @@ import {
   isStructuredAboutEnabled,
   normalizeAboutPageConfig,
   parseAboutResponse,
+  translateAboutPageConfig,
 } from './aboutPageConfig.js';
 
 test('parseAboutResponse keeps old string responses as legacy content', () => {
@@ -51,7 +52,7 @@ test('normalizeAboutPageConfig returns the demo defaults for empty config', () =
     ['wechat', 'work_wechat'],
   );
   assert.equal(config.customContent, '');
-  assert.equal(isStructuredAboutEnabled(config), true);
+  assert.equal(isStructuredAboutEnabled(config), false);
 });
 
 test('empty default config does not override existing legacy content', () => {
@@ -75,18 +76,28 @@ test('malformed config does not override existing legacy content', () => {
   );
 });
 
-test('empty default config is enabled for empty installs', () => {
+test('empty default config does not replace the legacy empty about fallback', () => {
   assert.equal(
     isStructuredAboutEnabled(normalizeAboutPageConfig(''), ''),
-    true,
+    false,
   );
 });
 
-test('empty object config is enabled for empty installs', () => {
+test('empty object config does not replace the legacy empty about fallback', () => {
   assert.equal(
     isStructuredAboutEnabled(normalizeAboutPageConfig('{}'), ''),
-    true,
+    false,
   );
+});
+
+test('explicitly saved default config enables the structured page', () => {
+  const config = normalizeAboutPageConfig(
+    JSON.stringify(defaultAboutPageConfig),
+  );
+
+  assert.equal(config.__source, 'configured');
+  assert.equal(isStructuredAboutEnabled(config, ''), true);
+  assert.equal(isStructuredAboutEnabled(config, '# legacy'), true);
 });
 
 test('fallback metadata survives spread and JSON round trip', () => {
@@ -99,6 +110,14 @@ test('fallback metadata survives spread and JSON round trip', () => {
   assert.equal(serializedConfig.__source, 'default');
   assert.equal(isStructuredAboutEnabled(spreadConfig, '# legacy'), false);
   assert.equal(isStructuredAboutEnabled(serializedConfig, '# legacy'), false);
+});
+
+test('cached default metadata stays disabled after normalization', () => {
+  const cachedConfig = JSON.stringify(normalizeAboutPageConfig(''));
+  const config = normalizeAboutPageConfig(cachedConfig);
+
+  assert.equal(config.__source, 'default');
+  assert.equal(isStructuredAboutEnabled(config, ''), false);
 });
 
 test('customized persisted defaults override legacy content', () => {
@@ -260,4 +279,30 @@ test('structured about is disabled only when explicitly configured false', () =>
   assert.equal(isStructuredAboutEnabled(), false);
   assert.equal(isStructuredAboutEnabled(null), false);
   assert.equal(isStructuredAboutEnabled({ enabled: true }), true);
+});
+
+test('translateAboutPageConfig localizes display copy while preserving links and metric values', () => {
+  const config = normalizeAboutPageConfig(
+    JSON.stringify(defaultAboutPageConfig),
+  );
+  const translated = translateAboutPageConfig(config, (text) => `i18n:${text}`);
+
+  assert.equal(translated.hero.title.startsWith('i18n:'), true);
+  assert.equal(translated.hero.primaryActionUrl, '/console');
+  assert.equal(
+    translated.hero.secondaryActionUrl,
+    'https://www.digitalchina.com/',
+  );
+  assert.equal(translated.overview.metrics[0].value, '40+');
+  assert.equal(translated.overview.metrics[0].label.startsWith('i18n:'), true);
+  assert.equal(translated.overview.channels[0].name, 'OpenAI');
+  assert.equal(
+    translated.overview.channels[0].status.startsWith('i18n:'),
+    true,
+  );
+  assert.equal(translated.capabilities[0].title.startsWith('i18n:'), true);
+  assert.equal(translated.group.bullets[0].startsWith('i18n:'), true);
+  assert.equal(translated.group.websiteUrl, 'https://www.digitalchina.com/');
+  assert.equal(translated.contacts[0].description.startsWith('i18n:'), true);
+  assert.equal(translated.customContent, '');
 });

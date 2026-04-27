@@ -131,10 +131,40 @@ const hasMeaningfulVisibleContent = (
   return value !== fallback;
 };
 
-const resolveConfigSource = (config) =>
-  hasMeaningfulVisibleContent(config)
+const hasExplicitVisibleConfig = (value) => {
+  if (Array.isArray(value)) {
+    return value.some(hasExplicitVisibleConfig);
+  }
+
+  if (isPlainObject(value)) {
+    return Object.entries(value).some(
+      ([key, childValue]) =>
+        !key.startsWith('__') && hasExplicitVisibleConfig(childValue),
+    );
+  }
+
+  return value !== null && typeof value !== 'undefined';
+};
+
+const resolveParsedSource = (config) => {
+  if (!isPlainObject(config)) {
+    return CONFIG_SOURCE_DEFAULT;
+  }
+
+  if (config.__source === CONFIG_SOURCE_CONFIGURED) {
+    return CONFIG_SOURCE_CONFIGURED;
+  }
+
+  if (config.__source === CONFIG_SOURCE_DEFAULT) {
+    return hasMeaningfulVisibleContent(config)
+      ? CONFIG_SOURCE_CONFIGURED
+      : CONFIG_SOURCE_DEFAULT;
+  }
+
+  return hasExplicitVisibleConfig(config)
     ? CONFIG_SOURCE_CONFIGURED
     : CONFIG_SOURCE_DEFAULT;
+};
 
 const normalizeString = (source, key, fallback) =>
   isPlainObject(source) &&
@@ -210,22 +240,27 @@ const normalizeArray = (values, fallback, normalizeItem) => {
 const parseConfigInput = (input) => {
   if (typeof input === 'string') {
     if (input.trim() === '') {
-      return { config: null };
+      return { config: null, source: CONFIG_SOURCE_DEFAULT };
     }
 
     try {
       const parsed = JSON.parse(input);
+      const config = isPlainObject(parsed) ? parsed : null;
 
       return {
-        config: isPlainObject(parsed) ? parsed : null,
+        config,
+        source: resolveParsedSource(config),
       };
     } catch {
-      return { config: null };
+      return { config: null, source: CONFIG_SOURCE_DEFAULT };
     }
   }
 
+  const config = isPlainObject(input) ? input : null;
+
   return {
-    config: isPlainObject(input) ? input : null,
+    config,
+    source: resolveParsedSource(config),
   };
 };
 
@@ -250,7 +285,7 @@ export const parseAboutResponse = (data) => {
 };
 
 export const normalizeAboutPageConfig = (input) => {
-  const { config } = parseConfigInput(input);
+  const { config, source } = parseConfigInput(input);
 
   if (!config) {
     return withSourceMetadata(
@@ -330,22 +365,81 @@ export const normalizeAboutPageConfig = (input) => {
     ),
   };
 
-  return withSourceMetadata(
-    normalizedConfig,
-    resolveConfigSource(normalizedConfig),
-  );
+  return withSourceMetadata(normalizedConfig, source);
 };
 
-export const isStructuredAboutEnabled = (config, legacy = '') => {
+const translateText = (value, translate) =>
+  typeof value === 'string' && value !== '' ? translate(value) : value;
+
+export const translateAboutPageConfig = (config, translate) => {
+  const t = typeof translate === 'function' ? translate : (text) => text;
+  const safeConfig = isPlainObject(config) ? config : {};
+  const hero = safeConfig.hero || {};
+  const overview = safeConfig.overview || {};
+  const group = safeConfig.group || {};
+
+  return {
+    ...safeConfig,
+    hero: {
+      ...hero,
+      eyebrow: translateText(hero.eyebrow, t),
+      title: translateText(hero.title, t),
+      subtitle: translateText(hero.subtitle, t),
+      primaryActionText: translateText(hero.primaryActionText, t),
+      secondaryActionText: translateText(hero.secondaryActionText, t),
+    },
+    overview: {
+      ...overview,
+      title: translateText(overview.title, t),
+      description: translateText(overview.description, t),
+      status: translateText(overview.status, t),
+      metrics: Array.isArray(overview.metrics)
+        ? overview.metrics.map((metric) => ({
+            ...metric,
+            label: translateText(metric.label, t),
+          }))
+        : [],
+      channels: Array.isArray(overview.channels)
+        ? overview.channels.map((channel) => ({
+            ...channel,
+            status: translateText(channel.status, t),
+          }))
+        : [],
+    },
+    capabilities: Array.isArray(safeConfig.capabilities)
+      ? safeConfig.capabilities.map((capability) => ({
+          ...capability,
+          title: translateText(capability.title, t),
+          description: translateText(capability.description, t),
+        }))
+      : [],
+    group: {
+      ...group,
+      title: translateText(group.title, t),
+      description: translateText(group.description, t),
+      status: translateText(group.status, t),
+      bullets: Array.isArray(group.bullets)
+        ? group.bullets.map((bullet) => translateText(bullet, t))
+        : [],
+      websiteLabel: translateText(group.websiteLabel, t),
+    },
+    contacts: Array.isArray(safeConfig.contacts)
+      ? safeConfig.contacts.map((contact) => ({
+          ...contact,
+          title: translateText(contact.title, t),
+          description: translateText(contact.description, t),
+        }))
+      : [],
+  };
+};
+
+export const isStructuredAboutEnabled = (config) => {
   if (config?.enabled !== true) {
     return false;
   }
 
-  const hasLegacyContent =
-    typeof legacy === 'string' ? legacy.trim() !== '' : Boolean(legacy);
-
   return (
-    !hasLegacyContent ||
+    !config.__source ||
     config.__source === CONFIG_SOURCE_CONFIGURED ||
     hasMeaningfulVisibleContent(config)
   );

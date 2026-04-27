@@ -10,6 +10,10 @@ const readSource = (path) => {
 
 const aboutPageSettingSource = readSource('./AboutPageSetting.jsx');
 const otherSettingSource = readSource('./OtherSetting.jsx');
+const updateOptionSource =
+  otherSettingSource.match(
+    /const updateOption = async[\s\S]*?const \[loadingInput/,
+  )?.[0] || '';
 
 test('about page setting saves structured and legacy about page options', () => {
   assert.match(aboutPageSettingSource, /AboutPageConfig/);
@@ -36,6 +40,11 @@ test('other setting wires about page config into personalization settings', () =
   assert.match(otherSettingSource, /AboutPageConfig:\s*''/);
   assert.match(otherSettingSource, /AboutPageConfig:\s*false/);
   assert.match(otherSettingSource, /<AboutPageSetting[\s\S]*inputs=\{inputs\}/);
+});
+
+test('other setting propagates failed option saves to callers', () => {
+  assert.match(updateOptionSource, /throw new Error\(/);
+  assert.doesNotMatch(updateOptionSource, /showError\(message\)/);
 });
 
 test('about page setting uses responsive columns on narrow admin screens', () => {

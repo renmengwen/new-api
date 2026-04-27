@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
+import { translateAboutPageConfig } from './aboutPageConfig';
 import './about.css';
 
 const capabilityIconMap = {
@@ -117,15 +118,21 @@ const getContactTitle = (contact, t) => {
 
 const AboutStructuredPage = ({ config }) => {
   const { t } = useTranslation();
-  const hero = config?.hero || {};
-  const overview = config?.overview || {};
-  const group = config?.group || {};
-  const capabilities = Array.isArray(config?.capabilities)
-    ? config.capabilities
+  const displayConfig = useMemo(
+    () => translateAboutPageConfig(config, t),
+    [config, t],
+  );
+  const hero = displayConfig?.hero || {};
+  const overview = displayConfig?.overview || {};
+  const group = displayConfig?.group || {};
+  const capabilities = Array.isArray(displayConfig?.capabilities)
+    ? displayConfig.capabilities
     : [];
-  const contacts = Array.isArray(config?.contacts) ? config.contacts : [];
-  const customContent = hasText(config?.customContent)
-    ? config.customContent
+  const contacts = Array.isArray(displayConfig?.contacts)
+    ? displayConfig.contacts
+    : [];
+  const customContent = hasText(displayConfig?.customContent)
+    ? displayConfig.customContent
     : '';
   const customContentHtml = useMemo(
     () => (customContent ? marked.parse(customContent) : ''),

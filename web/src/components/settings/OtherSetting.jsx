@@ -66,17 +66,20 @@ const OtherSetting = () => {
 
   const updateOption = async (key, value) => {
     setLoading(true);
-    const res = await API.put('/api/option/', {
-      key,
-      value,
-    });
-    const { success, message } = res.data;
-    if (success) {
+    try {
+      const res = await API.put('/api/option/', {
+        key,
+        value,
+      });
+      const { success, message } = res.data;
+      if (!success) {
+        throw new Error(message || t('保存失败'));
+      }
       setInputs((inputs) => ({ ...inputs, [key]: value }));
-    } else {
-      showError(message);
+      return res.data;
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const [loadingInput, setLoadingInput] = useState({
