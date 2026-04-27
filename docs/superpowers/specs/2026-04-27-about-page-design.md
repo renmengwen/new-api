@@ -16,6 +16,7 @@ Use the enterprise product-page style from the demo:
 - The Digital China Group website link defaults to `https://www.digitalchina.com/`.
 - Customer service contact area includes WeChat and Enterprise WeChat QR codes.
 - Images, QR cards, capability cards, and buttons should include subtle transitions and hover interactions.
+- The page must be fully responsive on mobile phones and tablets, with no clipped text, overlapping UI, or horizontally scrolling layout.
 
 ## Page Structure
 
@@ -109,6 +110,19 @@ Recommended shape:
 
 The frontend should normalize missing or malformed arrays to safe defaults. Admin-entered text is treated as data and rendered through React, except `customContent`, which keeps the existing Markdown/HTML behavior.
 
+## Responsive Behavior
+
+The final page must adapt cleanly across desktop, tablet, and mobile widths:
+
+- Desktop uses the approved two-column hero with the platform overview panel on the right.
+- Tablet stacks the hero content above the overview panel when horizontal space is constrained.
+- Capability cards render as four columns on wide screens, two columns on tablet, and one column on mobile.
+- Contact QR cards render as two columns on desktop and one column on mobile.
+- QR images keep stable dimensions and never push text outside the card.
+- Header/navigation content that does not fit should collapse or hide gracefully rather than wrapping into awkward rows.
+- Hover transitions must have equivalent focus-visible states for keyboard users, and touch devices should still show active/pressed feedback.
+- Text must wrap within its container at all supported widths; no section may require horizontal scrolling.
+
 ## Admin Editing
 
 In `OtherSetting`, replace the single About textarea with a structured form:
@@ -151,4 +165,4 @@ Run at least:
 - `go test ./...` if backend code changes.
 - `bun run build` in `web/` for frontend build validation.
 - `bun run i18n:lint` or the closest available i18n validation if locale files change.
-- Manual browser review for desktop and mobile widths, including hover/focus behavior and missing QR image placeholders.
+- Manual browser review for desktop, tablet, and mobile widths, including hover/focus/active behavior and missing QR image placeholders.
