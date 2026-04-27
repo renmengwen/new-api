@@ -24,9 +24,27 @@ test('about CSS defines responsive breakpoints and interactive states', () => {
   assert.match(source, /\.about-page \.about-hero/);
   assert.match(source, /\.about-page \.about-contact-grid/);
   assert.match(source, /\.about-page \.about-card:hover/);
-  assert.match(source, /\.about-page \.about-card:focus-visible/);
+  assert.match(source, /\.about-page \.about-action:focus-visible/);
   assert.match(source, /\.about-page \.about-qr-card:active/);
   assert.doesNotMatch(source, /^\s*\.about-(?!page(?:[\s,{:#.*>+~]|$))/m);
+});
+
+test('about CSS lets long status and channel text wrap', () => {
+  const source = readSource('about.css');
+
+  assert.doesNotMatch(source, /white-space:\s*nowrap/);
+  assert.match(
+    source,
+    /\.about-page \.about-status\s*\{[\s\S]*min-width:\s*0[\s\S]*overflow-wrap:\s*anywhere[\s\S]*white-space:\s*normal/,
+  );
+  assert.match(
+    source,
+    /\.about-page \.about-channel-label\s*\{[\s\S]*min-width:\s*0[\s\S]*overflow-wrap:\s*anywhere/,
+  );
+  assert.match(
+    source,
+    /\.about-page \.about-channel-label span\s*\{[\s\S]*min-width:\s*0[\s\S]*overflow-wrap:\s*anywhere/,
+  );
 });
 
 test('about index wires structured page while preserving legacy render paths', () => {
@@ -49,12 +67,27 @@ test('about index clears cached structured config when the API request fails', (
   );
 });
 
+test('about index clears cached structured config when the API request rejects', () => {
+  const source = readSource('index.jsx');
+
+  assert.match(
+    source,
+    /try\s*\{[\s\S]*API\.get\('\/api\/about'\)[\s\S]*\}\s*catch\s*(?:\([^)]*\))?\s*\{[\s\S]*showError[\s\S]*setAbout\(t\([\s\S]*setAboutConfig\(null\)[\s\S]*removeLocalStorage\(ABOUT_CONFIG_CACHE_KEY\)/,
+  );
+});
+
 test('structured about page lazily loads QR images and handles broken images', () => {
   const source = readSource('AboutStructuredPage.jsx');
 
   assert.match(source, /<img[\s\S]*loading=['"]lazy['"]/);
   assert.match(source, /onError=\{/);
   assert.match(source, /fallbackUrl/);
+});
+
+test('structured about display cards are not keyboard tab stops', () => {
+  const source = readSource('AboutStructuredPage.jsx');
+
+  assert.doesNotMatch(source, /tabIndex=\{0\}/);
 });
 
 test('structured about page guards optional aria-labelledby headings', () => {

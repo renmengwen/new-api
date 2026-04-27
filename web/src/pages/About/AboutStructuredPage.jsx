@@ -215,7 +215,6 @@ const AboutStructuredPage = ({ config }) => {
                 <article
                   className='about-card'
                   key={`${capability.title}-${index}`}
-                  tabIndex={0}
                 >
                   <div className='about-card-icon'>
                     {renderIcon(capability.icon, capabilityIconMap)}
@@ -272,7 +271,6 @@ const AboutStructuredPage = ({ config }) => {
                   <article
                     className='about-qr-card'
                     key={`${contact.type}-${contact.imageUrl}-${contact.fallbackUrl}-${index}`}
-                    tabIndex={0}
                   >
                     <div className='about-contact-icon'>
                       {renderIcon(contact.type, contactIconMap, MessageCircle)}

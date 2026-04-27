@@ -11,12 +11,12 @@
   min-height: calc(100vh - 60px);
   overflow-x: hidden;
   color: var(--about-text);
-  background: linear-gradient(
-      180deg,
-      rgba(244, 248, 255, 0.88),
-      rgba(250, 251, 252, 0.96)
-    ),
-    #f7f8fb;
+  background-color: #f7f8fb;
+  background-image: linear-gradient(
+    180deg,
+    rgba(244, 248, 255, 0.88),
+    rgba(250, 251, 252, 0.96)
+  );
 }
 
 .about-page *,
@@ -157,7 +157,9 @@
 
 .about-page .about-status {
   display: inline-flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-width: 0;
   align-items: center;
   gap: 6px;
   border: 1px solid rgba(15, 118, 110, 0.22);
@@ -167,7 +169,8 @@
   background: rgba(15, 118, 110, 0.08);
   font-size: 12px;
   font-weight: 700;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .about-page .about-overview-description {
@@ -213,11 +216,18 @@
 
 .about-page .about-channel-label {
   display: flex;
+  min-width: 0;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 7px;
   color: var(--about-muted);
   font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.about-page .about-channel-label span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .about-page .about-channel-label span:first-child {
@@ -302,14 +312,6 @@
   color: var(--about-muted);
   line-height: 1.7;
   overflow-wrap: anywhere;
-}
-
-.about-page .about-card:focus-visible,
-.about-page .about-qr-card:focus-visible {
-  outline: 3px solid rgba(29, 95, 209, 0.28);
-  outline-offset: 4px;
-  border-color: rgba(29, 95, 209, 0.36);
-  box-shadow: 0 18px 38px rgba(24, 33, 49, 0.12);
 }
 
 .about-page .about-group-section {

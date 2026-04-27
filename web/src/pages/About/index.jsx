@@ -78,31 +78,40 @@ const About = () => {
 
   const displayAbout = async () => {
     setAbout(readLocalStorage(ABOUT_CACHE_KEY));
-    const res = await API.get('/api/about');
-    const { success, message } = res.data;
-    if (success) {
-      const { legacy, config } = parseAboutResponse(res.data);
-      const normalizedConfig = normalizeAboutPageConfig(config);
-      let aboutContent = legacy;
-      if (legacy && !legacy.startsWith('https://')) {
-        aboutContent = marked.parse(legacy);
+    try {
+      const res = await API.get('/api/about');
+      const { success, message } = res.data;
+      if (success) {
+        const { legacy, config } = parseAboutResponse(res.data);
+        const normalizedConfig = normalizeAboutPageConfig(config);
+        let aboutContent = legacy;
+        if (legacy && !legacy.startsWith('https://')) {
+          aboutContent = marked.parse(legacy);
+        }
+        setLegacyAbout(legacy);
+        setAbout(aboutContent);
+        setAboutConfig(normalizedConfig);
+        writeLocalStorage(ABOUT_CACHE_KEY, aboutContent);
+        writeLocalStorage(
+          ABOUT_CONFIG_CACHE_KEY,
+          JSON.stringify(normalizedConfig),
+        );
+      } else {
+        showError(message);
+        setAbout(t('加载关于内容失败...'));
+        setLegacyAbout('');
+        setAboutConfig(null);
+        removeLocalStorage(ABOUT_CONFIG_CACHE_KEY);
       }
-      setLegacyAbout(legacy);
-      setAbout(aboutContent);
-      setAboutConfig(normalizedConfig);
-      writeLocalStorage(ABOUT_CACHE_KEY, aboutContent);
-      writeLocalStorage(
-        ABOUT_CONFIG_CACHE_KEY,
-        JSON.stringify(normalizedConfig),
-      );
-    } else {
-      showError(message);
+    } catch (error) {
+      showError(error?.message || t('加载关于内容失败...'));
       setAbout(t('加载关于内容失败...'));
       setLegacyAbout('');
       setAboutConfig(null);
       removeLocalStorage(ABOUT_CONFIG_CACHE_KEY);
+    } finally {
+      setAboutLoaded(true);
     }
-    setAboutLoaded(true);
   };
 
   useEffect(() => {
