@@ -101,6 +101,44 @@ test('fallback metadata survives spread and JSON round trip', () => {
   assert.equal(isStructuredAboutEnabled(serializedConfig, '# legacy'), false);
 });
 
+test('customized persisted defaults override legacy content', () => {
+  const defaultConfig = normalizeAboutPageConfig('');
+  const persisted = {
+    ...defaultConfig,
+    hero: {
+      ...defaultConfig.hero,
+      title: 'Custom title',
+    },
+  };
+
+  assert.equal(isStructuredAboutEnabled(persisted, '# legacy'), true);
+  assert.equal(
+    isStructuredAboutEnabled(normalizeAboutPageConfig(persisted), '# legacy'),
+    true,
+  );
+});
+
+test('customized persisted defaults stay enabled after JSON round trip', () => {
+  const defaultConfig = normalizeAboutPageConfig('');
+  const persisted = {
+    ...defaultConfig,
+    hero: {
+      ...defaultConfig.hero,
+      title: 'Custom title',
+    },
+  };
+  const roundTripped = JSON.parse(JSON.stringify(persisted));
+
+  assert.equal(isStructuredAboutEnabled(roundTripped, '# legacy'), true);
+  assert.equal(
+    isStructuredAboutEnabled(
+      normalizeAboutPageConfig(roundTripped),
+      '# legacy',
+    ),
+    true,
+  );
+});
+
 test('normalizeAboutPageConfig preserves user values and fills short arrays', () => {
   const config = normalizeAboutPageConfig({
     hero: {
