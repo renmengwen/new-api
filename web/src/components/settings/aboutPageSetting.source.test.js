@@ -37,3 +37,19 @@ test('other setting wires about page config into personalization settings', () =
   assert.match(otherSettingSource, /AboutPageConfig:\s*false/);
   assert.match(otherSettingSource, /<AboutPageSetting[\s\S]*inputs=\{inputs\}/);
 });
+
+test('about page setting uses responsive columns on narrow admin screens', () => {
+  assert.match(
+    aboutPageSettingSource,
+    /const quarterColProps = \{[\s\S]*xs: 24,[\s\S]*sm: 12,[\s\S]*lg: 6,/,
+  );
+  assert.match(
+    aboutPageSettingSource,
+    /const thirdColProps = \{[\s\S]*xs: 24,[\s\S]*sm: 12,[\s\S]*lg: 8,/,
+  );
+  assert.match(
+    aboutPageSettingSource,
+    /const halfColProps = \{[\s\S]*xs: 24,[\s\S]*sm: 12,[\s\S]*lg: 12,/,
+  );
+  assert.doesNotMatch(aboutPageSettingSource, /<Col\s+span=\{(?:6|8|12)\}/);
+});

@@ -34,6 +34,30 @@ const rowGroupStyle = {
   marginBottom: 12,
 };
 
+const fullColProps = {
+  xs: 24,
+  sm: 24,
+  lg: 24,
+};
+
+const quarterColProps = {
+  xs: 24,
+  sm: 12,
+  lg: 6,
+};
+
+const thirdColProps = {
+  xs: 24,
+  sm: 12,
+  lg: 8,
+};
+
+const halfColProps = {
+  xs: 24,
+  sm: 12,
+  lg: 12,
+};
+
 const cloneConfig = (value) => JSON.parse(JSON.stringify(value));
 
 const stripConfigMetadata = (value) => {
@@ -203,7 +227,7 @@ const AboutPageSetting = ({
           style={{ marginBottom: 12 }}
         />
         <Row>
-          <Col span={24}>
+          <Col {...fullColProps}>
             <div style={fieldStyle}>
               <label style={labelStyle}>
                 {translate('启用结构化关于页面')}
@@ -221,21 +245,27 @@ const AboutPageSetting = ({
 
       <Form.Section text={translate('首屏内容')}>
         <Row gutter={16}>
-          <Col span={8}>{renderInput('眉标', ['hero', 'eyebrow'])}</Col>
-          <Col span={8}>{renderInput('主标题', ['hero', 'title'])}</Col>
-          <Col span={8}>{renderInput('副标题', ['hero', 'subtitle'])}</Col>
+          <Col {...thirdColProps}>
+            {renderInput('眉标', ['hero', 'eyebrow'])}
+          </Col>
+          <Col {...thirdColProps}>
+            {renderInput('主标题', ['hero', 'title'])}
+          </Col>
+          <Col {...thirdColProps}>
+            {renderInput('副标题', ['hero', 'subtitle'])}
+          </Col>
         </Row>
         <Row gutter={16}>
-          <Col span={6}>
+          <Col {...quarterColProps}>
             {renderInput('主按钮文案', ['hero', 'primaryActionText'])}
           </Col>
-          <Col span={6}>
+          <Col {...quarterColProps}>
             {renderInput('主按钮链接', ['hero', 'primaryActionUrl'])}
           </Col>
-          <Col span={6}>
+          <Col {...quarterColProps}>
             {renderInput('次按钮文案', ['hero', 'secondaryActionText'])}
           </Col>
-          <Col span={6}>
+          <Col {...quarterColProps}>
             {renderInput('次按钮链接', ['hero', 'secondaryActionUrl'])}
           </Col>
         </Row>
@@ -243,9 +273,13 @@ const AboutPageSetting = ({
 
       <Form.Section text={translate('平台概览')}>
         <Row gutter={16}>
-          <Col span={8}>{renderInput('概览标题', ['overview', 'title'])}</Col>
-          <Col span={8}>{renderInput('运行状态', ['overview', 'status'])}</Col>
-          <Col span={8}>
+          <Col {...thirdColProps}>
+            {renderInput('概览标题', ['overview', 'title'])}
+          </Col>
+          <Col {...thirdColProps}>
+            {renderInput('运行状态', ['overview', 'status'])}
+          </Col>
+          <Col {...thirdColProps}>
             {renderTextArea('概览描述', ['overview', 'description'])}
           </Col>
         </Row>
@@ -255,7 +289,7 @@ const AboutPageSetting = ({
         {config.overview.metrics.map((metric, index) => (
           <div key={`metric-${index}`} style={rowGroupStyle}>
             <Row gutter={16}>
-              <Col span={12}>
+              <Col {...halfColProps}>
                 {renderInput('指标数值', [
                   'overview',
                   'metrics',
@@ -263,7 +297,7 @@ const AboutPageSetting = ({
                   'value',
                 ])}
               </Col>
-              <Col span={12}>
+              <Col {...halfColProps}>
                 {renderInput('指标标签', [
                   'overview',
                   'metrics',
@@ -280,7 +314,7 @@ const AboutPageSetting = ({
         {config.overview.channels.map((channel, index) => (
           <div key={`channel-${index}`} style={rowGroupStyle}>
             <Row gutter={16}>
-              <Col span={8}>
+              <Col {...thirdColProps}>
                 {renderInput('渠道名称', [
                   'overview',
                   'channels',
@@ -288,7 +322,7 @@ const AboutPageSetting = ({
                   'name',
                 ])}
               </Col>
-              <Col span={8}>
+              <Col {...thirdColProps}>
                 {renderInput(
                   '渠道占比',
                   ['overview', 'channels', index, 'value'],
@@ -296,7 +330,7 @@ const AboutPageSetting = ({
                   { type: 'number' },
                 )}
               </Col>
-              <Col span={8}>
+              <Col {...thirdColProps}>
                 {renderInput('渠道状态', [
                   'overview',
                   'channels',
@@ -313,13 +347,13 @@ const AboutPageSetting = ({
         {config.capabilities.map((capability, index) => (
           <div key={`capability-${index}`} style={rowGroupStyle}>
             <Row gutter={16}>
-              <Col span={6}>
+              <Col {...quarterColProps}>
                 {renderInput('图标标识', ['capabilities', index, 'icon'])}
               </Col>
-              <Col span={6}>
+              <Col {...quarterColProps}>
                 {renderInput('卡片标题', ['capabilities', index, 'title'])}
               </Col>
-              <Col span={12}>
+              <Col {...halfColProps}>
                 {renderTextArea('卡片描述', [
                   'capabilities',
                   index,
@@ -333,9 +367,13 @@ const AboutPageSetting = ({
 
       <Form.Section text={translate('集团背书')}>
         <Row gutter={16}>
-          <Col span={8}>{renderInput('集团标题', ['group', 'title'])}</Col>
-          <Col span={8}>{renderInput('集团状态', ['group', 'status'])}</Col>
-          <Col span={8}>
+          <Col {...thirdColProps}>
+            {renderInput('集团标题', ['group', 'title'])}
+          </Col>
+          <Col {...thirdColProps}>
+            {renderInput('集团状态', ['group', 'status'])}
+          </Col>
+          <Col {...thirdColProps}>
             {renderTextArea('集团描述', ['group', 'description'])}
           </Col>
         </Row>
@@ -345,10 +383,10 @@ const AboutPageSetting = ({
           </div>
         ))}
         <Row gutter={16}>
-          <Col span={12}>
+          <Col {...halfColProps}>
             {renderInput('官网按钮文案', ['group', 'websiteLabel'])}
           </Col>
-          <Col span={12}>
+          <Col {...halfColProps}>
             {renderInput('官网链接', ['group', 'websiteUrl'])}
           </Col>
         </Row>
@@ -361,13 +399,13 @@ const AboutPageSetting = ({
               {translate(contactHeadings[index])}
             </Divider>
             <Row gutter={16}>
-              <Col span={8}>
+              <Col {...thirdColProps}>
                 {renderInput('客服标题', ['contacts', index, 'title'])}
               </Col>
-              <Col span={8}>
+              <Col {...thirdColProps}>
                 {renderInput('二维码图片地址', ['contacts', index, 'imageUrl'])}
               </Col>
-              <Col span={8}>
+              <Col {...thirdColProps}>
                 {renderInput('备用链接', ['contacts', index, 'fallbackUrl'])}
               </Col>
             </Row>
