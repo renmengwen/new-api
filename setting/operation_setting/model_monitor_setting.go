@@ -22,23 +22,25 @@ type ModelMonitorModelOverride struct {
 }
 
 type ModelMonitorSetting struct {
-	Enabled               bool                                 `json:"enabled"`
-	IntervalMinutes       int                                  `json:"interval_minutes"`
-	BatchSize             int                                  `json:"batch_size"`
-	DefaultTimeoutSeconds int                                  `json:"default_timeout_seconds"`
-	FailureThreshold      int                                  `json:"failure_threshold"`
-	ExcludedModelPatterns []string                             `json:"excluded_model_patterns"`
-	ModelOverrides        map[string]ModelMonitorModelOverride `json:"model_overrides"`
+	Enabled                     bool                                 `json:"enabled"`
+	IntervalMinutes             int                                  `json:"interval_minutes"`
+	BatchSize                   int                                  `json:"batch_size"`
+	DefaultTimeoutSeconds       int                                  `json:"default_timeout_seconds"`
+	FailureThreshold            int                                  `json:"failure_threshold"`
+	ExcludedModelPatterns       []string                             `json:"excluded_model_patterns"`
+	ModelOverrides              map[string]ModelMonitorModelOverride `json:"model_overrides"`
+	NotificationDisabledUserIds []int                                `json:"notification_disabled_user_ids"`
 }
 
 var modelMonitorSetting = ModelMonitorSetting{
-	Enabled:               false,
-	IntervalMinutes:       defaultModelMonitorIntervalMinutes,
-	BatchSize:             defaultModelMonitorBatchSize,
-	DefaultTimeoutSeconds: defaultModelMonitorTimeoutSeconds,
-	FailureThreshold:      defaultModelMonitorFailureThreshold,
-	ExcludedModelPatterns: []string{},
-	ModelOverrides:        map[string]ModelMonitorModelOverride{},
+	Enabled:                     false,
+	IntervalMinutes:             defaultModelMonitorIntervalMinutes,
+	BatchSize:                   defaultModelMonitorBatchSize,
+	DefaultTimeoutSeconds:       defaultModelMonitorTimeoutSeconds,
+	FailureThreshold:            defaultModelMonitorFailureThreshold,
+	ExcludedModelPatterns:       []string{},
+	ModelOverrides:              map[string]ModelMonitorModelOverride{},
+	NotificationDisabledUserIds: []int{},
 }
 
 var modelMonitorSettingMu sync.RWMutex
@@ -68,6 +70,9 @@ func (s *ModelMonitorSetting) Normalize() {
 	}
 	if s.ModelOverrides == nil {
 		s.ModelOverrides = map[string]ModelMonitorModelOverride{}
+	}
+	if s.NotificationDisabledUserIds == nil {
+		s.NotificationDisabledUserIds = []int{}
 	}
 }
 
@@ -111,6 +116,7 @@ func (s ModelMonitorSetting) Clone() ModelMonitorSetting {
 	s.Normalize()
 	clone := s
 	clone.ExcludedModelPatterns = append([]string(nil), s.ExcludedModelPatterns...)
+	clone.NotificationDisabledUserIds = append([]int(nil), s.NotificationDisabledUserIds...)
 	clone.ModelOverrides = make(map[string]ModelMonitorModelOverride, len(s.ModelOverrides))
 	for modelName, override := range s.ModelOverrides {
 		copied := override
@@ -146,6 +152,19 @@ func (s *ModelMonitorSetting) TimeoutSecondsForModel(modelName string) int {
 		return override.TimeoutSeconds
 	}
 	return s.DefaultTimeoutSeconds
+}
+
+func (s *ModelMonitorSetting) NotificationDisabledForUser(userId int) bool {
+	if s == nil || userId <= 0 {
+		return false
+	}
+	s.Normalize()
+	for _, disabledUserId := range s.NotificationDisabledUserIds {
+		if disabledUserId == userId {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *ModelMonitorSetting) modelExcluded(modelName string) bool {

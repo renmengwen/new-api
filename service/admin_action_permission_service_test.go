@@ -13,6 +13,13 @@ import (
 func setupAdminPermissionServiceTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
+	previousDB := model.DB
+	previousLogDB := model.LOG_DB
+	previousUsingSQLite := common.UsingSQLite
+	previousUsingMySQL := common.UsingMySQL
+	previousUsingPostgreSQL := common.UsingPostgreSQL
+	previousRedisEnabled := common.RedisEnabled
+
 	common.UsingSQLite = true
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
@@ -34,6 +41,17 @@ func setupAdminPermissionServiceTestDB(t *testing.T) *gorm.DB {
 	))
 
 	t.Cleanup(func() {
+		model.DB = serviceTestMainDB
+		model.LOG_DB = serviceTestMainLogDB
+		if serviceTestMainDB == nil {
+			model.DB = previousDB
+			model.LOG_DB = previousLogDB
+		}
+		common.UsingSQLite = previousUsingSQLite
+		common.UsingMySQL = previousUsingMySQL
+		common.UsingPostgreSQL = previousUsingPostgreSQL
+		common.RedisEnabled = previousRedisEnabled
+
 		sqlDB, err := db.DB()
 		if err == nil {
 			_ = sqlDB.Close()

@@ -3382,6 +3382,13 @@
     "自然周同比 新增": "Calendar-week WoW: New",
     "自然周同比 -": "Calendar-week WoW -",
     "自然周同比": "Calendar-week WoW",
-    "自然周同比仅在近7天展示": "Calendar-week WoW is only shown for the last 7 days"
+    "自然周同比仅在近7天展示": "Calendar-week WoW is only shown for the last 7 days",
+    "通知人管理": "Notification Recipients",
+    "接收通知": "Receive Notifications",
+    "接收": "Receive",
+    "不可接收": "Cannot Receive",
+    "未配置邮箱": "No email configured",
+    "无模型监控查看权限": "No model monitor read permission",
+    "取消勾选后，模型失败邮件不会发送给对应管理员。": "After unchecking, model failure emails will not be sent to the selected administrator."
   }
 }

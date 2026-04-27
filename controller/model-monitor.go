@@ -303,13 +303,14 @@ func modelMonitorSettingsDTO(setting *operation_setting.ModelMonitorSetting) dto
 		}
 	}
 	return dto.ModelMonitorSettingsUpdateRequest{
-		Enabled:               setting.Enabled,
-		IntervalMinutes:       setting.IntervalMinutes,
-		BatchSize:             setting.BatchSize,
-		DefaultTimeoutSeconds: setting.DefaultTimeoutSeconds,
-		FailureThreshold:      setting.FailureThreshold,
-		ExcludedModelPatterns: append([]string(nil), setting.ExcludedModelPatterns...),
-		ModelOverrides:        overrides,
+		Enabled:                     setting.Enabled,
+		IntervalMinutes:             setting.IntervalMinutes,
+		BatchSize:                   setting.BatchSize,
+		DefaultTimeoutSeconds:       setting.DefaultTimeoutSeconds,
+		FailureThreshold:            setting.FailureThreshold,
+		ExcludedModelPatterns:       append([]string(nil), setting.ExcludedModelPatterns...),
+		ModelOverrides:              overrides,
+		NotificationDisabledUserIds: append([]int(nil), setting.NotificationDisabledUserIds...),
 	}
 }
 
@@ -423,6 +424,18 @@ func GetModelMonitor(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, state)
+}
+
+func GetModelMonitorNotificationUsers(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceModelMonitorManagement, service.ActionUpdate) {
+		return
+	}
+	users, err := service.ListModelMonitorNotificationUsers(currentModelMonitorSetting())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, users)
 }
 
 func UpdateModelMonitorSetting(c *gin.Context) {

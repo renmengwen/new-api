@@ -22,6 +22,14 @@ func setupAsyncExportServiceTestDB(t *testing.T) *gorm.DB {
 func setupAsyncExportServiceTestDBWithLogger(t *testing.T, gormLogger logger.Interface) *gorm.DB {
 	t.Helper()
 
+	previousDB := model.DB
+	previousLogDB := model.LOG_DB
+	previousExportDir := common.ExportDir
+	previousUsingSQLite := common.UsingSQLite
+	previousUsingMySQL := common.UsingMySQL
+	previousUsingPostgreSQL := common.UsingPostgreSQL
+	previousRedisEnabled := common.RedisEnabled
+
 	common.UsingSQLite = true
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
@@ -42,6 +50,18 @@ func setupAsyncExportServiceTestDBWithLogger(t *testing.T, gormLogger logger.Int
 	require.NoError(t, gormDB.AutoMigrate(&model.AsyncExportJob{}))
 
 	t.Cleanup(func() {
+		model.DB = serviceTestMainDB
+		model.LOG_DB = serviceTestMainLogDB
+		if serviceTestMainDB == nil {
+			model.DB = previousDB
+			model.LOG_DB = previousLogDB
+		}
+		common.ExportDir = previousExportDir
+		common.UsingSQLite = previousUsingSQLite
+		common.UsingMySQL = previousUsingMySQL
+		common.UsingPostgreSQL = previousUsingPostgreSQL
+		common.RedisEnabled = previousRedisEnabled
+
 		sqlDB, err := gormDB.DB()
 		if err == nil {
 			_ = sqlDB.Close()

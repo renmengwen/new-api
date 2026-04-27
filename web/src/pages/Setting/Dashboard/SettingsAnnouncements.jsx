@@ -45,6 +45,7 @@ import {
   formatDateTimeString,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
+import AnnouncementEmailBroadcastModal from '../../../components/settings/AnnouncementEmailBroadcastModal';
 
 const { Text } = Typography;
 
@@ -69,6 +70,12 @@ const SettingsAnnouncements = ({ options, refresh }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [announcementEmailConfirmVisible, setAnnouncementEmailConfirmVisible] =
+    useState(false);
+  const [announcementEmailModalVisible, setAnnouncementEmailModalVisible] =
+    useState(false);
+  const [latestEmailAnnouncementDraft, setLatestEmailAnnouncementDraft] =
+    useState(null);
 
   // 面板启用状态
   const [panelEnabled, setPanelEnabled] = useState(true);
@@ -209,14 +216,24 @@ const SettingsAnnouncements = ({ options, refresh }) => {
     } else {
       showError(message);
     }
+    return success;
   };
 
   const submitAnnouncements = async () => {
     try {
       setLoading(true);
       const announcementsJson = JSON.stringify(announcementsList);
-      await updateOption('console_setting.announcements', announcementsJson);
+      const success = await updateOption(
+        'console_setting.announcements',
+        announcementsJson,
+      );
+      if (!success) {
+        return;
+      }
       setHasChanges(false);
+      if (latestEmailAnnouncementDraft?.content) {
+        setAnnouncementEmailConfirmVisible(true);
+      }
     } catch (error) {
       console.error('系统公告更新失败', error);
       showError('系统公告更新失败');
@@ -261,6 +278,7 @@ const SettingsAnnouncements = ({ options, refresh }) => {
       );
       setAnnouncementsList(newList);
       setHasChanges(true);
+      setLatestEmailAnnouncementDraft(null);
       showSuccess('公告已删除，请及时点击“保存设置”进行保存');
     }
     setShowDeleteModal(false);
@@ -283,9 +301,11 @@ const SettingsAnnouncements = ({ options, refresh }) => {
       };
 
       let newList;
+      let emailDraft;
       if (editingAnnouncement) {
+        emailDraft = { ...editingAnnouncement, ...formData };
         newList = announcementsList.map((item) =>
-          item.id === editingAnnouncement.id ? { ...item, ...formData } : item,
+          item.id === editingAnnouncement.id ? emailDraft : item,
         );
       } else {
         const newId =
@@ -294,11 +314,13 @@ const SettingsAnnouncements = ({ options, refresh }) => {
           id: newId,
           ...formData,
         };
+        emailDraft = newAnnouncement;
         newList = [...announcementsList, newAnnouncement];
       }
 
       setAnnouncementsList(newList);
       setHasChanges(true);
+      setLatestEmailAnnouncementDraft(emailDraft);
       setShowAnnouncementModal(false);
       showSuccess(
         editingAnnouncement
@@ -381,6 +403,7 @@ const SettingsAnnouncements = ({ options, refresh }) => {
     setAnnouncementsList(newList);
     setSelectedRowKeys([]);
     setHasChanges(true);
+    setLatestEmailAnnouncementDraft(null);
     showSuccess(
       `已删除 ${selectedRowKeys.length} 个系统公告，请及时点击“保存设置”进行保存`,
     );
@@ -599,6 +622,27 @@ const SettingsAnnouncements = ({ options, refresh }) => {
       >
         <Text>{t('确定要删除此公告吗？')}</Text>
       </Modal>
+
+      <Modal
+        title={t('发送邮件确认')}
+        visible={announcementEmailConfirmVisible}
+        onOk={() => {
+          setAnnouncementEmailConfirmVisible(false);
+          setAnnouncementEmailModalVisible(true);
+        }}
+        onCancel={() => setAnnouncementEmailConfirmVisible(false)}
+        okText={t('是')}
+        cancelText={t('否')}
+      >
+        <Text>{t('是否把此次系统公告以邮件形式发送？')}</Text>
+      </Modal>
+      <AnnouncementEmailBroadcastModal
+        visible={announcementEmailModalVisible}
+        source='announcement'
+        defaultTitle={t('系统公告')}
+        defaultContent={latestEmailAnnouncementDraft?.content || ''}
+        onClose={() => setAnnouncementEmailModalVisible(false)}
+      />
 
       {/* 公告内容放大编辑 Modal */}
       <Modal

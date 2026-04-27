@@ -28,9 +28,11 @@ import {
   Banner,
   Button,
   Card,
+  Checkbox,
   Col,
   Form,
   InputNumber,
+  Modal,
   Row,
   Space,
   Spin,
@@ -40,7 +42,7 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { Play, RefreshCw, Save } from 'lucide-react';
+import { BellRing, Play, RefreshCw, Save } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../../helpers';
 import { useUserPermissions } from '../../../hooks/common/useUserPermissions';
@@ -69,6 +71,7 @@ const DEFAULT_SETTINGS = {
   failure_threshold: 3,
   excluded_model_patterns: [],
   model_overrides: {},
+  notification_disabled_user_ids: [],
 };
 
 const DEFAULT_SUMMARY = {
@@ -111,6 +114,11 @@ function normalizeSettings(settings) {
       next.model_overrides && typeof next.model_overrides === 'object'
         ? next.model_overrides
         : {},
+    notification_disabled_user_ids: Array.isArray(
+      next.notification_disabled_user_ids,
+    )
+      ? next.notification_disabled_user_ids.map(Number).filter(Number.isFinite)
+      : [],
   };
 }
 
@@ -218,6 +226,15 @@ export default function ModelMonitorCenter() {
   const [items, setItems] = useState([]);
   const [excludedPatternsText, setExcludedPatternsText] = useState('');
   const [loadError, setLoadError] = useState('');
+  const [notificationModalVisible, setNotificationModalVisible] =
+    useState(false);
+  const [notificationUsersLoading, setNotificationUsersLoading] =
+    useState(false);
+  const [notificationUsers, setNotificationUsers] = useState([]);
+  const [
+    notificationDraftDisabledUserIds,
+    setNotificationDraftDisabledUserIds,
+  ] = useState([]);
   const formRef = useRef();
 
   const canRead = hasActionPermission('model_monitor_management', 'read');
@@ -296,6 +313,10 @@ export default function ModelMonitorCenter() {
     }),
     [settings, excludedPatternsText],
   );
+  const notificationDraftDisabledUserIdSet = useMemo(
+    () => new Set(notificationDraftDisabledUserIds.map(Number)),
+    [notificationDraftDisabledUserIds],
+  );
 
   useEffect(() => {
     if (formRef.current) {
@@ -316,31 +337,87 @@ export default function ModelMonitorCenter() {
     );
   };
 
-  const buildSettingsPayload = () => ({
-    ...settings,
+  const buildSettingsPayload = (sourceSettings = settings) => ({
+    ...sourceSettings,
     excluded_model_patterns: textToPatterns(excludedPatternsText),
   });
 
-  const saveSettings = async () => {
+  const saveSettings = async (sourceSettings = settings) => {
     if (!canUpdate) {
       showError(t('您无权访问此页面，请联系管理员'));
-      return;
+      return false;
     }
     setSaving(true);
     try {
-      const payload = buildSettingsPayload();
+      const payload = buildSettingsPayload(sourceSettings);
       const res = await API.put('/api/model_monitor/settings', payload);
       const { success, message } = res.data;
       if (!success) {
         showError(message || t('保存失败，请重试'));
-        return;
+        return false;
       }
       showSuccess(t('保存成功'));
       await fetchMonitorData();
+      return true;
     } catch (error) {
       showError(t('保存失败，请重试'));
+      return false;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openNotificationUsersModal = async () => {
+    if (!canUpdate) {
+      return;
+    }
+    setNotificationModalVisible(true);
+    setNotificationUsersLoading(true);
+    setNotificationDraftDisabledUserIds(
+      Array.isArray(settings.notification_disabled_user_ids)
+        ? settings.notification_disabled_user_ids
+        : [],
+    );
+    try {
+      const res = await API.get('/api/model_monitor/notification-users');
+      const { success, message, data } = res.data;
+      if (!success) {
+        showError(message || t('加载失败'));
+        return;
+      }
+      setNotificationUsers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      showError(t('加载失败'));
+    } finally {
+      setNotificationUsersLoading(false);
+    }
+  };
+
+  const setNotificationRecipientEnabled = (userId, enabled) => {
+    const normalizedUserId = Number(userId);
+    if (!Number.isFinite(normalizedUserId)) {
+      return;
+    }
+    setNotificationDraftDisabledUserIds((current) => {
+      const next = new Set(current.map(Number));
+      if (enabled) {
+        next.delete(normalizedUserId);
+      } else {
+        next.add(normalizedUserId);
+      }
+      return Array.from(next).sort((a, b) => a - b);
+    });
+  };
+
+  const saveNotificationUsers = async () => {
+    const nextSettings = {
+      ...settings,
+      notification_disabled_user_ids: notificationDraftDisabledUserIds,
+    };
+    setSettings(nextSettings);
+    const saved = await saveSettings(nextSettings);
+    if (saved) {
+      setNotificationModalVisible(false);
     }
   };
 
@@ -548,6 +625,76 @@ export default function ModelMonitorCenter() {
     { label: t('失败渠道'), value: summary.failed_channels, color: 'red' },
   ];
 
+  const notificationColumns = [
+    {
+      title: t('接收通知'),
+      dataIndex: 'notification_enabled',
+      width: 120,
+      render: (_, record) => {
+        const canReceive = record.can_receive !== false;
+        const disabledReason =
+          record.disabled_reason === 'no_email'
+            ? t('未配置邮箱')
+            : record.disabled_reason === 'no_model_monitor_read_permission'
+              ? t('无模型监控查看权限')
+              : t('不可接收');
+        const checkbox = (
+          <Checkbox
+            checked={
+              canReceive &&
+              !notificationDraftDisabledUserIdSet.has(Number(record.id))
+            }
+            disabled={!canUpdate || !canReceive}
+            onChange={(event) =>
+              setNotificationRecipientEnabled(record.id, event.target.checked)
+            }
+          >
+            {canReceive ? t('接收') : t('不可接收')}
+          </Checkbox>
+        );
+        if (canReceive) {
+          return checkbox;
+        }
+        return (
+          <Tooltip content={disabledReason}>
+            <span>{checkbox}</span>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      title: t('管理员'),
+      dataIndex: 'username',
+      render: (value, record) => (
+        <div className='flex flex-col'>
+          <Text strong>{record.display_name || value || `#${record.id}`}</Text>
+          <Text type='tertiary' size='small'>
+            {value || '-'}
+          </Text>
+        </div>
+      ),
+    },
+    {
+      title: t('邮箱'),
+      dataIndex: 'email',
+      render: (value) => value || '-',
+    },
+    {
+      title: t('类型'),
+      dataIndex: 'user_type',
+      width: 100,
+      render: (value, record) => {
+        if (value === 'root' || record.role >= 100) {
+          return <Tag color='red'>{t('超级管理员')}</Tag>;
+        }
+        if (value === 'agent') {
+          return <Tag color='violet'>{t('代理商')}</Tag>;
+        }
+        return <Tag color='blue'>{t('管理员')}</Tag>;
+      },
+    },
+  ];
+
   const columns = [
     {
       title: t('模型名称'),
@@ -689,7 +836,7 @@ export default function ModelMonitorCenter() {
         <Button
           size='small'
           type='tertiary'
-          onClick={saveSettings}
+          onClick={() => saveSettings()}
           loading={saving}
           disabled={!canUpdate}
         >
@@ -733,6 +880,13 @@ export default function ModelMonitorCenter() {
                     {t('刷新')}
                   </Button>
                   <Button
+                    icon={<BellRing size={16} />}
+                    onClick={openNotificationUsersModal}
+                    disabled={!canUpdate}
+                  >
+                    {t('通知人管理')}
+                  </Button>
+                  <Button
                     type='primary'
                     icon={<Play size={16} />}
                     onClick={runManualTest}
@@ -743,7 +897,7 @@ export default function ModelMonitorCenter() {
                   </Button>
                   <Button
                     icon={<Save size={16} />}
-                    onClick={saveSettings}
+                    onClick={() => saveSettings()}
                     loading={saving}
                     disabled={!canUpdate}
                   >
@@ -869,6 +1023,33 @@ export default function ModelMonitorCenter() {
               />
             </div>
           </Card>
+
+          <Modal
+            title={t('通知人管理')}
+            visible={notificationModalVisible}
+            onCancel={() => setNotificationModalVisible(false)}
+            onOk={saveNotificationUsers}
+            okText={t('保存')}
+            cancelText={t('取消')}
+            confirmLoading={saving}
+            okButtonProps={{ disabled: !canUpdate }}
+            size='large'
+          >
+            <Text type='tertiary'>
+              {t('取消勾选后，模型失败邮件不会发送给对应管理员。')}
+            </Text>
+            <Table
+              columns={notificationColumns}
+              dataSource={notificationUsers.map((user) => ({
+                ...user,
+                key: user.id,
+              }))}
+              loading={notificationUsersLoading}
+              pagination={false}
+              size='small'
+              className='grid-bordered-table mt-3'
+            />
+          </Modal>
         </>
       )}
       </Spin>

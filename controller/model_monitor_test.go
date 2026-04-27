@@ -126,6 +126,95 @@ func TestTestModelMonitorRequiresReadPermissionBeforeReturningState(t *testing.T
 	require.NotContains(t, recorder.Body.String(), "secret-model")
 }
 
+func TestGetModelMonitorNotificationUsersReturnsEligibleCandidates(t *testing.T) {
+	db := setupAdminPermissionTestDB(t)
+	t.Cleanup(func() {
+		require.NoError(t, operation_setting.UpdateModelMonitorSettingFromMap(map[string]string{
+			"notification_disabled_user_ids": "[]",
+		}))
+	})
+
+	operator := model.User{
+		Username: "model_monitor_notification_operator",
+		Password: "hashed-password",
+		Role:     common.RoleRootUser,
+		Status:   common.UserStatusEnabled,
+		UserType: model.UserTypeRoot,
+		Email:    "operator@example.com",
+		Group:    "default",
+		AffCode:  "notification_operator",
+	}
+	readAdmin := model.User{
+		Username:    "model_monitor_notification_read_admin",
+		DisplayName: "Read Admin",
+		Password:    "hashed-password",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAdmin,
+		Email:       "read-admin@example.com",
+		Group:       "default",
+		AffCode:     "notification_read_admin",
+	}
+	noReadAdmin := model.User{
+		Username: "model_monitor_notification_no_read_admin",
+		Password: "hashed-password",
+		Role:     common.RoleAdminUser,
+		Status:   common.UserStatusEnabled,
+		UserType: model.UserTypeAdmin,
+		Email:    "no-read-admin@example.com",
+		Group:    "default",
+		AffCode:  "notification_no_read_admin",
+	}
+	require.NoError(t, db.Create(&operator).Error)
+	require.NoError(t, db.Create(&readAdmin).Error)
+	require.NoError(t, db.Create(&noReadAdmin).Error)
+	grantPermissionActions(t, db, readAdmin.Id, model.UserTypeAdmin, permissionGrant{
+		Resource: service.ResourceModelMonitorManagement,
+		Action:   service.ActionRead,
+	})
+	disabledIds, err := common.Marshal([]int{readAdmin.Id})
+	require.NoError(t, err)
+	require.NoError(t, operation_setting.UpdateModelMonitorSettingFromMap(map[string]string{
+		"notification_disabled_user_ids": string(disabledIds),
+	}))
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/model_monitor/notification-users", nil)
+	ctx.Set("id", operator.Id)
+	ctx.Set("role", operator.Role)
+
+	GetModelMonitorNotificationUsers(ctx)
+
+	var response struct {
+		Success bool `json:"success"`
+		Data    []struct {
+			Id                  int    `json:"id"`
+			Username            string `json:"username"`
+			Email               string `json:"email"`
+			CanReceive          bool   `json:"can_receive"`
+			DisabledReason      string `json:"disabled_reason"`
+			NotificationEnabled bool   `json:"notification_enabled"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Len(t, response.Data, 3)
+	require.Equal(t, operator.Id, response.Data[0].Id)
+	require.True(t, response.Data[0].CanReceive)
+	require.True(t, response.Data[0].NotificationEnabled)
+	require.Equal(t, readAdmin.Id, response.Data[1].Id)
+	require.Equal(t, "model_monitor_notification_read_admin", response.Data[1].Username)
+	require.Equal(t, "read-admin@example.com", response.Data[1].Email)
+	require.True(t, response.Data[1].CanReceive)
+	require.False(t, response.Data[1].NotificationEnabled)
+	require.Equal(t, noReadAdmin.Id, response.Data[2].Id)
+	require.Equal(t, "no-read-admin@example.com", response.Data[2].Email)
+	require.False(t, response.Data[2].CanReceive)
+	require.Equal(t, "no_model_monitor_read_permission", response.Data[2].DisabledReason)
+	require.False(t, response.Data[2].NotificationEnabled)
+}
+
 func TestAggregateModelMonitorItemStatusRules(t *testing.T) {
 	tests := []struct {
 		name     string
