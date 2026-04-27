@@ -52,7 +52,7 @@ test('normalizeAboutPageConfig returns the demo defaults for empty config', () =
     ['wechat', 'work_wechat'],
   );
   assert.equal(config.customContent, '');
-  assert.equal(isStructuredAboutEnabled(config), false);
+  assert.equal(isStructuredAboutEnabled(config), true);
 });
 
 test('empty default config does not override existing legacy content', () => {
@@ -76,17 +76,17 @@ test('malformed config does not override existing legacy content', () => {
   );
 });
 
-test('empty default config does not replace the legacy empty about fallback', () => {
+test('empty default config renders the structured page for empty installs', () => {
   assert.equal(
     isStructuredAboutEnabled(normalizeAboutPageConfig(''), ''),
-    false,
+    true,
   );
 });
 
-test('empty object config does not replace the legacy empty about fallback', () => {
+test('empty object config renders the structured page for empty installs', () => {
   assert.equal(
     isStructuredAboutEnabled(normalizeAboutPageConfig('{}'), ''),
-    false,
+    true,
   );
 });
 
@@ -112,12 +112,13 @@ test('fallback metadata survives spread and JSON round trip', () => {
   assert.equal(isStructuredAboutEnabled(serializedConfig, '# legacy'), false);
 });
 
-test('cached default metadata stays disabled after normalization', () => {
+test('cached default metadata renders only when legacy content is empty', () => {
   const cachedConfig = JSON.stringify(normalizeAboutPageConfig(''));
   const config = normalizeAboutPageConfig(cachedConfig);
 
   assert.equal(config.__source, 'default');
-  assert.equal(isStructuredAboutEnabled(config, ''), false);
+  assert.equal(isStructuredAboutEnabled(config, ''), true);
+  assert.equal(isStructuredAboutEnabled(config, '# legacy'), false);
 });
 
 test('customized persisted defaults override legacy content', () => {

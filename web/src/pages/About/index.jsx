@@ -203,7 +203,10 @@ const About = () => {
   return (
     <div className='mt-[60px] px-2'>
       {shouldRenderStructuredAbout ? (
-        <AboutStructuredPage config={aboutConfig} />
+        <AboutStructuredPage
+          config={aboutConfig}
+          protectedAttribution={customDescription}
+        />
       ) : aboutLoaded && about === '' ? (
         <div className='flex justify-center items-center h-screen p-8'>
           <Empty

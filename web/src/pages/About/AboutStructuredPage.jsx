@@ -116,7 +116,7 @@ const getContactTitle = (contact, t) => {
   return contact.type === 'work_wechat' ? t('企业微信') : t('微信客服');
 };
 
-const AboutStructuredPage = ({ config }) => {
+const AboutStructuredPage = ({ config, protectedAttribution = null }) => {
   const { t } = useTranslation();
   const displayConfig = useMemo(
     () => translateAboutPageConfig(config, t),
@@ -330,6 +330,10 @@ const AboutStructuredPage = ({ config }) => {
             className='about-custom-content'
             dangerouslySetInnerHTML={{ __html: customContentHtml }}
           />
+        )}
+
+        {protectedAttribution && (
+          <footer className='about-attribution'>{protectedAttribution}</footer>
         )}
       </div>
     </main>

@@ -433,14 +433,18 @@ export const translateAboutPageConfig = (config, translate) => {
   };
 };
 
-export const isStructuredAboutEnabled = (config) => {
+export const isStructuredAboutEnabled = (config, legacy = '') => {
   if (config?.enabled !== true) {
     return false;
   }
 
+  const hasLegacyContent =
+    typeof legacy === 'string' ? legacy.trim() !== '' : Boolean(legacy);
+
   return (
     !config.__source ||
     config.__source === CONFIG_SOURCE_CONFIGURED ||
-    hasMeaningfulVisibleContent(config)
+    hasMeaningfulVisibleContent(config) ||
+    !hasLegacyContent
   );
 };

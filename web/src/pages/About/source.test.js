@@ -73,6 +73,21 @@ test('about CSS lets configured eyebrow and group status text wrap', () => {
   );
 });
 
+test('about CSS follows the global dark theme class', () => {
+  const source = readSource('about.css');
+
+  assert.match(
+    source,
+    /html\.dark \.about-page\s*\{[\s\S]*--about-text:[\s\S]*--about-panel:[\s\S]*background-color:/,
+  );
+  assert.match(
+    source,
+    /html\.dark \.about-page \.about-card,\s*html\.dark \.about-page \.about-qr-card\s*\{/,
+  );
+  assert.match(source, /html\.dark \.about-page \.about-action-secondary/);
+  assert.match(source, /html\.dark \.about-page \.about-attribution/);
+});
+
 test('about index wires structured page while preserving legacy render paths', () => {
   const source = readSource('index.jsx');
 
@@ -156,4 +171,13 @@ test('structured about page translates configured default display copy', () => {
     source,
     /useMemo\([\s\S]*translateAboutPageConfig\(config,\s*t\)/,
   );
+});
+
+test('structured about page renders protected project attribution content', () => {
+  const source = readSource('AboutStructuredPage.jsx');
+  const indexSource = readSource('index.jsx');
+
+  assert.match(source, /protectedAttribution/);
+  assert.match(source, /about-attribution/);
+  assert.match(indexSource, /protectedAttribution=\{customDescription\}/);
 });

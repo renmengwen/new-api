@@ -19,6 +19,23 @@
   );
 }
 
+html.dark .about-page {
+  --about-text: #f3f6fb;
+  --about-muted: #aab4c4;
+  --about-border: rgba(255, 255, 255, 0.12);
+  --about-panel: rgba(22, 27, 37, 0.9);
+  --about-primary: #77a7ff;
+  --about-primary-strong: #a9c7ff;
+  --about-accent: #34d399;
+  --about-warning: #fbbf24;
+  background-color: #101318;
+  background-image: linear-gradient(
+    180deg,
+    rgba(13, 16, 23, 0.98),
+    rgba(18, 23, 32, 0.96)
+  );
+}
+
 .about-page *,
 .about-page *::before,
 .about-page *::after {
@@ -48,7 +65,8 @@
 .about-page .about-card,
 .about-page .about-group-section,
 .about-page .about-qr-card,
-.about-page .about-custom-content {
+.about-page .about-custom-content,
+.about-page .about-attribution {
   min-width: 0;
 }
 
@@ -126,6 +144,16 @@
   background: rgba(255, 255, 255, 0.86);
 }
 
+html.dark .about-page .about-action-primary {
+  box-shadow: 0 12px 28px rgba(53, 113, 223, 0.26);
+}
+
+html.dark .about-page .about-action-secondary {
+  color: var(--about-primary-strong);
+  border-color: rgba(119, 167, 255, 0.32);
+  background: rgba(20, 25, 34, 0.86);
+}
+
 .about-page .about-action:focus-visible {
   outline: 3px solid rgba(29, 95, 209, 0.28);
   outline-offset: 3px;
@@ -148,6 +176,10 @@
   padding: 24px;
   background: var(--about-panel);
   box-shadow: 0 22px 48px rgba(24, 33, 49, 0.1);
+}
+
+html.dark .about-page .about-overview-panel {
+  box-shadow: 0 24px 52px rgba(0, 0, 0, 0.32);
 }
 
 .about-page .about-overview-heading {
@@ -182,6 +214,11 @@
   font-weight: 700;
   overflow-wrap: anywhere;
   white-space: normal;
+}
+
+html.dark .about-page .about-status {
+  border-color: rgba(52, 211, 153, 0.3);
+  background: rgba(52, 211, 153, 0.12);
 }
 
 .about-page .about-overview-description {
@@ -253,6 +290,10 @@
   background: rgba(23, 32, 51, 0.1);
 }
 
+html.dark .about-page .about-channel-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .about-page .about-channel-track span {
   display: block;
   height: 100%;
@@ -291,6 +332,12 @@
     transform 160ms ease;
 }
 
+html.dark .about-page .about-card,
+html.dark .about-page .about-qr-card {
+  background: rgba(22, 27, 37, 0.84);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
 .about-page .about-card {
   min-height: 236px;
   padding: 22px;
@@ -306,6 +353,12 @@
   border-radius: 8px;
   color: var(--about-primary-strong);
   background: rgba(29, 95, 209, 0.1);
+}
+
+html.dark .about-page .about-card-icon,
+html.dark .about-page .about-contact-icon {
+  color: var(--about-primary-strong);
+  background: rgba(119, 167, 255, 0.14);
 }
 
 .about-page .about-card h3,
@@ -423,6 +476,10 @@
   background: #ffffff;
 }
 
+html.dark .about-page .about-qr-frame {
+  background: rgba(12, 15, 21, 0.92);
+}
+
 .about-page .about-qr-image,
 .about-page .about-qr-placeholder {
   width: 100%;
@@ -434,6 +491,10 @@
   object-fit: contain;
   padding: 10px;
   transition: transform 180ms ease;
+}
+
+html.dark .about-page .about-qr-image {
+  background: #ffffff;
 }
 
 .about-page .about-qr-placeholder {
@@ -449,6 +510,10 @@
   line-height: 1.4;
 }
 
+html.dark .about-page .about-qr-placeholder {
+  background: rgba(15, 20, 29, 0.96);
+}
+
 .about-page .about-qr-card:active {
   transform: translateY(1px);
   border-color: rgba(29, 95, 209, 0.34);
@@ -458,6 +523,36 @@
   color: var(--about-text);
   line-height: 1.75;
   overflow-wrap: anywhere;
+}
+
+.about-page .about-attribution {
+  margin-top: 32px;
+  padding: 22px;
+  border: 1px solid var(--about-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--about-muted);
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+html.dark .about-page .about-attribution {
+  background: rgba(18, 23, 33, 0.72);
+}
+
+.about-page .about-attribution p {
+  margin: 8px 0 0;
+}
+
+.about-page .about-attribution a {
+  color: var(--about-primary);
+  font-weight: 700;
 }
 
 .about-page .about-custom-content img,
@@ -481,6 +576,11 @@
     background: #ffffff;
   }
 
+  html.dark .about-page .about-action-secondary:hover {
+    border-color: rgba(119, 167, 255, 0.48);
+    background: rgba(27, 34, 46, 0.95);
+  }
+
   .about-page .about-card:hover,
   .about-page .about-qr-card:hover {
     transform: translateY(-4px);
@@ -488,8 +588,25 @@
     box-shadow: 0 22px 42px rgba(24, 33, 49, 0.12);
   }
 
+  html.dark .about-page .about-card:hover,
+  html.dark .about-page .about-qr-card:hover {
+    border-color: rgba(119, 167, 255, 0.34);
+    box-shadow: 0 22px 42px rgba(0, 0, 0, 0.28);
+  }
+
   .about-page .about-qr-card:hover .about-qr-image {
     transform: scale(1.02);
+  }
+
+  .about-page .about-attribution:hover {
+    transform: translateY(-2px);
+    border-color: rgba(29, 95, 209, 0.2);
+    box-shadow: 0 14px 28px rgba(22, 34, 51, 0.08);
+  }
+
+  html.dark .about-page .about-attribution:hover {
+    border-color: rgba(119, 167, 255, 0.28);
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.24);
   }
 }
 
