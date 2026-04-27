@@ -1,4 +1,6 @@
 const DIGITAL_CHINA_URL = 'https://www.digitalchina.com/';
+const CONFIG_SOURCE_DEFAULT = 'default';
+const CONFIG_SOURCE_CONFIGURED = 'configured';
 
 export const defaultAboutPageConfig = {
   enabled: true,
@@ -88,13 +90,27 @@ const isPlainObject = (value) =>
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
-const withConfiguredFlag = (config, isConfigured) => {
-  Object.defineProperty(config, '__isConfigured', {
-    value: isConfigured,
-    enumerable: false,
-  });
+// Metadata keys beginning with "__" are helper metadata; renderers and admin
+// editors should ignore them when displaying or editing user-facing content.
+const withSourceMetadata = (config, source) => ({
+  ...config,
+  __source: source,
+});
 
-  return config;
+const hasStructuredConfigKeys = (config) =>
+  Object.keys(config).some((key) => !key.startsWith('__'));
+
+const getConfigSource = (config) => {
+  if (
+    config.__source === CONFIG_SOURCE_DEFAULT ||
+    config.__source === CONFIG_SOURCE_CONFIGURED
+  ) {
+    return config.__source;
+  }
+
+  return hasStructuredConfigKeys(config)
+    ? CONFIG_SOURCE_CONFIGURED
+    : CONFIG_SOURCE_DEFAULT;
 };
 
 const normalizeString = (source, key, fallback) =>
@@ -152,7 +168,7 @@ const normalizeStringArray = (values, fallback) => {
   return Array.from({ length: targetLength }, (_, index) =>
     typeof values[index] === 'string'
       ? values[index]
-      : (fallback[index] ?? fallback[fallback.length - 1]),
+      : fallback[index] ?? fallback[fallback.length - 1],
   );
 };
 
@@ -171,23 +187,27 @@ const normalizeArray = (values, fallback, normalizeItem) => {
 const parseConfigInput = (input) => {
   if (typeof input === 'string') {
     if (input.trim() === '') {
-      return { config: null, isConfigured: false };
+      return { config: null, source: CONFIG_SOURCE_DEFAULT };
     }
 
     try {
       const parsed = JSON.parse(input);
+      const config = isPlainObject(parsed) ? parsed : null;
+
       return {
-        config: isPlainObject(parsed) ? parsed : null,
-        isConfigured: isPlainObject(parsed),
+        config,
+        source: config ? getConfigSource(config) : CONFIG_SOURCE_DEFAULT,
       };
     } catch {
-      return { config: null, isConfigured: false };
+      return { config: null, source: CONFIG_SOURCE_DEFAULT };
     }
   }
 
+  const config = isPlainObject(input) ? input : null;
+
   return {
-    config: isPlainObject(input) ? input : null,
-    isConfigured: isPlainObject(input),
+    config,
+    source: config ? getConfigSource(config) : CONFIG_SOURCE_DEFAULT,
   };
 };
 
@@ -205,22 +225,25 @@ export const parseAboutResponse = (data) => {
       typeof data.legacy === 'string'
         ? data.legacy
         : typeof data.data === 'string'
-          ? data.data
-          : '',
+        ? data.data
+        : '',
     config: typeof data.config === 'string' ? data.config : '',
   };
 };
 
 export const normalizeAboutPageConfig = (input) => {
-  const { config, isConfigured } = parseConfigInput(input);
+  const { config, source } = parseConfigInput(input);
 
   if (!config) {
-    return withConfiguredFlag(clone(defaultAboutPageConfig), false);
+    return withSourceMetadata(
+      clone(defaultAboutPageConfig),
+      CONFIG_SOURCE_DEFAULT,
+    );
   }
 
   const defaults = defaultAboutPageConfig;
 
-  return withConfiguredFlag(
+  return withSourceMetadata(
     {
       enabled:
         typeof config.enabled === 'boolean' ? config.enabled : defaults.enabled,
@@ -293,7 +316,7 @@ export const normalizeAboutPageConfig = (input) => {
         defaults.customContent,
       ),
     },
-    isConfigured,
+    source,
   );
 };
 
@@ -305,5 +328,5 @@ export const isStructuredAboutEnabled = (config, legacy = '') => {
   const hasLegacyContent =
     typeof legacy === 'string' ? legacy.trim() !== '' : Boolean(legacy);
 
-  return !hasLegacyContent || config.__isConfigured !== false;
+  return !hasLegacyContent || config.__source === CONFIG_SOURCE_CONFIGURED;
 };

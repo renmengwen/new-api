@@ -61,6 +61,13 @@ test('empty default config does not override existing legacy content', () => {
   );
 });
 
+test('empty object config does not override existing legacy content', () => {
+  assert.equal(
+    isStructuredAboutEnabled(normalizeAboutPageConfig('{}'), '# legacy'),
+    false,
+  );
+});
+
 test('malformed config does not override existing legacy content', () => {
   assert.equal(
     isStructuredAboutEnabled(normalizeAboutPageConfig('{bad json'), '# legacy'),
@@ -73,6 +80,25 @@ test('empty default config is enabled for empty installs', () => {
     isStructuredAboutEnabled(normalizeAboutPageConfig(''), ''),
     true,
   );
+});
+
+test('empty object config is enabled for empty installs', () => {
+  assert.equal(
+    isStructuredAboutEnabled(normalizeAboutPageConfig('{}'), ''),
+    true,
+  );
+});
+
+test('fallback metadata survives spread and JSON round trip', () => {
+  const config = normalizeAboutPageConfig('');
+  const spreadConfig = { ...config };
+  const serializedConfig = JSON.parse(JSON.stringify(config));
+
+  assert.equal(config.__source, 'default');
+  assert.equal(spreadConfig.__source, 'default');
+  assert.equal(serializedConfig.__source, 'default');
+  assert.equal(isStructuredAboutEnabled(spreadConfig, '# legacy'), false);
+  assert.equal(isStructuredAboutEnabled(serializedConfig, '# legacy'), false);
 });
 
 test('normalizeAboutPageConfig preserves user values and fills short arrays', () => {
@@ -119,8 +145,10 @@ test('normalizeAboutPageConfig preserves user values and fills short arrays', ()
 
 test('normalizeAboutPageConfig falls back to defaults for malformed JSON', () => {
   const config = normalizeAboutPageConfig('{bad json');
+  const { __source, ...visibleConfig } = config;
 
-  assert.deepEqual(config, defaultAboutPageConfig);
+  assert.equal(__source, 'default');
+  assert.deepEqual(visibleConfig, defaultAboutPageConfig);
 });
 
 test('normalizeAboutPageConfig clamps channel values into the 0 to 100 range', () => {
