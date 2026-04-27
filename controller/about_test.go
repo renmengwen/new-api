@@ -17,11 +17,10 @@ import (
 )
 
 type aboutResponse struct {
-	Success bool `json:"success"`
-	Data    struct {
-		Legacy string `json:"legacy"`
-		Config string `json:"config"`
-	} `json:"data"`
+	Success bool   `json:"success"`
+	Data    string `json:"data"`
+	Legacy  string `json:"legacy"`
+	Config  string `json:"config"`
 }
 
 type optionUpdateResponse struct {
@@ -116,8 +115,9 @@ func TestGetAboutReturnsLegacyAndStructuredConfig(t *testing.T) {
 	response := performGetAbout(t)
 
 	require.True(t, response.Success)
-	require.Equal(t, "legacy about html", response.Data.Legacy)
-	require.Equal(t, `{"sections":[{"title":"Overview"}]}`, response.Data.Config)
+	require.Equal(t, "legacy about html", response.Data)
+	require.Equal(t, "legacy about html", response.Legacy)
+	require.Equal(t, `{"sections":[{"title":"Overview"}]}`, response.Config)
 }
 
 func TestGetAboutHandlesMissingOptionValues(t *testing.T) {
@@ -126,8 +126,9 @@ func TestGetAboutHandlesMissingOptionValues(t *testing.T) {
 	response := performGetAbout(t)
 
 	require.True(t, response.Success)
-	require.Empty(t, response.Data.Legacy)
-	require.Empty(t, response.Data.Config)
+	require.Empty(t, response.Data)
+	require.Empty(t, response.Legacy)
+	require.Empty(t, response.Config)
 }
 
 func TestUpdateOptionRejectsInvalidAboutPageConfigJSON(t *testing.T) {
