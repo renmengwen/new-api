@@ -377,6 +377,7 @@ var settingOptionAuditMeta = func() map[string]SettingAuditActionMeta {
 	)
 	registerSettingAuditMeta(meta, SettingAuditActionMeta{"setting_misc", "save_about", "系统设置-其他设置-设置关于", "option_key"},
 		"About",
+		"AboutPageConfig",
 	)
 	registerSettingAuditMeta(meta, SettingAuditActionMeta{"setting_misc", "save_footer", "系统设置-其他设置-设置页脚", "option_key"},
 		"Footer",

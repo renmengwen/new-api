@@ -184,6 +184,8 @@ func GetAbout(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data":    common.OptionMap["About"],
+		"legacy":  common.OptionMap["About"],
+		"config":  common.OptionMap["AboutPageConfig"],
 	})
 	return
 }

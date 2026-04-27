@@ -126,6 +126,22 @@ func UpdateOption(c *gin.Context) {
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
 	switch option.Key {
+	case "AboutPageConfig":
+		value := option.Value.(string)
+		if strings.TrimSpace(value) != "" {
+			var parsed map[string]any
+			err = common.UnmarshalJsonStr(value, &parsed)
+			if err == nil && parsed == nil {
+				err = fmt.Errorf("must be a JSON object")
+			}
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "AboutPageConfig JSON invalid: " + err.Error(),
+				})
+				return
+			}
+		}
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
 			c.JSON(http.StatusOK, gin.H{

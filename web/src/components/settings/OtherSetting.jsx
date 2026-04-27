@@ -34,6 +34,7 @@ import { useTranslation } from 'react-i18next';
 import { StatusContext } from '../../context/Status';
 import Text from '@douyinfe/semi-ui/lib/es/typography/text';
 import AnnouncementEmailBroadcastModal from './AnnouncementEmailBroadcastModal';
+import AboutPageSetting from './AboutPageSetting';
 
 const LEGAL_USER_AGREEMENT_KEY = 'legal.user_agreement';
 const LEGAL_PRIVACY_POLICY_KEY = 'legal.privacy_policy';
@@ -48,6 +49,7 @@ const OtherSetting = () => {
     Logo: '',
     Footer: '',
     About: '',
+    AboutPageConfig: '',
     HomePageContent: '',
   });
   let [loading, setLoading] = useState(false);
@@ -64,17 +66,20 @@ const OtherSetting = () => {
 
   const updateOption = async (key, value) => {
     setLoading(true);
-    const res = await API.put('/api/option/', {
-      key,
-      value,
-    });
-    const { success, message } = res.data;
-    if (success) {
+    try {
+      const res = await API.put('/api/option/', {
+        key,
+        value,
+      });
+      const { success, message } = res.data;
+      if (!success) {
+        throw new Error(message || t('保存失败'));
+      }
       setInputs((inputs) => ({ ...inputs, [key]: value }));
-    } else {
-      showError(message);
+      return res.data;
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const [loadingInput, setLoadingInput] = useState({
@@ -85,6 +90,7 @@ const OtherSetting = () => {
     Logo: false,
     HomePageContent: false,
     About: false,
+    AboutPageConfig: false,
     Footer: false,
     CheckUpdate: false,
   });
@@ -206,19 +212,6 @@ const OtherSetting = () => {
         ...loadingInput,
         HomePageContent: false,
       }));
-    }
-  };
-  // 个性化设置 - 关于
-  const submitAbout = async () => {
-    try {
-      setLoadingInput((loadingInput) => ({ ...loadingInput, About: true }));
-      await updateOption('About', inputs.About);
-      showSuccess('关于内容已更新');
-    } catch (error) {
-      console.error('关于内容更新失败', error);
-      showError('关于内容更新失败');
-    } finally {
-      setLoadingInput((loadingInput) => ({ ...loadingInput, About: false }));
     }
   };
   // 个性化设置 - 页脚
@@ -467,19 +460,14 @@ const OtherSetting = () => {
               >
                 {t('设置首页内容')}
               </Button>
-              <Form.TextArea
-                label={t('关于')}
-                placeholder={t(
-                  '在此输入新的关于内容，支持 Markdown & HTML 代码。如果输入的是一个链接，则会使用该链接作为 iframe 的 src 属性，这允许你设置任意网页作为关于页面',
-                )}
-                field={'About'}
-                onChange={handleInputChange}
-                style={{ fontFamily: 'JetBrains Mono, Consolas' }}
-                autosize={{ minRows: 6, maxRows: 12 }}
+              <AboutPageSetting
+                inputs={inputs}
+                loadingInput={loadingInput}
+                updateOption={updateOption}
+                setInputs={setInputs}
+                setLoadingInput={setLoadingInput}
+                t={t}
               />
-              <Button onClick={submitAbout} loading={loadingInput['About']}>
-                {t('设置关于')}
-              </Button>
               {/*  */}
               <Banner
                 fullMode={false}

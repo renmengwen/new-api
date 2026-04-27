@@ -26,29 +26,92 @@ import {
   IllustrationConstructionDark,
 } from '@douyinfe/semi-illustrations';
 import { useTranslation } from 'react-i18next';
+import AboutStructuredPage from './AboutStructuredPage';
+import {
+  isStructuredAboutEnabled,
+  normalizeAboutPageConfig,
+  parseAboutResponse,
+} from './aboutPageConfig';
+
+const ABOUT_CACHE_KEY = 'about';
+const ABOUT_CONFIG_CACHE_KEY = 'about_page_config';
+
+const readLocalStorage = (key) => {
+  try {
+    return localStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+};
+
+const writeLocalStorage = (key, value) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage errors so the About page can still render fetched content.
+  }
+};
+
+const removeLocalStorage = (key) => {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage errors so the About page can still render fetched content.
+  }
+};
+
+const loadCachedAboutConfig = () => {
+  const cachedConfig = readLocalStorage(ABOUT_CONFIG_CACHE_KEY);
+
+  return cachedConfig ? normalizeAboutPageConfig(cachedConfig) : null;
+};
 
 const About = () => {
   const { t } = useTranslation();
-  const [about, setAbout] = useState('');
+  const [about, setAbout] = useState(() => readLocalStorage(ABOUT_CACHE_KEY));
+  const [legacyAbout, setLegacyAbout] = useState(() =>
+    readLocalStorage(ABOUT_CACHE_KEY),
+  );
+  const [aboutConfig, setAboutConfig] = useState(loadCachedAboutConfig);
   const [aboutLoaded, setAboutLoaded] = useState(false);
   const currentYear = new Date().getFullYear();
 
   const displayAbout = async () => {
-    setAbout(localStorage.getItem('about') || '');
-    const res = await API.get('/api/about');
-    const { success, message, data } = res.data;
-    if (success) {
-      let aboutContent = data;
-      if (!data.startsWith('https://')) {
-        aboutContent = marked.parse(data);
+    setAbout(readLocalStorage(ABOUT_CACHE_KEY));
+    try {
+      const res = await API.get('/api/about');
+      const { success, message } = res.data;
+      if (success) {
+        const { legacy, config } = parseAboutResponse(res.data);
+        const normalizedConfig = normalizeAboutPageConfig(config);
+        let aboutContent = legacy;
+        if (legacy && !legacy.startsWith('https://')) {
+          aboutContent = marked.parse(legacy);
+        }
+        setLegacyAbout(legacy);
+        setAbout(aboutContent);
+        setAboutConfig(normalizedConfig);
+        writeLocalStorage(ABOUT_CACHE_KEY, aboutContent);
+        writeLocalStorage(
+          ABOUT_CONFIG_CACHE_KEY,
+          JSON.stringify(normalizedConfig),
+        );
+      } else {
+        showError(message);
+        setAbout(t('加载关于内容失败...'));
+        setLegacyAbout('');
+        setAboutConfig(null);
+        removeLocalStorage(ABOUT_CONFIG_CACHE_KEY);
       }
-      setAbout(aboutContent);
-      localStorage.setItem('about', aboutContent);
-    } else {
-      showError(message);
+    } catch (error) {
+      showError(error?.message || t('加载关于内容失败...'));
       setAbout(t('加载关于内容失败...'));
+      setLegacyAbout('');
+      setAboutConfig(null);
+      removeLocalStorage(ABOUT_CONFIG_CACHE_KEY);
+    } finally {
+      setAboutLoaded(true);
     }
-    setAboutLoaded(true);
   };
 
   useEffect(() => {
@@ -60,81 +123,23 @@ const About = () => {
   };
 
   const customDescription = (
-    <div style={{ textAlign: 'center' }}>
-      <p>{t('可在设置页面设置关于内容，支持 HTML & Markdown')}</p>
-      {t('New API项目仓库地址：')}
-      <a
-        href='https://github.com/QuantumNous/new-api'
-        target='_blank'
-        rel='noopener noreferrer'
-        className='!text-semi-color-primary'
-      >
-        https://github.com/QuantumNous/new-api
-      </a>
-      <p>
-        <a
-          href='https://github.com/QuantumNous/new-api'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          NewAPI
-        </a>{' '}
-        {t('© {{currentYear}}', { currentYear })}{' '}
-        <a
-          href='https://github.com/QuantumNous'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          QuantumNous
-        </a>{' '}
-        {t('| 基于')}{' '}
-        <a
-          href='https://github.com/songquanpeng/one-api/releases/tag/v0.5.4'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          One API v0.5.4
-        </a>{' '}
-        © 2023{' '}
-        <a
-          href='https://github.com/songquanpeng'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          JustSong
-        </a>
-      </p>
-      <p>
-        {t('本项目根据')}
-        <a
-          href='https://github.com/songquanpeng/one-api/blob/v0.5.4/LICENSE'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          {t('MIT许可证')}
-        </a>
-        {t('授权，需在遵守')}
-        <a
-          href='https://www.gnu.org/licenses/agpl-3.0.html'
-          target='_blank'
-          rel='noopener noreferrer'
-          className='!text-semi-color-primary'
-        >
-          {t('AGPL v3.0协议')}
-        </a>
-        {t('的前提下使用。')}
-      </p>
+    <div >
+
     </div>
+  );
+
+  const shouldRenderStructuredAbout = isStructuredAboutEnabled(
+    aboutConfig,
+    legacyAbout,
   );
 
   return (
     <div className='mt-[60px] px-2'>
-      {aboutLoaded && about === '' ? (
+      {shouldRenderStructuredAbout ? (
+        <AboutStructuredPage
+          config={aboutConfig}
+        />
+      ) : aboutLoaded && about === '' ? (
         <div className='flex justify-center items-center h-screen p-8'>
           <Empty
             image={
@@ -148,7 +153,6 @@ const About = () => {
             description={t('管理员暂时未设置任何关于内容')}
             style={emptyStyle}
           >
-            {customDescription}
           </Empty>
         </div>
       ) : (

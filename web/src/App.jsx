@@ -20,7 +20,12 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { lazy, Suspense, useContext, useMemo } from 'react';
 import { Route, Routes, useLocation, useParams } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
-import { AuthRedirect, PrivateRoute, AdminRoute, AdminPlatformRoute } from './helpers';
+import {
+  AuthRedirect,
+  PrivateRoute,
+  AdminRoute,
+  AdminPlatformRoute,
+} from './helpers';
 import { StatusContext } from './context/Status';
 import SetupCheck from './components/layout/SetupCheck';
 
@@ -34,8 +39,12 @@ const RegisterForm = lazy(() => import('./components/auth/RegisterForm'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const Forbidden = lazy(() => import('./pages/Forbidden'));
 const Setting = lazy(() => import('./pages/Setting'));
-const PasswordResetForm = lazy(() => import('./components/auth/PasswordResetForm'));
-const PasswordResetConfirm = lazy(() => import('./components/auth/PasswordResetConfirm'));
+const PasswordResetForm = lazy(() =>
+  import('./components/auth/PasswordResetForm'),
+);
+const PasswordResetConfirm = lazy(() =>
+  import('./components/auth/PasswordResetConfirm'),
+);
 const Channel = lazy(() => import('./pages/Channel'));
 const Token = lazy(() => import('./pages/Token'));
 const Redemption = lazy(() => import('./pages/Redemption'));
@@ -48,20 +57,30 @@ const Pricing = lazy(() => import('./pages/Pricing'));
 const Task = lazy(() => import('./pages/Task'));
 const ModelPage = lazy(() => import('./pages/Model'));
 const ModelDeploymentPage = lazy(() => import('./pages/ModelDeployment'));
-const ModelMonitorPage = lazy(() => import('./pages/Setting/ModelMonitor/ModelMonitorCenter'));
+const ModelMonitorPage = lazy(() =>
+  import('./pages/Setting/ModelMonitor/ModelMonitorCenter'),
+);
 const Playground = lazy(() => import('./pages/Playground'));
 const Subscription = lazy(() => import('./pages/Subscription'));
 const OAuth2Callback = lazy(() => import('./components/auth/OAuth2Callback'));
-const PersonalSetting = lazy(() => import('./components/settings/PersonalSetting'));
+const PersonalSetting = lazy(() =>
+  import('./components/settings/PersonalSetting'),
+);
 const Setup = lazy(() => import('./pages/Setup'));
 const User = lazy(() => import('./pages/User'));
 const AdminManagers = lazy(() => import('./pages/AdminManagersPageV2'));
 const AdminAgents = lazy(() => import('./pages/AdminAgentsPageV2'));
-const AdminPermissionTemplates = lazy(() => import('./pages/AdminPermissionTemplatesPageV2'));
-const AdminUserPermissions = lazy(() => import('./pages/AdminUserPermissionsPage'));
+const AdminPermissionTemplates = lazy(() =>
+  import('./pages/AdminPermissionTemplatesPageV2'),
+);
+const AdminUserPermissions = lazy(() =>
+  import('./pages/AdminUserPermissionsPage'),
+);
 const AdminQuotaLedger = lazy(() => import('./pages/AdminQuotaLedgerPageV2'));
 const AdminAuditLogs = lazy(() => import('./pages/AdminAuditLogsPageV1'));
-const AdminOperationsAnalytics = lazy(() => import('./pages/AdminOperationsAnalyticsPageV1'));
+const AdminOperationsAnalytics = lazy(() =>
+  import('./pages/AdminOperationsAnalyticsPageV1'),
+);
 const ApiDocsPage = lazy(() => import('./pages/ApiDocsPageV1'));
 
 function DynamicOAuth2Callback() {
@@ -114,12 +133,21 @@ function App() {
             </Suspense>
           }
         />
-        <Route path='/forbidden' element={<Suspense fallback={<Loading />}><Forbidden /></Suspense>} />
+        <Route
+          path='/forbidden'
+          element={
+            <Suspense fallback={<Loading />}>
+              <Forbidden />
+            </Suspense>
+          }
+        />
         <Route
           path='/console/models'
           element={
             <AdminRoute>
-              <Suspense fallback={<Loading />}><ModelPage /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <ModelPage />
+              </Suspense>
             </AdminRoute>
           }
         />
@@ -127,7 +155,9 @@ function App() {
           path='/console/deployment'
           element={
             <AdminRoute>
-              <Suspense fallback={<Loading />}><ModelDeploymentPage /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <ModelDeploymentPage />
+              </Suspense>
             </AdminRoute>
           }
         />
@@ -135,7 +165,9 @@ function App() {
           path='/console/subscription'
           element={
             <AdminRoute>
-              <Suspense fallback={<Loading />}><Subscription /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <Subscription />
+              </Suspense>
             </AdminRoute>
           }
         />
@@ -143,7 +175,9 @@ function App() {
           path='/console/channel'
           element={
             <AdminRoute>
-              <Suspense fallback={<Loading />}><Channel /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <Channel />
+              </Suspense>
             </AdminRoute>
           }
         />
@@ -151,7 +185,9 @@ function App() {
           path='/console/token'
           element={
             <PrivateRoute>
-              <Suspense fallback={<Loading />}><Token /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <Token />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -159,7 +195,9 @@ function App() {
           path='/console/playground'
           element={
             <PrivateRoute>
-              <Suspense fallback={<Loading />}><Playground /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <Playground />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -167,7 +205,9 @@ function App() {
           path='/console/redemption'
           element={
             <AdminRoute>
-              <Suspense fallback={<Loading />}><Redemption /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <Redemption />
+              </Suspense>
             </AdminRoute>
           }
         />
@@ -175,7 +215,9 @@ function App() {
           path='/console/user'
           element={
             <PrivateRoute>
-              <Suspense fallback={<Loading />}><User /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <User />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -183,7 +225,9 @@ function App() {
           path='/console/admin-users'
           element={
             <PrivateRoute>
-              <Suspense fallback={<Loading />}><AdminManagers /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <AdminManagers />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -191,7 +235,9 @@ function App() {
           path='/console/agents'
           element={
             <PrivateRoute>
-              <Suspense fallback={<Loading />}><AdminAgents /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <AdminAgents />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -199,7 +245,9 @@ function App() {
           path='/console/permission-templates'
           element={
             <PrivateRoute>
-              <Suspense fallback={<Loading />}><AdminPermissionTemplates /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <AdminPermissionTemplates />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -207,7 +255,9 @@ function App() {
           path='/console/user-permissions'
           element={
             <PrivateRoute>
-              <Suspense fallback={<Loading />}><AdminUserPermissions /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <AdminUserPermissions />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -215,7 +265,9 @@ function App() {
           path='/console/quota-ledger'
           element={
             <PrivateRoute>
-              <Suspense fallback={<Loading />}><AdminQuotaLedger /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <AdminQuotaLedger />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -223,7 +275,9 @@ function App() {
           path='/console/audit-logs'
           element={
             <PrivateRoute>
-              <Suspense fallback={<Loading />}><AdminAuditLogs /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <AdminAuditLogs />
+              </Suspense>
             </PrivateRoute>
           }
         />
@@ -231,7 +285,9 @@ function App() {
           path='/console/operations-analytics'
           element={
             <AdminPlatformRoute>
-              <Suspense fallback={<Loading />}><AdminOperationsAnalytics /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <AdminOperationsAnalytics />
+              </Suspense>
             </AdminPlatformRoute>
           }
         />
@@ -355,16 +411,18 @@ function App() {
           path='/console/log'
           element={
             <PrivateRoute>
-              <Suspense fallback={<Loading />}><Log /></Suspense>
+              <Suspense fallback={<Loading />}>
+                <Log />
+              </Suspense>
             </PrivateRoute>
           }
         />
         <Route
-          path='/console/docs/:category?/:docId?'
+          path='/docs/:category?/:docId?'
           element={
-            <PrivateRoute>
-              <Suspense fallback={<Loading />}><ApiDocsPage /></Suspense>
-            </PrivateRoute>
+            <Suspense fallback={<Loading />}>
+              <ApiDocsPage />
+            </Suspense>
           }
         />
         <Route
@@ -459,7 +517,14 @@ function App() {
             </PrivateRoute>
           }
         />
-        <Route path='*' element={<Suspense fallback={<Loading />}><NotFound /></Suspense>} />
+        <Route
+          path='*'
+          element={
+            <Suspense fallback={<Loading />}>
+              <NotFound />
+            </Suspense>
+          }
+        />
       </Routes>
     </SetupCheck>
   );

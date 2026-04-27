@@ -44,7 +44,10 @@ const renderHelperSource = readSource(
   new URL('../../helpers/render.jsx', import.meta.url),
 );
 const settingsSidebarModulesAdminSource = readSource(
-  new URL('../Setting/Operation/SettingsSidebarModulesAdmin.jsx', import.meta.url),
+  new URL(
+    '../Setting/Operation/SettingsSidebarModulesAdmin.jsx',
+    import.meta.url,
+  ),
 );
 const pageSource = readSource(new URL('./index.jsx', import.meta.url));
 const sidebarSource = readSource(new URL('./DocsSidebar.jsx', import.meta.url));
@@ -59,7 +62,9 @@ const rawTextPlugin = {
     }));
 
     build.onLoad({ filter: /.*/, namespace: 'raw-text' }, (args) => ({
-      contents: `export default ${JSON.stringify(fs.readFileSync(args.path, 'utf8'))};`,
+      contents: `export default ${JSON.stringify(
+        fs.readFileSync(args.path, 'utf8'),
+      )};`,
       loader: 'js',
     }));
   },
@@ -67,7 +72,9 @@ const rawTextPlugin = {
 
 const buildRenderedModule = async (entryUrl) => {
   const entryPath = fileURLToPath(entryUrl);
-  const tempDir = fs.mkdtempSync(path.join(path.dirname(entryPath), '.tmp-doc-render-'));
+  const tempDir = fs.mkdtempSync(
+    path.join(path.dirname(entryPath), '.tmp-doc-render-'),
+  );
   const outfile = path.join(tempDir, 'bundle.mjs');
 
   try {
@@ -139,9 +146,7 @@ test('ApiDocsPageV1 selection closes the side sheet and navigates to the chosen 
   selectDoc('chat-openai-chat-completions');
 
   assert.equal(sidebarVisible, false);
-  assert.deepEqual(calls, [
-    '/console/docs/ai-model/chat-openai-chat-completions',
-  ]);
+  assert.deepEqual(calls, ['/docs/ai-model/chat-openai-chat-completions']);
 });
 
 test('ApiDocsPageV1 doc display state switches between complete and placeholder docs', () => {
@@ -180,10 +185,12 @@ test('placeholder catalog entries are marked consistently', () => {
     'videos-sora',
   ]);
 
-  AI_MODEL_DOC_ITEMS.filter((item) => placeholderIds.has(item.id)).forEach((item) => {
-    assert.equal(item.status, 'placeholder', item.id);
-    assert.ok(item.placeholderMessage.length > 0, item.id);
-  });
+  AI_MODEL_DOC_ITEMS.filter((item) => placeholderIds.has(item.id)).forEach(
+    (item) => {
+      assert.equal(item.status, 'placeholder', item.id);
+      assert.ok(item.placeholderMessage.length > 0, item.id);
+    },
+  );
 });
 
 test('DocsSidebar auto-expands the active doc group without dropping existing state', () => {
@@ -207,7 +214,10 @@ test('DocsSidebar and index.jsx stay wired to the route helpers', () => {
 
   assert.match(sidebarSource, /expandAiModelDocGroups/);
   assert.match(sidebarSource, /useEffect/);
-  assert.match(sidebarSource, /setExpandedGroups\(\(current\) => expandAiModelDocGroups\(current, activeDocId\)\)/);
+  assert.match(
+    sidebarSource,
+    /setExpandedGroups\(\(current\) => expandAiModelDocGroups\(current, activeDocId\)\)/,
+  );
 });
 
 test('ApiDocsPageV1 raw markdown imports stay inside the Docker web build context', () => {
@@ -226,46 +236,56 @@ test('deploy image build does not fail on GitHub Actions cache exporter errors',
   assert.doesNotMatch(deployWorkflowSource, /cache-to:\s*type=gha/);
 });
 
-test('App registers the console docs page behind a private route', () => {
+test('App registers the docs page as a public top-level route', () => {
   assert.match(
     appSource,
     /const ApiDocsPage = lazy\(\(\) => import\('\.\/pages\/ApiDocsPageV1'\)\);/,
   );
   assert.match(
     appSource,
-    /<Route\s+path='\/console\/docs\/:category\?\/:docId\?'\s+element=\{\s*<PrivateRoute>[\s\S]*?<ApiDocsPage \/>[\s\S]*?<\/PrivateRoute>\s*\}\s*\/>/,
+    /<Route\s+path='\/docs\/:category\?\/:docId\?'\s+element=\{\s*<Suspense[\s\S]*?<ApiDocsPage \/>[\s\S]*?<\/Suspense>\s*\}\s*\/>/,
+  );
+  assert.doesNotMatch(
+    appSource,
+    /path='\/console\/docs\/:category\?\/:docId\?'/,
   );
 });
 
-test('SiderBar exposes docs as a console entry and keeps nested docs routes highlighted', () => {
-  assert.match(siderBarSource, /docs: '\/console\/docs'/);
-  assert.match(siderBarSource, /text: t\('API 文档'\),[\s\S]*?itemKey: 'docs',[\s\S]*?to: '\/console\/docs'/);
-  assert.match(
+test('SiderBar does not expose docs as a console entry', () => {
+  assert.doesNotMatch(siderBarSource, /docs: '\/console\/docs'/);
+  assert.doesNotMatch(
     siderBarSource,
-    /if \(!matchingKey && currentPath\.startsWith\('\/console\/docs'\)\) \{\s*matchingKey = 'docs';\s*\}/,
+    /text: t\('API 文档'\),[\s\S]*?itemKey: 'docs'/,
+  );
+  assert.doesNotMatch(
+    siderBarSource,
+    /currentPath\.startsWith\('\/console\/docs'\)/,
   );
 });
 
-test('sidebar defaults and admin settings enable console docs by default', () => {
+test('sidebar defaults and admin settings do not expose console docs', () => {
+  assert.doesNotMatch(
+    useSidebarSource,
+    /console:\s*\{[\s\S]*?docs: true[\s\S]*?\}/,
+  );
+
+  assert.doesNotMatch(settingsSidebarModulesAdminSource, /docs: true/);
+  assert.doesNotMatch(
+    settingsSidebarModulesAdminSource,
+    /key: 'docs',\s*title: t\('API 文档'\)/,
+  );
+});
+
+test('legacy sidebar admin configs drop stale console docs when loaded in settings', async () => {
   assert.match(
     useSidebarSource,
-    /console:\s*\{[\s\S]*?enabled: true,[\s\S]*?detail: true,[\s\S]*?token: true,[\s\S]*?log: true,[\s\S]*?midjourney: true,[\s\S]*?task: true,[\s\S]*?docs: true,[\s\S]*?\}/,
+    /export const mergeAdminConfig = \(savedConfig\) => \{/,
   );
-
-  const docsEnabledMatches = settingsSidebarModulesAdminSource.match(/docs: true/g) ?? [];
-  assert.ok(docsEnabledMatches.length >= 3);
-  assert.match(
-    settingsSidebarModulesAdminSource,
-    /key: 'docs',\s*title: t\('API 文档'\),\s*description: t\('站内接口文档中心'\)/,
-  );
-});
-
-test('legacy sidebar admin configs still gain console docs when loaded in settings', async () => {
-  assert.match(useSidebarSource, /export const mergeAdminConfig = \(savedConfig\) => \{/);
   assert.match(
     useSidebarSource,
     /merged\[sectionKey\] = \{ \.\.\.merged\[sectionKey\], \.\.\.sectionConfig \};/,
   );
+  assert.match(useSidebarSource, /delete merged\.console\.docs/);
   assert.match(
     settingsSidebarModulesAdminSource,
     /import \{ mergeAdminConfig \} from '\.\.\/\.\.\/\.\.\/hooks\/common\/useSidebar';/,
@@ -302,7 +322,10 @@ test('DocContent renders full docs and placeholder panels differently', async ()
   );
 
   assert.match(completeHtml, new RegExp(completeDoc.title));
-  assert.match(completeHtml, new RegExp(completeDoc.path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(
+    completeHtml,
+    new RegExp(completeDoc.path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+  );
   assert.match(completeHtml, /请求示例/);
   assert.match(completeHtml, /响应示例/);
 
