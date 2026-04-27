@@ -20,6 +20,9 @@ import (
 	"gorm.io/gorm"
 )
 
+var serviceTestMainDB *gorm.DB
+var serviceTestMainLogDB *gorm.DB
+
 func TestMain(m *testing.M) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
@@ -33,6 +36,8 @@ func TestMain(m *testing.M) {
 
 	model.DB = db
 	model.LOG_DB = db
+	serviceTestMainDB = db
+	serviceTestMainLogDB = db
 
 	common.UsingSQLite = true
 	common.RedisEnabled = false
@@ -181,9 +186,9 @@ func TestTaskBillingContextRoundTripPersistsAdvancedPricingContext(t *testing.T)
 	raw, err := common.Marshal(model.TaskPrivateData{
 		BillingSource: BillingSourceWallet,
 		BillingContext: &model.TaskBillingContext{
-			BillingMode:        types.BillingModeAdvanced,
-			AdvancedRuleType:   types.AdvancedRuleTypeMediaTask,
-			OriginModelName:    "test-model",
+			BillingMode:      types.BillingModeAdvanced,
+			AdvancedRuleType: types.AdvancedRuleTypeMediaTask,
+			OriginModelName:  "test-model",
 			AdvancedPricingContext: &types.AdvancedPricingContextSnapshot{
 				BillingUnit:      types.AdvancedBillingUnitPerSecond,
 				LiveDurationSecs: &durationSeconds,

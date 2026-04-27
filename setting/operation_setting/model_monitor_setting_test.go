@@ -19,6 +19,7 @@ func TestModelMonitorSettingNormalizeDefaults(t *testing.T) {
 	require.GreaterOrEqual(t, setting.DefaultTimeoutSeconds, 1)
 	require.GreaterOrEqual(t, setting.FailureThreshold, 1)
 	require.NotNil(t, setting.ModelOverrides)
+	require.NotNil(t, setting.NotificationDisabledUserIds)
 }
 
 func TestModelMonitorSettingModelEnabledAndTimeoutOverrides(t *testing.T) {
@@ -83,6 +84,30 @@ func TestUpdateModelMonitorSettingFromMapReplacesOverrides(t *testing.T) {
 		"model_overrides": string(emptyOverrides),
 	}))
 	require.NotContains(t, GetModelMonitorSetting().ModelOverrides, "gpt-4o")
+}
+
+func TestUpdateModelMonitorSettingFromMapStoresNotificationDisabledUserIds(t *testing.T) {
+	original := modelMonitorSetting.Clone()
+	defer func() {
+		modelMonitorSettingMu.Lock()
+		modelMonitorSetting = original
+		modelMonitorSettingMu.Unlock()
+	}()
+
+	disabledIds, err := common.Marshal([]int{3, 9})
+	require.NoError(t, err)
+	require.NoError(t, UpdateModelMonitorSettingFromMap(map[string]string{
+		"notification_disabled_user_ids": string(disabledIds),
+	}))
+
+	current := GetModelMonitorSetting()
+	require.Equal(t, []int{3, 9}, current.NotificationDisabledUserIds)
+	require.True(t, current.NotificationDisabledForUser(3))
+	require.False(t, current.NotificationDisabledForUser(4))
+
+	clone := current.Clone()
+	clone.NotificationDisabledUserIds[0] = 99
+	require.Equal(t, []int{3, 9}, current.NotificationDisabledUserIds)
 }
 
 func TestUpdateModelMonitorSettingFromMapKeepsOverridesOnInvalidReplacement(t *testing.T) {

@@ -29,6 +29,13 @@ const requiredModelMonitorCopyKeys = [
   '点击复制渠道名称',
   '已复制渠道名称',
   '该模型已命中排除规则，无法单独开启定时测试',
+  '通知人管理',
+  '接收通知',
+  '接收',
+  '不可接收',
+  '未配置邮箱',
+  '无模型监控查看权限',
+  '取消勾选后，模型失败邮件不会发送给对应管理员。',
 ];
 
 test('all locales include model monitor channel copy keys', () => {

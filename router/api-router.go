@@ -25,6 +25,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
 		apiRouter.GET("/notice", controller.GetNotice)
+		apiRouter.POST("/notice/email-broadcast", middleware.RootAuth(), controller.BroadcastAnnouncementEmail)
 		apiRouter.GET("/user-agreement", controller.GetUserAgreement)
 		apiRouter.GET("/privacy-policy", controller.GetPrivacyPolicy)
 		apiRouter.GET("/about", controller.GetAbout)
@@ -181,6 +182,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			modelMonitorRoute.GET("", controller.GetModelMonitor)
 			modelMonitorRoute.GET("/", controller.GetModelMonitor)
+			modelMonitorRoute.GET("/notification-users", controller.GetModelMonitorNotificationUsers)
 			modelMonitorRoute.PUT("", controller.UpdateModelMonitorSetting)
 			modelMonitorRoute.PUT("/", controller.UpdateModelMonitorSetting)
 			modelMonitorRoute.PATCH("", controller.UpdateModelMonitorSetting)

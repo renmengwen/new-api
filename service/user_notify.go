@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 )
 
@@ -33,10 +34,15 @@ func NotifyAdminUsersByEmail(t string, subject string, content string) {
 	}
 
 	notification := dto.NewNotify(t, subject, content, nil)
+	modelMonitorSetting := operation_setting.GetModelMonitorSetting()
 	sentCount := 0
 	for _, user := range users {
 		if t == dto.NotifyTypeModelMonitor && !canAdminUserReadModelMonitor(user) {
 			common.SysLog(fmt.Sprintf("admin user %d has no model monitor read permission, skip model monitor email", user.Id))
+			continue
+		}
+		if t == dto.NotifyTypeModelMonitor && modelMonitorSetting.NotificationDisabledForUser(user.Id) {
+			common.SysLog(fmt.Sprintf("admin user %d disabled model monitor email, skip model monitor email", user.Id))
 			continue
 		}
 		userSetting := user.GetSetting()
@@ -64,6 +70,54 @@ func NotifyAdminUsersByEmail(t string, subject string, content string) {
 		sentCount++
 	}
 	common.SysLog(fmt.Sprintf("model monitor admin email notifications sent: %d", sentCount))
+}
+
+func ListModelMonitorNotificationUsers(setting *operation_setting.ModelMonitorSetting) ([]dto.ModelMonitorNotificationUser, error) {
+	if setting == nil {
+		setting = operation_setting.GetModelMonitorSetting()
+	}
+
+	var users []model.User
+	if err := model.DB.
+		Select("id", "username", "display_name", "email", "role", "status", "user_type", "setting").
+		Where("status = ? AND role >= ?", common.UserStatusEnabled, common.RoleAdminUser).
+		Order("role desc, id asc").
+		Find(&users).Error; err != nil {
+		return nil, err
+	}
+
+	items := make([]dto.ModelMonitorNotificationUser, 0, len(users))
+	for _, user := range users {
+		canReceive := true
+		disabledReason := ""
+		if !canAdminUserReadModelMonitor(user) {
+			canReceive = false
+			disabledReason = "no_model_monitor_read_permission"
+		}
+		userSetting := user.GetSetting()
+		emailToUse := strings.TrimSpace(userSetting.NotificationEmail)
+		if emailToUse == "" {
+			emailToUse = strings.TrimSpace(user.Email)
+		}
+		if emailToUse == "" {
+			canReceive = false
+			if disabledReason == "" {
+				disabledReason = "no_email"
+			}
+		}
+		items = append(items, dto.ModelMonitorNotificationUser{
+			Id:                  user.Id,
+			Username:            user.Username,
+			DisplayName:         user.DisplayName,
+			Email:               emailToUse,
+			Role:                user.Role,
+			UserType:            user.GetUserType(),
+			CanReceive:          canReceive,
+			DisabledReason:      disabledReason,
+			NotificationEnabled: canReceive && !setting.NotificationDisabledForUser(user.Id),
+		})
+	}
+	return items, nil
 }
 
 func canAdminUserReadModelMonitor(user model.User) bool {
