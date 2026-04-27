@@ -57,7 +57,6 @@ const routerMap = {
   deployment: '/console/deployment',
   playground: '/console/playground',
   personal: '/console/personal',
-  docs: '/console/docs',
 };
 
 const SiderBar = ({ onNavigate = () => {} }) => {
@@ -112,11 +111,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         to: '/task',
         className:
           localStorage.getItem('enable_task') === 'true' ? '' : 'tableHiddle',
-      },
-      {
-        text: t('API 文档'),
-        itemKey: 'docs',
-        to: '/console/docs',
       },
     ];
 
@@ -333,10 +327,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       } else {
         matchingKey = 'chat';
       }
-    }
-
-    if (!matchingKey && currentPath.startsWith('/console/docs')) {
-      matchingKey = 'docs';
     }
 
     // 如果找到匹配的键，则更新选中的键

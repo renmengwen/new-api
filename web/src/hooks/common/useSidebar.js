@@ -44,7 +44,6 @@ export const DEFAULT_ADMIN_CONFIG = {
     log: true,
     midjourney: true,
     task: true,
-    docs: true,
   },
   personal: {
     enabled: true,
@@ -97,13 +96,16 @@ export const mergeAdminConfig = (savedConfig) => {
     merged[sectionKey] = { ...merged[sectionKey], ...sectionConfig };
   }
 
+  delete merged.console.docs;
+
   return merged;
 };
 
 export const useSidebar = () => {
   const [statusState] = useContext(StatusContext);
   const [userConfig, setUserConfig] = useState(null);
-  const [strictPermissionSnapshot, setStrictPermissionSnapshot] = useState(false);
+  const [strictPermissionSnapshot, setStrictPermissionSnapshot] =
+    useState(false);
   const [loading, setLoading] = useState(true);
   const instanceIdRef = useRef(null);
   const hasLoadedOnceRef = useRef(false);
@@ -163,7 +165,9 @@ export const useSidebar = () => {
         } else {
           config = rawSidebarModules;
         }
-        setStrictPermissionSnapshot(shouldUseStrictSidebarSnapshot(responseData));
+        setStrictPermissionSnapshot(
+          shouldUseStrictSidebarSnapshot(responseData),
+        );
         setUserConfig(normalizeUserSidebarConfig(config));
       } else {
         // 褰撶敤鎴锋病鏈夐厤缃椂锛岀敓鎴愪竴涓熀浜庣鐞嗗憳閰嶇疆鐨勯粯璁ょ敤鎴烽厤缃?        // 杩欐牱鍙互纭繚鏉冮檺鎺у埗姝ｇ‘鐢熸晥

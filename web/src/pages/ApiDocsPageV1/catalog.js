@@ -23,10 +23,15 @@ export const AI_MODEL_DOC_GROUPS = [
   { key: 'videos', title: 'Videos' },
 ];
 
-const AI_MODEL_DOC_GROUP_KEYS = new Set(AI_MODEL_DOC_GROUPS.map((group) => group.key));
+const AI_MODEL_DOC_GROUP_KEYS = new Set(
+  AI_MODEL_DOC_GROUPS.map((group) => group.key),
+);
 
 const makeJsonRequestExample = (method, path, requestBody) => {
-  const lines = [`curl -X ${method} '${BASE_URL_PLACEHOLDER}${path}'`, `  -H 'Authorization: Bearer sk-xxxxxxxx'`];
+  const lines = [
+    `curl -X ${method} '${BASE_URL_PLACEHOLDER}${path}'`,
+    `  -H 'Authorization: Bearer sk-xxxxxxxx'`,
+  ];
 
   if (requestBody !== undefined) {
     lines.push(`  -H 'Content-Type: application/json'`);
@@ -37,10 +42,16 @@ const makeJsonRequestExample = (method, path, requestBody) => {
 };
 
 const makeGetRequestExample = (path) =>
-  [`curl '${BASE_URL_PLACEHOLDER}${path}'`, `  -H 'Authorization: Bearer sk-xxxxxxxx'`].join(' \\\n');
+  [
+    `curl '${BASE_URL_PLACEHOLDER}${path}'`,
+    `  -H 'Authorization: Bearer sk-xxxxxxxx'`,
+  ].join(' \\\n');
 
 const makeMultipartRequestExample = (method, path, multipartFields) => {
-  const lines = [`curl -X ${method} '${BASE_URL_PLACEHOLDER}${path}'`, `  -H 'Authorization: Bearer sk-xxxxxxxx'`];
+  const lines = [
+    `curl -X ${method} '${BASE_URL_PLACEHOLDER}${path}'`,
+    `  -H 'Authorization: Bearer sk-xxxxxxxx'`,
+  ];
 
   multipartFields.forEach((field) => {
     lines.push(`  -F '${field}'`);
@@ -49,7 +60,8 @@ const makeMultipartRequestExample = (method, path, multipartFields) => {
   return lines.join(' \\\n');
 };
 
-const makeResponseExample = (responseBody) => JSON.stringify(responseBody, null, 2);
+const makeResponseExample = (responseBody) =>
+  JSON.stringify(responseBody, null, 2);
 
 const createDoc = ({
   id,
@@ -99,7 +111,11 @@ const createDoc = ({
   } else if (transport === 'get') {
     doc.requestExample = makeGetRequestExample(path);
   } else if (transport === 'multipart') {
-    doc.requestExample = makeMultipartRequestExample(method, path, multipartFields || []);
+    doc.requestExample = makeMultipartRequestExample(
+      method,
+      path,
+      multipartFields || [],
+    );
   } else {
     doc.requestExample = makeJsonRequestExample(method, path, requestBody);
   }
@@ -115,7 +131,8 @@ export const AI_MODEL_DOC_ITEMS = [
     method: 'POST',
     path: '/v1beta/models/{model}:generateContent',
     summary: '使用 Gemini 原生多模态请求格式处理音频输入。',
-    description: '适合需要上传语音、音频片段或混合内容的场景，展示 Gemini 原生调用方式。',
+    description:
+      '适合需要上传语音、音频片段或混合内容的场景，展示 Gemini 原生调用方式。',
     requestBody: {
       model: 'gemini-2.0-flash',
       contents: [
@@ -144,8 +161,13 @@ export const AI_MODEL_DOC_ITEMS = [
     transport: 'multipart',
     path: '/v1/audio/transcriptions',
     summary: '使用 OpenAI 兼容音频转写接口上传音频文件。',
-    description: '面向需要提交音频文件的语音转写场景，保留 OpenAI 风格的 multipart 请求结构。',
-    multipartFields: ['model=whisper-1', 'file=@audio.wav', 'response_format=json'],
+    description:
+      '面向需要提交音频文件的语音转写场景，保留 OpenAI 风格的 multipart 请求结构。',
+    multipartFields: [
+      'model=whisper-1',
+      'file=@audio.wav',
+      'response_format=json',
+    ],
     responseBody: {
       text: '音频转写结果。',
     },
@@ -157,7 +179,8 @@ export const AI_MODEL_DOC_ITEMS = [
     method: 'POST',
     path: '/v1/messages',
     summary: '使用 Claude 消息协议发送对话请求。',
-    description: '适合 Anthropic/Claude 兼容客户端，展示消息数组和最大输出长度设置。',
+    description:
+      '适合 Anthropic/Claude 兼容客户端，展示消息数组和最大输出长度设置。',
     requestBody: {
       model: 'claude-3-5-sonnet',
       max_tokens: 1024,
@@ -174,7 +197,8 @@ export const AI_MODEL_DOC_ITEMS = [
     method: 'POST',
     path: '/v1beta/models/{model}:generateContent',
     summary: '基于 Gemini 的多模态输入识别图片、音频或视频片段。',
-    description: '用于演示媒体识别类对话请求，强调 parts 结构中混合媒体与文本。',
+    description:
+      '用于演示媒体识别类对话请求，强调 parts 结构中混合媒体与文本。',
     requestBody: {
       model: 'gemini-2.0-flash',
       contents: [
@@ -199,10 +223,13 @@ export const AI_MODEL_DOC_ITEMS = [
     method: 'POST',
     path: '/v1beta/models/{model}:generateContent',
     summary: '使用 Gemini 原生文本聊天格式发起普通对话。',
-    description: '适合纯文本问答和多轮聊天场景，保留 Gemini 的 contents 提交方式。',
+    description:
+      '适合纯文本问答和多轮聊天场景，保留 Gemini 的 contents 提交方式。',
     requestBody: {
       model: 'gemini-2.0-flash',
-      contents: [{ role: 'user', parts: [{ text: '你好，请介绍一下这个接口。' }] }],
+      contents: [
+        { role: 'user', parts: [{ text: '你好，请介绍一下这个接口。' }] },
+      ],
     },
     responseBody: {
       candidates: [
@@ -295,7 +322,8 @@ export const AI_MODEL_DOC_ITEMS = [
     method: 'POST',
     path: '/v1beta/models/{model}:embedContent',
     summary: '使用 Gemini 原生接口生成向量嵌入。',
-    description: '适合需要 Gemini 原生 embedding 调用的场景，保持与其内容结构一致。',
+    description:
+      '适合需要 Gemini 原生 embedding 调用的场景，保持与其内容结构一致。',
     requestBody: {
       model: 'text-embedding-004',
       content: 'hello world',
@@ -349,7 +377,11 @@ export const AI_MODEL_DOC_ITEMS = [
     path: '/v1/images/edits',
     summary: '使用 OpenAI 风格的图片编辑接口修改输入图片。',
     description: '适合对已有图片进行局部编辑、风格调整或背景替换。',
-    multipartFields: ['model=gpt-image-1', 'image=@input.png', 'prompt=把背景改成夜景。'],
+    multipartFields: [
+      'model=gpt-image-1',
+      'image=@input.png',
+      'prompt=把背景改成夜景。',
+    ],
     responseBody: {
       data: [{ url: 'https://example.com/edited.png' }],
     },
@@ -395,7 +427,11 @@ export const AI_MODEL_DOC_ITEMS = [
     path: '/v1/images/edits',
     summary: '使用 Qwen 风格参数编辑已有图片。',
     description: '演示 Qwen 图像编辑链路的兼容请求结构。',
-    multipartFields: ['model=qwen-image', 'image=@input.png', 'prompt=调整色调并增强对比度。'],
+    multipartFields: [
+      'model=qwen-image',
+      'image=@input.png',
+      'prompt=调整色调并增强对比度。',
+    ],
     responseBody: {
       data: [{ url: 'https://example.com/qwen-edited.png' }],
     },
@@ -423,7 +459,9 @@ export const AI_MODEL_DOC_ITEMS = [
     summary: '列出 Gemini 兼容模型列表。',
     description: '用于查看 Gemini 侧可用模型及其展示名称。',
     responseBody: {
-      models: [{ name: 'models/gemini-2.0-flash', displayName: 'Gemini 2.0 Flash' }],
+      models: [
+        { name: 'models/gemini-2.0-flash', displayName: 'Gemini 2.0 Flash' },
+      ],
     },
   }),
   createDoc({
@@ -486,7 +524,8 @@ export const AI_MODEL_DOC_ITEMS = [
     summary: '文件管理接口预留入口。',
     description: '当前仅保留文档结构，后续将补充文件上传、列表和删除能力。',
     status: 'placeholder',
-    placeholderMessage: '该接口文档尚未补全，后续会继续完善请求参数与返回示例。',
+    placeholderMessage:
+      '该接口文档尚未补全，后续会继续完善请求参数与返回示例。',
     requestBody: {
       file_name: 'example.pdf',
     },
@@ -503,7 +542,8 @@ export const AI_MODEL_DOC_ITEMS = [
     summary: '微调任务接口预留入口。',
     description: '当前仅保留文档结构，后续将补充微调任务创建和查询能力。',
     status: 'placeholder',
-    placeholderMessage: '该微调文档仍在补充中，后续会开放完整请求参数和返回示例。',
+    placeholderMessage:
+      '该微调文档仍在补充中，后续会开放完整请求参数和返回示例。',
     requestBody: {
       training_file: 'file-123',
     },
@@ -616,7 +656,9 @@ export const AI_MODEL_DOC_ITEMS = [
   }),
 ];
 
-const AI_MODEL_DOC_BY_ID = new Map(AI_MODEL_DOC_ITEMS.map((item) => [item.id, item]));
+const AI_MODEL_DOC_BY_ID = new Map(
+  AI_MODEL_DOC_ITEMS.map((item) => [item.id, item]),
+);
 
 export function resolveAiModelDocId(docId) {
   return AI_MODEL_DOC_BY_ID.has(docId) ? docId : AI_MODEL_DOC_DEFAULT_ID;
@@ -627,7 +669,7 @@ export function getAiModelDocById(docId) {
 }
 
 export function buildAiModelDocRoute(docId) {
-  return `/console/docs/ai-model/${resolveAiModelDocId(docId)}`;
+  return `/docs/ai-model/${resolveAiModelDocId(docId)}`;
 }
 
 export function resolveAiModelDocPageState(category, docId) {
@@ -715,7 +757,9 @@ export function getAiModelDocDisplayState(doc) {
 }
 
 export function buildAiModelDocTree() {
-  const itemsByGroup = new Map(AI_MODEL_DOC_GROUPS.map((group) => [group.key, []]));
+  const itemsByGroup = new Map(
+    AI_MODEL_DOC_GROUPS.map((group) => [group.key, []]),
+  );
 
   AI_MODEL_DOC_ITEMS.forEach((item) => {
     const groupItems = itemsByGroup.get(item.groupKey);
