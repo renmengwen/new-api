@@ -112,11 +112,17 @@ const AboutStructuredPage = ({ config }) => {
     () => (customContent ? marked.parse(customContent) : ''),
     [customContent],
   );
+  const heroHeadingProps = hasText(hero.title)
+    ? { 'aria-labelledby': 'about-hero-title' }
+    : {};
+  const groupHeadingProps = hasText(group.title)
+    ? { 'aria-labelledby': 'about-group-title' }
+    : {};
 
   return (
     <main className='about-page'>
       <div className='about-page-shell'>
-        <section className='about-hero' aria-labelledby='about-hero-title'>
+        <section className='about-hero' {...heroHeadingProps}>
           <div className='about-hero-copy'>
             {hasText(hero.eyebrow) && (
               <p className='about-eyebrow'>{hero.eyebrow}</p>
@@ -222,10 +228,7 @@ const AboutStructuredPage = ({ config }) => {
           </section>
         )}
 
-        <section
-          className='about-group-section'
-          aria-labelledby='about-group-title'
-        >
+        <section className='about-group-section' {...groupHeadingProps}>
           <div className='about-group-copy'>
             {hasText(group.status) && (
               <span className='about-section-kicker'>{group.status}</span>

@@ -19,11 +19,14 @@ test('about CSS defines responsive breakpoints and interactive states', () => {
   assert.match(source, /@media\s*\(\s*max-width:\s*640px\s*\)/);
   assert.match(
     source,
-    /\.about-capability-grid[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/,
+    /\.about-page \.about-capability-grid[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/,
   );
-  assert.match(source, /\.about-card:hover/);
-  assert.match(source, /\.about-card:focus-visible/);
-  assert.match(source, /\.about-qr-card:active/);
+  assert.match(source, /\.about-page \.about-hero/);
+  assert.match(source, /\.about-page \.about-contact-grid/);
+  assert.match(source, /\.about-page \.about-card:hover/);
+  assert.match(source, /\.about-page \.about-card:focus-visible/);
+  assert.match(source, /\.about-page \.about-qr-card:active/);
+  assert.doesNotMatch(source, /^\s*\.about-(?!page(?:[\s,{:#.*>+~]|$))/m);
 });
 
 test('about index wires structured page while preserving legacy render paths', () => {
@@ -37,10 +40,40 @@ test('about index wires structured page while preserving legacy render paths', (
   assert.match(source, /dangerouslySetInnerHTML/);
 });
 
+test('about index clears cached structured config when the API request fails', () => {
+  const source = readSource('index.jsx');
+
+  assert.match(
+    source,
+    /else\s*\{[\s\S]*setAboutConfig\(null\)[\s\S]*removeLocalStorage\(ABOUT_CONFIG_CACHE_KEY\)/,
+  );
+});
+
 test('structured about page lazily loads QR images and handles broken images', () => {
   const source = readSource('AboutStructuredPage.jsx');
 
   assert.match(source, /<img[\s\S]*loading=['"]lazy['"]/);
   assert.match(source, /onError=\{/);
   assert.match(source, /fallbackUrl/);
+});
+
+test('structured about page guards optional aria-labelledby headings', () => {
+  const source = readSource('AboutStructuredPage.jsx');
+
+  assert.doesNotMatch(
+    source,
+    /className='about-hero'\s+aria-labelledby='about-hero-title'/,
+  );
+  assert.doesNotMatch(
+    source,
+    /className='about-group-section'\s+aria-labelledby='about-group-title'/,
+  );
+  assert.match(
+    source,
+    /hasText\(hero\.title\)[\s\S]*'aria-labelledby': 'about-hero-title'/,
+  );
+  assert.match(
+    source,
+    /hasText\(group\.title\)[\s\S]*'aria-labelledby': 'about-group-title'/,
+  );
 });

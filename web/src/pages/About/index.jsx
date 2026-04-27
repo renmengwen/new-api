@@ -52,6 +52,14 @@ const writeLocalStorage = (key, value) => {
   }
 };
 
+const removeLocalStorage = (key) => {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage errors so the About page can still render fetched content.
+  }
+};
+
 const loadCachedAboutConfig = () => {
   const cachedConfig = readLocalStorage(ABOUT_CONFIG_CACHE_KEY);
 
@@ -91,6 +99,8 @@ const About = () => {
       showError(message);
       setAbout(t('加载关于内容失败...'));
       setLegacyAbout('');
+      setAboutConfig(null);
+      removeLocalStorage(ABOUT_CONFIG_CACHE_KEY);
     }
     setAboutLoaded(true);
   };
