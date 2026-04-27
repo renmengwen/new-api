@@ -26,27 +26,71 @@ import {
   IllustrationConstructionDark,
 } from '@douyinfe/semi-illustrations';
 import { useTranslation } from 'react-i18next';
+import AboutStructuredPage from './AboutStructuredPage';
+import {
+  isStructuredAboutEnabled,
+  normalizeAboutPageConfig,
+  parseAboutResponse,
+} from './aboutPageConfig';
+
+const ABOUT_CACHE_KEY = 'about';
+const ABOUT_CONFIG_CACHE_KEY = 'about_page_config';
+
+const readLocalStorage = (key) => {
+  try {
+    return localStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+};
+
+const writeLocalStorage = (key, value) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage errors so the About page can still render fetched content.
+  }
+};
+
+const loadCachedAboutConfig = () => {
+  const cachedConfig = readLocalStorage(ABOUT_CONFIG_CACHE_KEY);
+
+  return cachedConfig ? normalizeAboutPageConfig(cachedConfig) : null;
+};
 
 const About = () => {
   const { t } = useTranslation();
-  const [about, setAbout] = useState('');
+  const [about, setAbout] = useState(() => readLocalStorage(ABOUT_CACHE_KEY));
+  const [legacyAbout, setLegacyAbout] = useState(() =>
+    readLocalStorage(ABOUT_CACHE_KEY),
+  );
+  const [aboutConfig, setAboutConfig] = useState(loadCachedAboutConfig);
   const [aboutLoaded, setAboutLoaded] = useState(false);
   const currentYear = new Date().getFullYear();
 
   const displayAbout = async () => {
-    setAbout(localStorage.getItem('about') || '');
+    setAbout(readLocalStorage(ABOUT_CACHE_KEY));
     const res = await API.get('/api/about');
-    const { success, message, data } = res.data;
+    const { success, message } = res.data;
     if (success) {
-      let aboutContent = data;
-      if (!data.startsWith('https://')) {
-        aboutContent = marked.parse(data);
+      const { legacy, config } = parseAboutResponse(res.data);
+      const normalizedConfig = normalizeAboutPageConfig(config);
+      let aboutContent = legacy;
+      if (legacy && !legacy.startsWith('https://')) {
+        aboutContent = marked.parse(legacy);
       }
+      setLegacyAbout(legacy);
       setAbout(aboutContent);
-      localStorage.setItem('about', aboutContent);
+      setAboutConfig(normalizedConfig);
+      writeLocalStorage(ABOUT_CACHE_KEY, aboutContent);
+      writeLocalStorage(
+        ABOUT_CONFIG_CACHE_KEY,
+        JSON.stringify(normalizedConfig),
+      );
     } else {
       showError(message);
       setAbout(t('加载关于内容失败...'));
+      setLegacyAbout('');
     }
     setAboutLoaded(true);
   };
@@ -132,9 +176,16 @@ const About = () => {
     </div>
   );
 
+  const shouldRenderStructuredAbout = isStructuredAboutEnabled(
+    aboutConfig,
+    legacyAbout,
+  );
+
   return (
     <div className='mt-[60px] px-2'>
-      {aboutLoaded && about === '' ? (
+      {shouldRenderStructuredAbout ? (
+        <AboutStructuredPage config={aboutConfig} />
+      ) : aboutLoaded && about === '' ? (
         <div className='flex justify-center items-center h-screen p-8'>
           <Empty
             image={
