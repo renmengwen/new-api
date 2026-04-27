@@ -47,6 +47,19 @@ test('about CSS lets long status and channel text wrap', () => {
   );
 });
 
+test('about CSS lets configured action and group bullet text wrap', () => {
+  const source = readSource('about.css');
+
+  assert.match(
+    source,
+    /\.about-page \.about-action span\s*\{[\s\S]*min-width:\s*0[\s\S]*overflow-wrap:\s*anywhere[\s\S]*white-space:\s*normal[\s\S]*line-height:/,
+  );
+  assert.match(
+    source,
+    /\.about-page \.about-group-list span\s*\{[\s\S]*min-width:\s*0[\s\S]*overflow-wrap:\s*anywhere[\s\S]*white-space:\s*normal[\s\S]*line-height:/,
+  );
+});
+
 test('about index wires structured page while preserving legacy render paths', () => {
   const source = readSource('index.jsx');
 

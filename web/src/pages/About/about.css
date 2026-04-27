@@ -127,6 +127,13 @@
   outline-offset: 3px;
 }
 
+.about-page .about-action span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.35;
+}
+
 .about-page .about-action:active {
   transform: translateY(1px);
 }
@@ -338,6 +345,13 @@
   gap: 10px;
   align-items: start;
   color: var(--about-text);
+  line-height: 1.65;
+}
+
+.about-page .about-group-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
   line-height: 1.65;
 }
 
