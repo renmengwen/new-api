@@ -88,8 +88,19 @@ const isPlainObject = (value) =>
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
+const withConfiguredFlag = (config, isConfigured) => {
+  Object.defineProperty(config, '__isConfigured', {
+    value: isConfigured,
+    enumerable: false,
+  });
+
+  return config;
+};
+
 const normalizeString = (source, key, fallback) =>
-  isPlainObject(source) && hasOwn(source, key) && typeof source[key] === 'string'
+  isPlainObject(source) &&
+  hasOwn(source, key) &&
+  typeof source[key] === 'string'
     ? source[key]
     : fallback;
 
@@ -100,6 +111,10 @@ const normalizeObjectStrings = (source, fallback) =>
   }, {});
 
 const clampChannelValue = (value, fallback) => {
+  if (typeof value === 'string' && value.trim() === '') {
+    return fallback;
+  }
+
   const numericValue =
     typeof value === 'number' || typeof value === 'string'
       ? Number(value)
@@ -132,13 +147,13 @@ const normalizeStringArray = (values, fallback) => {
     return [...fallback];
   }
 
-  const normalized = values.filter((value) => typeof value === 'string');
-  const missingCount = Math.max(0, fallback.length - normalized.length);
+  const targetLength = Math.max(values.length, fallback.length);
 
-  return [
-    ...normalized,
-    ...fallback.slice(normalized.length, normalized.length + missingCount),
-  ];
+  return Array.from({ length: targetLength }, (_, index) =>
+    typeof values[index] === 'string'
+      ? values[index]
+      : (fallback[index] ?? fallback[fallback.length - 1]),
+  );
 };
 
 const normalizeArray = (values, fallback, normalizeItem) => {
@@ -156,18 +171,24 @@ const normalizeArray = (values, fallback, normalizeItem) => {
 const parseConfigInput = (input) => {
   if (typeof input === 'string') {
     if (input.trim() === '') {
-      return null;
+      return { config: null, isConfigured: false };
     }
 
     try {
       const parsed = JSON.parse(input);
-      return isPlainObject(parsed) ? parsed : null;
+      return {
+        config: isPlainObject(parsed) ? parsed : null,
+        isConfigured: isPlainObject(parsed),
+      };
     } catch {
-      return null;
+      return { config: null, isConfigured: false };
     }
   }
 
-  return isPlainObject(input) ? input : null;
+  return {
+    config: isPlainObject(input) ? input : null,
+    isConfigured: isPlainObject(input),
+  };
 };
 
 export const parseAboutResponse = (data) => {
@@ -191,75 +212,98 @@ export const parseAboutResponse = (data) => {
 };
 
 export const normalizeAboutPageConfig = (input) => {
-  const config = parseConfigInput(input);
+  const { config, isConfigured } = parseConfigInput(input);
 
   if (!config) {
-    return clone(defaultAboutPageConfig);
+    return withConfiguredFlag(clone(defaultAboutPageConfig), false);
   }
 
   const defaults = defaultAboutPageConfig;
 
-  return {
-    enabled:
-      typeof config.enabled === 'boolean' ? config.enabled : defaults.enabled,
-    hero: {
-      ...normalizeObjectStrings(config.hero, defaults.hero),
+  return withConfiguredFlag(
+    {
+      enabled:
+        typeof config.enabled === 'boolean' ? config.enabled : defaults.enabled,
+      hero: {
+        ...normalizeObjectStrings(config.hero, defaults.hero),
+      },
+      overview: {
+        title: normalizeString(
+          config.overview,
+          'title',
+          defaults.overview.title,
+        ),
+        description: normalizeString(
+          config.overview,
+          'description',
+          defaults.overview.description,
+        ),
+        status: normalizeString(
+          config.overview,
+          'status',
+          defaults.overview.status,
+        ),
+        metrics: normalizeArray(
+          config.overview?.metrics,
+          defaults.overview.metrics,
+          normalizeMetric,
+        ),
+        channels: normalizeArray(
+          config.overview?.channels,
+          defaults.overview.channels,
+          normalizeChannel,
+        ),
+      },
+      capabilities: normalizeArray(
+        config.capabilities,
+        defaults.capabilities,
+        normalizeCapability,
+      ),
+      group: {
+        title: normalizeString(config.group, 'title', defaults.group.title),
+        description: normalizeString(
+          config.group,
+          'description',
+          defaults.group.description,
+        ),
+        status: normalizeString(config.group, 'status', defaults.group.status),
+        bullets: normalizeStringArray(
+          config.group?.bullets,
+          defaults.group.bullets,
+        ),
+        websiteLabel: normalizeString(
+          config.group,
+          'websiteLabel',
+          defaults.group.websiteLabel,
+        ),
+        websiteUrl: normalizeString(
+          config.group,
+          'websiteUrl',
+          defaults.group.websiteUrl,
+        ),
+      },
+      contacts: normalizeArray(
+        config.contacts,
+        defaults.contacts,
+        normalizeContact,
+      ),
+      customContent: normalizeString(
+        config,
+        'customContent',
+        defaults.customContent,
+      ),
     },
-    overview: {
-      title: normalizeString(config.overview, 'title', defaults.overview.title),
-      description: normalizeString(
-        config.overview,
-        'description',
-        defaults.overview.description,
-      ),
-      status: normalizeString(
-        config.overview,
-        'status',
-        defaults.overview.status,
-      ),
-      metrics: normalizeArray(
-        config.overview?.metrics,
-        defaults.overview.metrics,
-        normalizeMetric,
-      ),
-      channels: normalizeArray(
-        config.overview?.channels,
-        defaults.overview.channels,
-        normalizeChannel,
-      ),
-    },
-    capabilities: normalizeArray(
-      config.capabilities,
-      defaults.capabilities,
-      normalizeCapability,
-    ),
-    group: {
-      title: normalizeString(config.group, 'title', defaults.group.title),
-      description: normalizeString(
-        config.group,
-        'description',
-        defaults.group.description,
-      ),
-      status: normalizeString(config.group, 'status', defaults.group.status),
-      bullets: normalizeStringArray(config.group?.bullets, defaults.group.bullets),
-      websiteLabel: normalizeString(
-        config.group,
-        'websiteLabel',
-        defaults.group.websiteLabel,
-      ),
-      websiteUrl: normalizeString(
-        config.group,
-        'websiteUrl',
-        defaults.group.websiteUrl,
-      ),
-    },
-    contacts: normalizeArray(config.contacts, defaults.contacts, normalizeContact),
-    customContent: normalizeString(
-      config,
-      'customContent',
-      defaults.customContent,
-    ),
-  };
+    isConfigured,
+  );
 };
 
-export const isStructuredAboutEnabled = (config) => config?.enabled === true;
+export const isStructuredAboutEnabled = (config, legacy = '') => {
+  if (config?.enabled !== true) {
+    return false;
+  }
+
+  const hasLegacyContent =
+    typeof legacy === 'string' ? legacy.trim() !== '' : Boolean(legacy);
+
+  return !hasLegacyContent || config.__isConfigured !== false;
+};

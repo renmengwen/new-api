@@ -37,10 +37,7 @@ test('normalizeAboutPageConfig returns the demo defaults for empty config', () =
   assert.equal(config.hero.primaryActionText, '进入控制台');
   assert.equal(config.hero.primaryActionUrl, '/console');
   assert.equal(config.hero.secondaryActionText, '访问集团官网');
-  assert.equal(
-    config.hero.secondaryActionUrl,
-    'https://www.digitalchina.com/',
-  );
+  assert.equal(config.hero.secondaryActionUrl, 'https://www.digitalchina.com/');
   assert.equal(config.overview.metrics.length, 3);
   assert.equal(config.overview.channels.length, 3);
   assert.deepEqual(
@@ -55,6 +52,27 @@ test('normalizeAboutPageConfig returns the demo defaults for empty config', () =
   );
   assert.equal(config.customContent, '');
   assert.equal(isStructuredAboutEnabled(config), true);
+});
+
+test('empty default config does not override existing legacy content', () => {
+  assert.equal(
+    isStructuredAboutEnabled(normalizeAboutPageConfig(''), '# legacy'),
+    false,
+  );
+});
+
+test('malformed config does not override existing legacy content', () => {
+  assert.equal(
+    isStructuredAboutEnabled(normalizeAboutPageConfig('{bad json'), '# legacy'),
+    false,
+  );
+});
+
+test('empty default config is enabled for empty installs', () => {
+  assert.equal(
+    isStructuredAboutEnabled(normalizeAboutPageConfig(''), ''),
+    true,
+  );
 });
 
 test('normalizeAboutPageConfig preserves user values and fills short arrays', () => {
@@ -121,6 +139,51 @@ test('normalizeAboutPageConfig clamps channel values into the 0 to 100 range', (
   assert.equal(config.overview.channels[0].value, 100);
   assert.equal(config.overview.channels[1].value, 0);
   assert.equal(config.overview.channels[2].value, 68);
+});
+
+test('normalizeAboutPageConfig treats blank channel values as fallback values', () => {
+  const config = normalizeAboutPageConfig({
+    overview: {
+      channels: [{ name: 'Blank value', value: ' ', status: 'idle' }],
+    },
+  });
+
+  assert.equal(
+    config.overview.channels[0].value,
+    defaultAboutPageConfig.overview.channels[0].value,
+  );
+});
+
+test('normalizeAboutPageConfig preserves bullet positions when filling invalid entries', () => {
+  const config = normalizeAboutPageConfig({
+    group: {
+      bullets: [123, 'second'],
+    },
+  });
+
+  assert.equal(
+    config.group.bullets[0],
+    defaultAboutPageConfig.group.bullets[0],
+  );
+  assert.equal(config.group.bullets[1], 'second');
+});
+
+test('normalizeAboutPageConfig does not let normalized changes mutate defaults', () => {
+  const config = normalizeAboutPageConfig('');
+
+  config.hero.title = 'Changed title';
+  config.overview.metrics[0].value = '0';
+  config.group.bullets[0] = 'Changed bullet';
+
+  assert.equal(
+    defaultAboutPageConfig.hero.title,
+    '统一接入、分发与治理企业 AI 能力',
+  );
+  assert.equal(defaultAboutPageConfig.overview.metrics[0].value, '40+');
+  assert.equal(
+    defaultAboutPageConfig.group.bullets[0],
+    '服务企业数字化转型与智能化升级',
+  );
 });
 
 test('structured about is disabled only when explicitly configured false', () => {
