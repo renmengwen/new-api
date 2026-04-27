@@ -57,15 +57,34 @@ const AboutAction = ({ href, children, variant = 'primary' }) => {
   );
 };
 
+const SafeLink = ({ href, children, className }) => {
+  if (!hasText(href) || !hasText(children)) {
+    return null;
+  }
+
+  const external = isExternalUrl(href);
+
+  return (
+    <a
+      className={className}
+      href={href}
+      target={external ? '_blank' : undefined}
+      rel={external ? 'noopener noreferrer' : undefined}
+    >
+      <span>{children}</span>
+      <ExternalLink aria-hidden='true' size={14} strokeWidth={2} />
+    </a>
+  );
+};
+
 const QrImage = ({ contact }) => {
   const { t } = useTranslation();
-  const [imageIndex, setImageIndex] = useState(0);
-  const { imageUrl, fallbackUrl } = contact;
-  const imageSources = [imageUrl, fallbackUrl].filter(hasText);
-  const currentImageUrl = imageSources[imageIndex];
+  const [hasImageError, setHasImageError] = useState(false);
+  const currentImageUrl =
+    hasText(contact.imageUrl) && !hasImageError ? contact.imageUrl : '';
 
   const handleImageError = () => {
-    setImageIndex((currentIndex) => currentIndex + 1);
+    setHasImageError(true);
   };
 
   if (!currentImageUrl) {
@@ -230,7 +249,9 @@ const AboutStructuredPage = ({ config }) => {
         <section className='about-group-section' {...groupHeadingProps}>
           <div className='about-group-copy'>
             {hasText(group.status) && (
-              <span className='about-section-kicker'>{group.status}</span>
+              <span className='about-section-kicker about-group-status'>
+                {group.status}
+              </span>
             )}
             {hasText(group.title) && (
               <h2 id='about-group-title'>{group.title}</h2>
@@ -280,6 +301,12 @@ const AboutStructuredPage = ({ config }) => {
                       {hasText(contact.description) && (
                         <p>{contact.description}</p>
                       )}
+                      <SafeLink
+                        className='about-contact-fallback'
+                        href={contact.fallbackUrl}
+                      >
+                        {t('备用联系链接')}
+                      </SafeLink>
                     </div>
                     <div className='about-qr-frame'>
                       <QrImage contact={{ ...contact, title }} />

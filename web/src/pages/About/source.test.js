@@ -60,6 +60,19 @@ test('about CSS lets configured action and group bullet text wrap', () => {
   );
 });
 
+test('about CSS lets configured eyebrow and group status text wrap', () => {
+  const source = readSource('about.css');
+
+  assert.match(
+    source,
+    /\.about-page \.about-eyebrow\s*\{[\s\S]*min-width:\s*0[\s\S]*overflow-wrap:\s*anywhere[\s\S]*white-space:\s*normal[\s\S]*line-height:/,
+  );
+  assert.match(
+    source,
+    /\.about-page \.about-group-status\s*\{[\s\S]*min-width:\s*0[\s\S]*overflow-wrap:\s*anywhere[\s\S]*white-space:\s*normal[\s\S]*line-height:/,
+  );
+});
+
 test('about index wires structured page while preserving legacy render paths', () => {
   const source = readSource('index.jsx');
 
@@ -94,7 +107,18 @@ test('structured about page lazily loads QR images and handles broken images', (
 
   assert.match(source, /<img[\s\S]*loading=['"]lazy['"]/);
   assert.match(source, /onError=\{/);
-  assert.match(source, /fallbackUrl/);
+  assert.doesNotMatch(
+    source,
+    /const\s+\{[^}]*fallbackUrl[^}]*}\s*=\s*contact[\s\S]*imageSources/,
+  );
+});
+
+test('structured about page renders contact fallback URL as a safe link', () => {
+  const source = readSource('AboutStructuredPage.jsx');
+
+  assert.match(source, /const SafeLink/);
+  assert.match(source, /href=\{contact\.fallbackUrl\}/);
+  assert.match(source, /about-contact-fallback/);
 });
 
 test('structured about display cards are not keyboard tab stops', () => {
