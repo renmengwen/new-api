@@ -45,9 +45,18 @@ const REQUIRED_DOC_IDS = [
 ];
 
 const VALID_GROUP_KEYS = new Set(AI_MODEL_DOC_GROUPS.map((group) => group.key));
-const USER_FACING_STRING_FIELDS = ['title', 'summary', 'description', 'requestExample', 'responseExample'];
+const USER_FACING_STRING_FIELDS = [
+  'title',
+  'summary',
+  'description',
+  'requestExample',
+  'responseExample',
+];
 const relayOpenApi = JSON.parse(
-  fs.readFileSync(new URL('../../../../docs/openapi/relay.json', import.meta.url), 'utf8'),
+  fs.readFileSync(
+    new URL('../../../../docs/openapi/relay.json', import.meta.url),
+    'utf8',
+  ),
 );
 
 const hasPlaceholderPattern = (value) => value.includes('??');
@@ -78,7 +87,9 @@ test('catalog data stays internally consistent and groups render in approved ord
 
   assert.equal(uniqueIds.size, AI_MODEL_DOC_ITEMS.length);
   assert.equal(
-    AI_MODEL_DOC_ITEMS.map((item) => item.groupKey).every((groupKey) => VALID_GROUP_KEYS.has(groupKey)),
+    AI_MODEL_DOC_ITEMS.map((item) => item.groupKey).every((groupKey) =>
+      VALID_GROUP_KEYS.has(groupKey),
+    ),
     true,
   );
 
@@ -99,7 +110,10 @@ test('catalog data stays internally consistent and groups render in approved ord
   assert.ok(chatGroup.items.length >= 5);
 
   AI_MODEL_DOC_ITEMS.forEach((item) => {
-    assert.ok(VALID_GROUP_KEYS.has(item.groupKey), `invalid group key: ${item.groupKey}`);
+    assert.ok(
+      VALID_GROUP_KEYS.has(item.groupKey),
+      `invalid group key: ${item.groupKey}`,
+    );
     assert.ok(item.title.length > 0);
     assert.ok(item.summary.length > 0);
     assert.ok(item.description.length > 0);
@@ -113,27 +127,42 @@ test('catalog data stays internally consistent and groups render in approved ord
     assert.ok(item.auth.example.length > 0);
 
     USER_FACING_STRING_FIELDS.forEach((field) => {
-      assert.ok(!hasPlaceholderPattern(item[field]), `${item.id}.${field} still contains placeholder text`);
+      assert.ok(
+        !hasPlaceholderPattern(item[field]),
+        `${item.id}.${field} still contains placeholder text`,
+      );
     });
-    assert.ok(!hasPlaceholderPattern(item.auth.example), `${item.id}.auth.example still contains placeholder text`);
+    assert.ok(
+      !hasPlaceholderPattern(item.auth.example),
+      `${item.id}.auth.example still contains placeholder text`,
+    );
 
     if (item.transport === 'get') {
-      assert.ok(!item.requestExample.includes('Content-Type: application/json'));
+      assert.ok(
+        !item.requestExample.includes('Content-Type: application/json'),
+      );
       assert.ok(!item.requestExample.includes('-d '));
     }
 
     if (item.transport === 'multipart') {
       assert.ok(item.requestExample.includes('-F '));
-      assert.ok(!item.requestExample.includes('Content-Type: application/json'));
+      assert.ok(
+        !item.requestExample.includes('Content-Type: application/json'),
+      );
     }
 
     if (item.transport === 'json') {
-      assert.ok(item.requestExample.includes("-H 'Content-Type: application/json'") || item.requestExample.includes('-d '));
+      assert.ok(
+        item.requestExample.includes("-H 'Content-Type: application/json'") ||
+          item.requestExample.includes('-d '),
+      );
     }
 
     if (item.transport === 'websocket') {
       assert.ok(item.requestExample.includes('wss://'));
-      assert.ok(item.requestExample.includes('Sec-WebSocket-Protocol: realtime'));
+      assert.ok(
+        item.requestExample.includes('Sec-WebSocket-Protocol: realtime'),
+      );
       assert.ok(!item.requestExample.includes('curl '));
     }
   });
@@ -142,7 +171,7 @@ test('catalog data stays internally consistent and groups render in approved ord
   assert.equal(getAiModelDocById('models-native-openai').method, 'GET');
   assert.equal(
     buildAiModelDocRoute('chat-openai-chat-completions'),
-    '/console/docs/ai-model/chat-openai-chat-completions',
+    '/docs/ai-model/chat-openai-chat-completions',
   );
 });
 
@@ -151,7 +180,9 @@ test('relay openapi contract exposes the corrected realtime and video endpoints'
 
   assert.ok(paths['/v1/videos']);
   assert.ok(paths['/v1/videos'].post);
-  assert.ok(paths['/v1/videos'].post.requestBody.content['multipart/form-data']);
+  assert.ok(
+    paths['/v1/videos'].post.requestBody.content['multipart/form-data'],
+  );
 
   assert.ok(paths['/v1/videos/{task_id}']);
   assert.ok(paths['/v1/videos/{task_id}'].get);
@@ -192,6 +223,9 @@ test('catalog video and realtime docs stay aligned with the relay contract', () 
   assert.equal(realtimeDoc.path, '/v1/realtime');
   assert.equal(realtimeDoc.transport, 'websocket');
   assert.match(realtimeDoc.requestExample, /wss:\/\/.*\/v1\/realtime\?model=/);
-  assert.match(realtimeDoc.requestExample, /Sec-WebSocket-Protocol: realtime, openai-insecure-api-key\.sk-xxxxxxxx, openai-beta\.realtime-v1/);
+  assert.match(
+    realtimeDoc.requestExample,
+    /Sec-WebSocket-Protocol: realtime, openai-insecure-api-key\.sk-xxxxxxxx, openai-beta\.realtime-v1/,
+  );
   assert.doesNotMatch(realtimeDoc.requestExample, /curl '/);
 });
