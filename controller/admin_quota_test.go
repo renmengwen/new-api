@@ -46,6 +46,8 @@ func setupAdminQuotaTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.AutoMigrate(
 		&model.User{},
 		&model.Log{},
+		&model.Model{},
+		&model.Vendor{},
 		&model.PermissionProfile{},
 		&model.PermissionProfileItem{},
 		&model.UserPermissionBinding{},

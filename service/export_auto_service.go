@@ -24,6 +24,7 @@ const (
 	SmartExportJobTypeUsageLogs            = "usage_logs"
 	SmartExportJobTypeAdminAuditLogs       = "admin_audit_logs"
 	SmartExportJobTypeQuotaLedger          = "quota_ledger"
+	SmartExportJobTypeQuotaCostSummary     = "quota_cost_summary"
 	SmartExportJobTypeAdminAnalyticsModels = "operations_analytics_models"
 	SmartExportJobTypeAdminAnalyticsUsers  = "operations_analytics_users"
 	SmartExportJobTypeAdminAnalyticsDaily  = "operations_analytics_daily"
@@ -34,6 +35,7 @@ const (
 	SmartExportUsageLogsLongTextThreshold = 800
 	SmartExportAdminAuditThreshold        = 3000
 	SmartExportQuotaLedgerThreshold       = 3000
+	SmartExportQuotaCostSummaryThreshold  = 5000
 	SmartExportAdminAnalyticsThreshold    = 5000
 	smartExportSyncLimit                  = 2000
 )
@@ -119,6 +121,46 @@ func DecideQuotaLedgerSmartExport(requesterUserID int, requesterRole int, req dt
 		}
 		return probeQuotaLedgerRows(query, limit)
 	})
+}
+
+func DecideQuotaCostSummarySmartExport(requesterUserID int, requesterRole int, req dto.AdminQuotaCostSummaryExportRequest) (SmartExportDecision, error) {
+	query, err := dto.NormalizeAdminQuotaCostSummaryQuery(req.AdminQuotaCostSummaryQuery, common.GetTimestamp())
+	if err != nil {
+		return SmartExportDecision{}, err
+	}
+
+	threshold := SmartExportQuotaCostSummaryThreshold
+	probeLimit := threshold + 1
+	if req.Limit > 0 {
+		if req.Limit > threshold {
+			return SmartExportDecision{
+				JobType:    SmartExportJobTypeQuotaCostSummary,
+				Mode:       SmartExportModeAsync,
+				Reason:     SmartExportReasonExceedsThreshold,
+				Threshold:  threshold,
+				ProbedRows: req.Limit,
+			}, nil
+		}
+		probeLimit = req.Limit
+	}
+
+	items, err := ListQuotaCostSummaryForExport(query, requesterUserID, requesterRole, probeLimit)
+	if err != nil {
+		return SmartExportDecision{}, err
+	}
+
+	decision := SmartExportDecision{
+		JobType:    SmartExportJobTypeQuotaCostSummary,
+		Mode:       SmartExportModeSync,
+		Reason:     SmartExportReasonWithinThreshold,
+		Threshold:  threshold,
+		ProbedRows: len(items),
+	}
+	if len(items) > threshold {
+		decision.Mode = SmartExportModeAsync
+		decision.Reason = SmartExportReasonExceedsThreshold
+	}
+	return decision, nil
 }
 
 func DecideAdminAnalyticsSmartExport(requesterUserID int, requesterRole int, req dto.AdminAnalyticsExportRequest) (SmartExportDecision, error) {

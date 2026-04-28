@@ -89,6 +89,29 @@ func GetQuotaLedger(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
+func GetQuotaCostSummary(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceQuotaManagement, service.ActionLedgerRead) {
+		return
+	}
+
+	query, err := dto.ParseAdminQuotaCostSummaryQuery(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	pageInfo := common.GetPageQuery(c)
+	items, total, err := service.ListQuotaCostSummary(query, pageInfo, c.GetInt("id"), c.GetInt("role"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
 func ExportQuotaLedger(c *gin.Context) {
 	if !requireAdminActionPermission(c, service.ResourceQuotaManagement, service.ActionLedgerRead) {
 		return
@@ -132,6 +155,43 @@ func ExportQuotaLedgerAuto(c *gin.Context) {
 	exportQuotaLedgerByRequest(c, c.GetInt("id"), c.GetInt("role"), req)
 }
 
+func ExportQuotaCostSummaryAuto(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceQuotaManagement, service.ActionLedgerRead) {
+		return
+	}
+
+	var req dto.AdminQuotaCostSummaryExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	query, err := dto.NormalizeAdminQuotaCostSummaryQuery(req.AdminQuotaCostSummaryQuery, common.GetTimestamp())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	normalizedReq := req
+	normalizedReq.AdminQuotaCostSummaryQuery = query
+
+	decision, err := service.DecideQuotaCostSummarySmartExport(c.GetInt("id"), c.GetInt("role"), normalizedReq)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if decision.Mode == service.SmartExportModeAsync {
+		job, err := service.CreateQuotaCostSummaryExportJob(c.GetInt("id"), c.GetInt("role"), normalizedReq)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		respondAsyncExportJobCreated(c, decision, job)
+		return
+	}
+
+	exportQuotaCostSummaryByRequest(c, c.GetInt("id"), c.GetInt("role"), query, req.Limit)
+}
+
 func exportQuotaLedgerByRequest(c *gin.Context, requesterUserID int, requesterRole int, req dto.AdminQuotaLedgerExportRequest) {
 	items, _, err := service.ListQuotaLedgerForExport(
 		requesterUserID,
@@ -160,6 +220,34 @@ func exportQuotaLedgerByRequest(c *gin.Context, requesterUserID int, requesterRo
 	streamExcelFile(c, fileName, content)
 }
 
+func exportQuotaCostSummaryByRequest(c *gin.Context, requesterUserID int, requesterRole int, query dto.AdminQuotaCostSummaryQuery, limit int) {
+	items, err := service.ListQuotaCostSummaryForExport(query, requesterUserID, requesterRole, normalizeQuotaCostSummaryExportLimit(limit))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	fileName, content, err := service.BuildExcelFile(service.ExcelFileSpec{
+		FileNamePrefix: "额度成本汇总",
+		SheetName:      "成本汇总",
+		Headers:        service.QuotaCostSummaryExportHeaders(),
+		Rows:           service.BuildQuotaCostSummaryExportRows(items),
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	streamExcelFile(c, fileName, content)
+}
+
+func normalizeQuotaCostSummaryExportLimit(limit int) int {
+	if limit <= 0 || limit > service.SmartExportQuotaCostSummaryThreshold {
+		return service.SmartExportQuotaCostSummaryThreshold
+	}
+	return limit
+}
+
 func CreateQuotaLedgerExportJob(c *gin.Context) {
 	if !requireAdminActionPermission(c, service.ResourceQuotaManagement, service.ActionLedgerRead) {
 		return
@@ -172,6 +260,26 @@ func CreateQuotaLedgerExportJob(c *gin.Context) {
 	}
 
 	job, err := service.CreateQuotaLedgerExportJob(c.GetInt("id"), c.GetInt("role"), req)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	common.ApiSuccess(c, service.BuildAsyncExportJobResponse(job))
+}
+
+func CreateQuotaCostSummaryExportJob(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceQuotaManagement, service.ActionLedgerRead) {
+		return
+	}
+
+	var req dto.AdminQuotaCostSummaryExportRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("invalid request body"))
+		return
+	}
+
+	job, err := service.CreateQuotaCostSummaryExportJob(c.GetInt("id"), c.GetInt("role"), req)
 	if err != nil {
 		common.ApiError(c, err)
 		return
