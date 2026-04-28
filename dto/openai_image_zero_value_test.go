@@ -36,3 +36,16 @@ func TestImageRequestPreservesExplicitFalseEnableSyncMode(t *testing.T) {
 		t.Fatalf("encoded enable_sync_mode = true, want false: %s", string(encoded))
 	}
 }
+
+func TestImageRequestTokenCountMetaUsesGPTImageOutputEstimate(t *testing.T) {
+	req := &ImageRequest{
+		Model:  "gpt-image-2",
+		Prompt: "cat",
+		Size:   "1024x1024",
+	}
+
+	meta := req.GetTokenCountMeta()
+	if meta.MaxTokens != 1756 {
+		t.Fatalf("MaxTokens = %d, want 1756", meta.MaxTokens)
+	}
+}

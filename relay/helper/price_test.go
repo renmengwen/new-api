@@ -891,7 +891,7 @@ func TestModelPriceHelperPreConsumesAdvancedImageOutputWithOutputPrice(t *testin
 	require.Equal(t, 2.5, priceData.ModelRatio)
 	require.Equal(t, 6.0, priceData.CompletionRatio)
 	require.Equal(t, []string{"image"}, priceData.AdvancedPricingContext.OutputModalities)
-	require.Equal(t, 25010, priceData.QuotaToPreConsume)
+	require.Equal(t, 27590, priceData.QuotaToPreConsume)
 }
 
 func TestModelPriceHelperHonorsExplicitPerTokenModeWhenPriceAndRatioBothExist(t *testing.T) {
