@@ -172,6 +172,70 @@ test('runSmartExport parses async export job payloads and delegates polling to a
   assert.deepEqual(progressStatuses, ['running']);
 });
 
+test('runSmartExport can return async export jobs without polling', async () => {
+  const { runSmartExport } = await import('./smartExport.js');
+
+  const asyncStarts = [];
+  const apiClient = {
+    async post() {
+      return {
+        data: new Blob(
+          [
+            JSON.stringify({
+              success: true,
+              data: {
+                mode: 'async',
+                decision: 'row_limit_exceeded',
+                job: {
+                  id: 88,
+                  status: 'queued',
+                  status_url: '/api/export-jobs/88',
+                  download_url: '/api/export-jobs/88/file',
+                  file_name: 'quota-cost-summary.xlsx',
+                },
+              },
+            }),
+          ],
+          { type: 'application/json' },
+        ),
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+        },
+      };
+    },
+  };
+
+  const result = await runSmartExport({
+    url: '/api/admin/quota/cost-summary/export-auto',
+    payload: { limit: 5000 },
+    fallbackFileName: 'quota-cost-summary.xlsx',
+    apiClient,
+    autoDownloadAsync: false,
+    pollJob: async () => {
+      throw new Error('polling should be disabled');
+    },
+    onAsyncStart: ({ decision, job }) => {
+      asyncStarts.push({ decision, job });
+    },
+  });
+
+  assert.equal(result.mode, 'async');
+  assert.equal(result.job.id, 88);
+  assert.equal(result.job.status, 'queued');
+  assert.deepEqual(asyncStarts, [
+    {
+      decision: 'row_limit_exceeded',
+      job: {
+        id: 88,
+        status: 'queued',
+        status_url: '/api/export-jobs/88',
+        download_url: '/api/export-jobs/88/file',
+        file_name: 'quota-cost-summary.xlsx',
+      },
+    },
+  ]);
+});
+
 test('runSmartExport surfaces initial /export-auto JSON errors before polling', async () => {
   const { runSmartExport } = await import('./smartExport.js');
 
@@ -236,6 +300,22 @@ test('runSmartExport rejects malformed initial /export-auto JSON payloads', asyn
       return true;
     },
   );
+});
+
+test('createExportCenterStartNotifier prompts users to check export center', async () => {
+  const { createExportCenterStartNotifier } = await import('./smartExport.js');
+
+  const messages = [];
+  const notify = createExportCenterStartNotifier({
+    t: (value) => value,
+    showInfo: (message) => {
+      messages.push(message);
+    },
+  });
+
+  notify();
+
+  assert.deepEqual(messages, ['导出任务已创建，请到导出中心查看进度']);
 });
 
 test('createSmartExportStatusNotifier emits queue running and ready messages once per status', async () => {

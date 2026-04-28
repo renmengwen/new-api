@@ -28,7 +28,8 @@ const hookSource = fs.readFileSync(
 test('useOperationsAnalyticsData wires smart export through the analytics export-auto endpoint', () => {
   assert.match(hookSource, /from '\.\.\/\.\.\/helpers\/smartExport'/);
   assert.match(hookSource, /\brunSmartExport\b/);
-  assert.match(hookSource, /createSmartExportStatusNotifier/);
+  assert.match(hookSource, /createExportCenterStartNotifier/);
+  assert.match(hookSource, /autoDownloadAsync:\s*false/);
   assert.match(hookSource, /url:\s*'\/api\/admin\/analytics\/export-auto'/);
 });
 

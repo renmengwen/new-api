@@ -372,6 +372,7 @@ func SetApiRouter(router *gin.Engine) {
 			adminAnalyticsRoute.POST("/export-auto", controller.ExportAdminAnalyticsAuto)
 		}
 
+		apiRouter.GET("/export-jobs", middleware.UserAuth(), controller.ListAsyncExportJobs)
 		apiRouter.GET("/export-jobs/:id", middleware.UserAuth(), controller.GetAsyncExportJob)
 		apiRouter.GET("/export-jobs/:id/file", middleware.UserAuth(), controller.DownloadAsyncExportJobFile)
 

@@ -30,7 +30,8 @@ const costSummarySource = fs.existsSync(costSummaryPath)
 test('AdminQuotaLedgerPageV2 wires smart export through the quota ledger export-auto endpoint', () => {
   assert.match(pageSource, /from '\.\.\/\.\.\/helpers\/smartExport'/);
   assert.match(pageSource, /runSmartExport/);
-  assert.match(pageSource, /createSmartExportStatusNotifier/);
+  assert.match(pageSource, /createExportCenterStartNotifier/);
+  assert.match(pageSource, /autoDownloadAsync:\s*false/);
   assert.match(pageSource, /url:\s*'\/api\/admin\/quota\/ledger\/export-auto'/);
 });
 
@@ -61,6 +62,8 @@ test('AdminQuotaLedgerPageV2 exposes ledger and cost summary tabs', () => {
 test('CostSummaryTab wires the quota cost summary list and export endpoints', () => {
   assert.match(costSummarySource, /\/api\/admin\/quota\/cost-summary\?\$\{params\.toString\(\)\}/);
   assert.match(costSummarySource, /url:\s*'\/api\/admin\/quota\/cost-summary\/export-auto'/);
+  assert.match(costSummarySource, /createExportCenterStartNotifier/);
+  assert.match(costSummarySource, /autoDownloadAsync:\s*false/);
   assert.match(costSummarySource, /fallbackFileName:\s*'quota-cost-summary\.xlsx'/);
 });
 

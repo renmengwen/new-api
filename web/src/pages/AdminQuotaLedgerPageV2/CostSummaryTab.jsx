@@ -28,10 +28,9 @@ import {
   renderNumber,
   showError,
   showInfo,
-  showSuccess,
 } from '../../helpers';
 import {
-  createSmartExportStatusNotifier,
+  createExportCenterStartNotifier,
   runSmartExport,
 } from '../../helpers/smartExport';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
@@ -217,10 +216,10 @@ const CostSummaryTab = ({ canRead, permissionLoading = false }) => {
           limit: total,
         },
         fallbackFileName: 'quota-cost-summary.xlsx',
-        onAsyncProgress: createSmartExportStatusNotifier({
+        autoDownloadAsync: false,
+        onAsyncStart: createExportCenterStartNotifier({
           t,
           showInfo,
-          showSuccess,
         }),
       });
     } catch (error) {

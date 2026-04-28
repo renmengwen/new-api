@@ -22,10 +22,9 @@ import {
   API,
   showError,
   showInfo,
-  showSuccess,
 } from '../../helpers';
 import {
-  createSmartExportStatusNotifier,
+  createExportCenterStartNotifier,
   runSmartExport,
 } from '../../helpers/smartExport';
 
@@ -403,10 +402,10 @@ export const useOperationsAnalyticsData = ({
           }),
         }),
         fallbackFileName: `operations-analytics-${activeTab}.xlsx`,
-        onAsyncProgress: createSmartExportStatusNotifier({
+        autoDownloadAsync: false,
+        onAsyncStart: createExportCenterStartNotifier({
           t,
           showInfo,
-          showSuccess,
         }),
       });
     } catch (error) {

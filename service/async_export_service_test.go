@@ -132,6 +132,54 @@ func TestAsyncExportAuthorizeJobBlocksOtherUsers(t *testing.T) {
 	require.Equal(t, job.Id, authorized.Id)
 }
 
+func TestAsyncExportListJobsScopesByRequester(t *testing.T) {
+	setupAsyncExportServiceTestDB(t)
+
+	ownOld, err := CreateAsyncExportJob("usage_logs", 42, common.RoleAdminUser, map[string]any{"limit": 0})
+	require.NoError(t, err)
+	ownNew, err := CreateAsyncExportJob("quota_ledger", 42, common.RoleAdminUser, map[string]any{"limit": 0})
+	require.NoError(t, err)
+	other, err := CreateAsyncExportJob("admin_audit_logs", 99, common.RoleAdminUser, map[string]any{"limit": 0})
+	require.NoError(t, err)
+
+	items, total, err := ListAuthorizedAsyncExportJobs(&common.PageInfo{Page: 1, PageSize: 10}, 42, common.RoleCommonUser, "")
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total)
+	require.Len(t, items, 2)
+	require.Equal(t, ownNew.Id, items[0].Id)
+	require.Equal(t, ownOld.Id, items[1].Id)
+
+	rootItems, rootTotal, err := ListAuthorizedAsyncExportJobs(&common.PageInfo{Page: 1, PageSize: 10}, 1, common.RoleRootUser, "")
+	require.NoError(t, err)
+	require.EqualValues(t, 3, rootTotal)
+	require.Len(t, rootItems, 3)
+	require.Equal(t, other.Id, rootItems[0].Id)
+}
+
+func TestAsyncExportListJobsFiltersStatus(t *testing.T) {
+	setupAsyncExportServiceTestDB(t)
+
+	queued, err := CreateAsyncExportJob("usage_logs", 42, common.RoleAdminUser, map[string]any{"limit": 0})
+	require.NoError(t, err)
+	succeeded, err := CreateAsyncExportJob("quota_ledger", 42, common.RoleAdminUser, map[string]any{"limit": 0})
+	require.NoError(t, err)
+	require.NoError(t, model.DB.Model(&model.AsyncExportJob{}).Where("id = ?", succeeded.Id).Updates(map[string]any{
+		"status": model.AsyncExportStatusSucceeded,
+	}).Error)
+
+	items, total, err := ListAuthorizedAsyncExportJobs(&common.PageInfo{Page: 1, PageSize: 10}, 42, common.RoleCommonUser, model.AsyncExportStatusSucceeded)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, items, 1)
+	require.Equal(t, succeeded.Id, items[0].Id)
+
+	items, total, err = ListAuthorizedAsyncExportJobs(&common.PageInfo{Page: 1, PageSize: 10}, 42, common.RoleCommonUser, "unexpected")
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total)
+	require.Len(t, items, 2)
+	require.Equal(t, queued.Id, items[1].Id)
+}
+
 func TestAsyncExportFinalizeJobWritesArtifactMetadata(t *testing.T) {
 	db := setupAsyncExportServiceTestDB(t)
 

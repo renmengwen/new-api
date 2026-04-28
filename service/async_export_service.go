@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,6 +84,66 @@ func GetAuthorizedAsyncExportJob(jobID int64, requesterUserID int, requesterRole
 		return &job, nil
 	}
 	return nil, errors.New("forbidden")
+}
+
+func ListAuthorizedAsyncExportJobs(pageInfo *common.PageInfo, requesterUserID int, requesterRole int, status string) ([]dto.AsyncExportJobResponse, int64, error) {
+	pageInfo = normalizeAsyncExportJobPageInfo(pageInfo)
+	query := model.DB.Model(&model.AsyncExportJob{})
+	if requesterRole != common.RoleRootUser {
+		query = query.Where("requester_user_id = ?", requesterUserID)
+	}
+	if normalizedStatus, ok := normalizeAsyncExportJobStatus(status); ok {
+		query = query.Where("status = ?", normalizedStatus)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var jobs []model.AsyncExportJob
+	if err := query.Order("id desc").Offset(pageInfo.GetStartIdx()).Limit(pageInfo.GetPageSize()).Find(&jobs).Error; err != nil {
+		return nil, 0, err
+	}
+
+	items := make([]dto.AsyncExportJobResponse, 0, len(jobs))
+	for i := range jobs {
+		items = append(items, BuildAsyncExportJobResponse(&jobs[i]))
+	}
+	return items, total, nil
+}
+
+func normalizeAsyncExportJobPageInfo(pageInfo *common.PageInfo) *common.PageInfo {
+	if pageInfo == nil {
+		return &common.PageInfo{Page: 1, PageSize: common.ItemsPerPage}
+	}
+	if pageInfo.Page < 1 {
+		pageInfo.Page = 1
+	}
+	if pageInfo.PageSize <= 0 {
+		pageInfo.PageSize = common.ItemsPerPage
+	}
+	if pageInfo.PageSize > 100 {
+		pageInfo.PageSize = 100
+	}
+	return pageInfo
+}
+
+func normalizeAsyncExportJobStatus(status string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case model.AsyncExportStatusQueued:
+		return model.AsyncExportStatusQueued, true
+	case model.AsyncExportStatusRunning:
+		return model.AsyncExportStatusRunning, true
+	case model.AsyncExportStatusSucceeded:
+		return model.AsyncExportStatusSucceeded, true
+	case model.AsyncExportStatusFailed:
+		return model.AsyncExportStatusFailed, true
+	case model.AsyncExportStatusExpired:
+		return model.AsyncExportStatusExpired, true
+	default:
+		return "", false
+	}
 }
 
 func BuildAsyncExportJobResponse(job *model.AsyncExportJob) dto.AsyncExportJobResponse {
@@ -198,14 +259,14 @@ func FinalizeAsyncExportJob(jobID int64, fileName string, filePath string, rowCo
 	}
 	now := common.GetTimestamp()
 	return model.DB.Model(&model.AsyncExportJob{}).Where("id = ?", jobID).Updates(map[string]any{
-		"status":       model.AsyncExportStatusSucceeded,
-		"file_name":    fileName,
-		"file_path":    filePath,
-		"file_size":    fileInfo.Size(),
-		"row_count":    rowCount,
+		"status":        model.AsyncExportStatusSucceeded,
+		"file_name":     fileName,
+		"file_path":     filePath,
+		"file_size":     fileInfo.Size(),
+		"row_count":     rowCount,
 		"error_message": "",
-		"completed_at": now,
-		"expires_at":   now + asyncExportArtifactTTLSeconds,
+		"completed_at":  now,
+		"expires_at":    now + asyncExportArtifactTTLSeconds,
 	}).Error
 }
 

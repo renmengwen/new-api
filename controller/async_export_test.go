@@ -18,9 +18,15 @@ import (
 )
 
 type asyncExportAPIResponse struct {
-	Success bool                     `json:"success"`
-	Message string                   `json:"message"`
-	Data    map[string]any           `json:"data"`
+	Success bool           `json:"success"`
+	Message string         `json:"message"`
+	Data    map[string]any `json:"data"`
+}
+
+type asyncExportPageResponse struct {
+	Success bool            `json:"success"`
+	Message string          `json:"message"`
+	Data    common.PageInfo `json:"data"`
 }
 
 func setupAsyncExportControllerTestDB(t *testing.T) *gorm.DB {
@@ -85,6 +91,43 @@ func TestAsyncExportGetJobStatusReturnsJobMetadata(t *testing.T) {
 	require.EqualValues(t, job.Id, response.Data["id"])
 	require.Equal(t, job.JobType, response.Data["job_type"])
 	require.Equal(t, job.Status, response.Data["status"])
+}
+
+func TestAsyncExportListJobsReturnsAuthorizedPage(t *testing.T) {
+	db := setupAsyncExportControllerTestDB(t)
+
+	ownJob := model.AsyncExportJob{
+		JobType:         "quota_ledger",
+		Status:          model.AsyncExportStatusQueued,
+		RequesterUserId: 7,
+		RequesterRole:   common.RoleAdminUser,
+		CreatedAtTs:     common.GetTimestamp(),
+	}
+	otherJob := model.AsyncExportJob{
+		JobType:         "usage_logs",
+		Status:          model.AsyncExportStatusSucceeded,
+		RequesterUserId: 9,
+		RequesterRole:   common.RoleAdminUser,
+		CreatedAtTs:     common.GetTimestamp(),
+	}
+	require.NoError(t, db.Create(&ownJob).Error)
+	require.NoError(t, db.Create(&otherJob).Error)
+
+	ctx, recorder := newAsyncExportTestContext(http.MethodGet, "/api/export-jobs?p=1&page_size=10", 7, common.RoleCommonUser, 0)
+	ListAsyncExportJobs(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response asyncExportPageResponse
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, 1, response.Data.Total)
+	items, ok := response.Data.Items.([]any)
+	require.True(t, ok)
+	require.Len(t, items, 1)
+	item, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	require.EqualValues(t, ownJob.Id, item["id"])
+	require.Equal(t, ownJob.JobType, item["job_type"])
 }
 
 func TestAsyncExportDownloadRejectsNonSucceededJob(t *testing.T) {

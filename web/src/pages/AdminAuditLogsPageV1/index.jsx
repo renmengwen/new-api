@@ -8,11 +8,10 @@ import {
   MAX_EXCEL_EXPORT_ROWS,
   showError,
   showInfo,
-  showSuccess,
   timestamp2string,
 } from '../../helpers';
 import {
-  createSmartExportStatusNotifier,
+  createExportCenterStartNotifier,
   runSmartExport,
 } from '../../helpers/smartExport';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
@@ -156,10 +155,10 @@ const AdminAuditLogsPageV1 = () => {
           limit: total,
         },
         fallbackFileName: 'audit-logs.xlsx',
-        onAsyncProgress: createSmartExportStatusNotifier({
+        autoDownloadAsync: false,
+        onAsyncStart: createExportCenterStartNotifier({
           t,
           showInfo,
-          showSuccess,
         }),
       });
     } catch (error) {

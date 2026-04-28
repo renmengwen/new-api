@@ -28,11 +28,10 @@ import {
   renderQuota,
   showError,
   showInfo,
-  showSuccess,
   timestamp2string,
 } from '../../helpers';
 import {
-  createSmartExportStatusNotifier,
+  createExportCenterStartNotifier,
   runSmartExport,
 } from '../../helpers/smartExport';
 import {
@@ -166,10 +165,10 @@ const AdminQuotaLedgerPageV2 = () => {
           limit: total,
         },
         fallbackFileName: 'quota-ledger.xlsx',
-        onAsyncProgress: createSmartExportStatusNotifier({
+        autoDownloadAsync: false,
+        onAsyncStart: createExportCenterStartNotifier({
           t,
           showInfo,
-          showSuccess,
         }),
       });
     } catch (error) {

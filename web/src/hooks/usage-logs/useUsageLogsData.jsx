@@ -42,7 +42,7 @@ import {
   renderModelPrice,
 } from '../../helpers';
 import {
-  createSmartExportStatusNotifier,
+  createExportCenterStartNotifier,
   runSmartExport,
 } from '../../helpers/smartExport';
 import { ITEMS_PER_PAGE } from '../../constants';
@@ -1429,10 +1429,10 @@ export const useLogsData = () => {
           limit: logCount,
         },
         fallbackFileName: 'usage-logs.xlsx',
-        onAsyncProgress: createSmartExportStatusNotifier({
+        autoDownloadAsync: false,
+        onAsyncStart: createExportCenterStartNotifier({
           t,
           showInfo,
-          showSuccess,
         }),
       });
     } catch (error) {

@@ -85,7 +85,7 @@ const defaultWait = (ms) =>
     setTimeout(resolve, ms);
   });
 
-const downloadAsyncExportFile = async ({
+export const downloadAsyncExportFile = async ({
   job,
   apiClient,
   fallbackFileName,

@@ -128,6 +128,13 @@ export const createSmartExportStatusNotifier = ({
   };
 };
 
+export const createExportCenterStartNotifier = ({
+  t = (value) => value,
+  showInfo,
+} = {}) => () => {
+  showInfo?.(t('导出任务已创建，请到导出中心查看进度'));
+};
+
 export const runSmartExport = async ({
   url,
   payload,
@@ -143,6 +150,7 @@ export const runSmartExport = async ({
   maxAttempts,
   wait,
   timeoutMessage,
+  autoDownloadAsync = true,
 }) => {
   const client = apiClient ?? (await import('./api.js')).API;
   const response = await client.post(url, payload, {
@@ -176,6 +184,15 @@ export const runSmartExport = async ({
     decision: asyncPayload?.decision,
     job,
   });
+
+  if (!autoDownloadAsync) {
+    return {
+      mode: 'async',
+      response,
+      decision: asyncPayload?.decision,
+      job,
+    };
+  }
 
   const asyncResult = await pollJob({
     job,

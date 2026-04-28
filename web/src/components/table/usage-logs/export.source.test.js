@@ -10,7 +10,8 @@ const hookSource = fs.readFileSync(
 test('useUsageLogsData wires smart export through the usage log export-auto endpoints', () => {
   assert.match(hookSource, /from '\.\.\/\.\.\/helpers\/smartExport'/);
   assert.match(hookSource, /runSmartExport/);
-  assert.match(hookSource, /createSmartExportStatusNotifier/);
+  assert.match(hookSource, /createExportCenterStartNotifier/);
+  assert.match(hookSource, /autoDownloadAsync:\s*false/);
   assert.match(hookSource, /\/api\/log\/export-auto/);
   assert.match(hookSource, /\/api\/log\/self\/export-auto/);
 });

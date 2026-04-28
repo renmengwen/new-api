@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Avatar, Button, Dropdown, Typography } from '@douyinfe/semi-ui';
 import { ChevronDown } from 'lucide-react';
@@ -26,9 +26,11 @@ import {
   IconUserSetting,
   IconCreditCard,
   IconKey,
+  IconDownload,
 } from '@douyinfe/semi-icons';
 import { stringToColor } from '../../../helpers';
 import SkeletonWrapper from '../components/SkeletonWrapper';
+import ExportCenterModal from './ExportCenterModal';
 
 const UserArea = ({
   userState,
@@ -40,6 +42,7 @@ const UserArea = ({
   t,
 }) => {
   const dropdownRef = useRef(null);
+  const [exportCenterVisible, setExportCenterVisible] = useState(false);
   if (isLoading) {
     return (
       <SkeletonWrapper
@@ -102,6 +105,20 @@ const UserArea = ({
                 </div>
               </Dropdown.Item>
               <Dropdown.Item
+                onClick={() => {
+                  setExportCenterVisible(true);
+                }}
+                className='!px-3 !py-1.5 !text-sm !text-semi-color-text-0 hover:!bg-semi-color-fill-1 dark:!text-gray-200 dark:hover:!bg-blue-500 dark:hover:!text-white'
+              >
+                <div className='flex items-center gap-2'>
+                  <IconDownload
+                    size='small'
+                    className='text-gray-500 dark:text-gray-400'
+                  />
+                  <span>{t('导出中心')}</span>
+                </div>
+              </Dropdown.Item>
+              <Dropdown.Item
                 onClick={logout}
                 className='!px-3 !py-1.5 !text-sm !text-semi-color-text-0 hover:!bg-semi-color-fill-1 dark:!text-gray-200 dark:hover:!bg-red-500 dark:hover:!text-white'
               >
@@ -139,6 +156,11 @@ const UserArea = ({
             />
           </Button>
         </Dropdown>
+        <ExportCenterModal
+          visible={exportCenterVisible}
+          onClose={() => setExportCenterVisible(false)}
+          isMobile={isMobile}
+        />
       </div>
     );
   } else {

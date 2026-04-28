@@ -7,7 +7,8 @@ const pageSource = fs.readFileSync(new URL('./index.jsx', import.meta.url), 'utf
 test('AdminAuditLogsPageV1 wires smart export through the audit export-auto endpoint', () => {
   assert.match(pageSource, /from '\.\.\/\.\.\/helpers\/smartExport'/);
   assert.match(pageSource, /runSmartExport/);
-  assert.match(pageSource, /createSmartExportStatusNotifier/);
+  assert.match(pageSource, /createExportCenterStartNotifier/);
+  assert.match(pageSource, /autoDownloadAsync:\s*false/);
   assert.match(pageSource, /url:\s*'\/api\/admin\/audit-logs\/export-auto'/);
 });
 

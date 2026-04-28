@@ -9,6 +9,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func ListAsyncExportJobs(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	items, total, err := service.ListAuthorizedAsyncExportJobs(pageInfo, c.GetInt("id"), c.GetInt("role"), c.Query("status"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
 func GetAsyncExportJob(c *gin.Context) {
 	jobID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
