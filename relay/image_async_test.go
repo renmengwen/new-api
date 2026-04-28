@@ -41,6 +41,23 @@ func TestExtractGPTProtoAsyncTaskIDFromDataID(t *testing.T) {
 	}
 }
 
+func TestExtractGPTProtoAsyncTaskIDFromDataArray(t *testing.T) {
+	taskID, err := extractGPTProtoAsyncTaskID([]byte(`{
+		"data":[
+			{
+				"id":"pred_array_123",
+				"urls":{"get":"https://gptproto.com/api/v3/predictions/pred_array_123/result"}
+			}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("extract task id: %v", err)
+	}
+	if taskID != "pred_array_123" {
+		t.Fatalf("taskID = %q, want pred_array_123", taskID)
+	}
+}
+
 func TestExtractGPTProtoAsyncTaskIDFromResultURL(t *testing.T) {
 	taskID, err := extractGPTProtoAsyncTaskID([]byte(`{
 		"data":{
@@ -52,6 +69,20 @@ func TestExtractGPTProtoAsyncTaskIDFromResultURL(t *testing.T) {
 	}
 	if taskID != "pred_456" {
 		t.Fatalf("taskID = %q, want pred_456", taskID)
+	}
+}
+
+func TestExtractGPTProtoAsyncTaskIDFromURLsArray(t *testing.T) {
+	taskID, err := extractGPTProtoAsyncTaskID([]byte(`{
+		"data":{
+			"urls":[{"get":"https://gptproto.com/api/v3/predictions/pred_urls_123/result"}]
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("extract task id: %v", err)
+	}
+	if taskID != "pred_urls_123" {
+		t.Fatalf("taskID = %q, want pred_urls_123", taskID)
 	}
 }
 
