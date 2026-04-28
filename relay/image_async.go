@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,24 +28,64 @@ func isGPTProtoAsyncImageRequest(request *dto.ImageRequest) bool {
 }
 
 func extractGPTProtoAsyncTaskID(responseBody []byte) (string, error) {
+	type asyncImageTaskData struct {
+		ID   string          `json:"id"`
+		URLs json.RawMessage `json:"urls"`
+	}
 	var payload struct {
-		ID   string `json:"id"`
-		Data struct {
-			ID   string `json:"id"`
-			URLs struct {
-				Get string `json:"get"`
-			} `json:"urls"`
-		} `json:"data"`
+		ID   string          `json:"id"`
+		Data json.RawMessage `json:"data"`
 	}
 	if err := common.Unmarshal(responseBody, &payload); err != nil {
 		return "", err
 	}
-	for _, candidate := range []string{payload.Data.ID, payload.ID, extractPredictionIDFromURL(payload.Data.URLs.Get)} {
+
+	var candidates []string
+	if len(payload.Data) > 0 {
+		var data asyncImageTaskData
+		if err := common.Unmarshal(payload.Data, &data); err == nil {
+			candidates = append(candidates, data.ID)
+			candidates = append(candidates, extractPredictionIDsFromURLs(data.URLs)...)
+		} else {
+			var dataList []asyncImageTaskData
+			if listErr := common.Unmarshal(payload.Data, &dataList); listErr != nil {
+				return "", err
+			}
+			for _, item := range dataList {
+				candidates = append(candidates, item.ID)
+				candidates = append(candidates, extractPredictionIDsFromURLs(item.URLs)...)
+			}
+		}
+	}
+	candidates = append(candidates, payload.ID)
+	for _, candidate := range candidates {
 		if strings.TrimSpace(candidate) != "" {
 			return candidate, nil
 		}
 	}
 	return "", fmt.Errorf("gptproto async image response missing task id")
+}
+
+func extractPredictionIDsFromURLs(rawURLs json.RawMessage) []string {
+	if len(rawURLs) == 0 {
+		return nil
+	}
+	var candidates []string
+	var urlsObject struct {
+		Get string `json:"get"`
+	}
+	if err := common.Unmarshal(rawURLs, &urlsObject); err == nil {
+		candidates = append(candidates, extractPredictionIDFromURL(urlsObject.Get))
+	}
+	var urlsList []struct {
+		Get string `json:"get"`
+	}
+	if err := common.Unmarshal(rawURLs, &urlsList); err == nil {
+		for _, item := range urlsList {
+			candidates = append(candidates, extractPredictionIDFromURL(item.Get))
+		}
+	}
+	return candidates
 }
 
 func extractPredictionIDFromURL(rawURL string) string {

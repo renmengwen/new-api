@@ -37,11 +37,8 @@ test('admin agents page keeps create-only credential fields available when not e
   assert.ok(!pageSource.includes('{false ? ('));
 });
 
-test('admin agents page hides allowed token group controls without removing submit logic', () => {
-  assert.ok(pageSource.includes("const hideAllowedTokenGroupFields = true;"));
-  assert.ok(
-    pageSource.includes(
-      "style={hideAllowedTokenGroupFields ? { ...fieldStyle, display: 'none' } : fieldStyle}",
-    ),
-  );
+test('admin agents page shows allowed token group controls without removing submit logic', () => {
+  assert.ok(!pageSource.includes('hideAllowedTokenGroupFields'));
+  assert.ok(pageSource.includes("<Text type='tertiary'>{t('限制令牌分组')}</Text>"));
+  assert.ok(pageSource.includes("<Text type='tertiary'>{t('可创建令牌分组')}</Text>"));
 });
