@@ -18,3 +18,8 @@ test('model monitor page exposes notification recipient management', () => {
   assert.match(source, /<Checkbox/);
   assert.doesNotMatch(source, /onClick=\{saveSettings\}/);
 });
+
+test('model monitor settings save applies the mutation response before refetching', () => {
+  assert.match(source, /const \{ success, message, data \} = res\.data;/);
+  assert.match(source, /if \(data\) \{\s+applyMonitorData\(data\);\s+\} else \{\s+await fetchMonitorData\(\);\s+\}/);
+});

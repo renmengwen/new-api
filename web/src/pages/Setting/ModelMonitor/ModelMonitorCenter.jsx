@@ -351,13 +351,17 @@ export default function ModelMonitorCenter() {
     try {
       const payload = buildSettingsPayload(sourceSettings);
       const res = await API.put('/api/model_monitor/settings', payload);
-      const { success, message } = res.data;
+      const { success, message, data } = res.data;
       if (!success) {
         showError(message || t('保存失败，请重试'));
         return false;
       }
       showSuccess(t('保存成功'));
-      await fetchMonitorData();
+      if (data) {
+        applyMonitorData(data);
+      } else {
+        await fetchMonitorData();
+      }
       return true;
     } catch (error) {
       showError(t('保存失败，请重试'));
