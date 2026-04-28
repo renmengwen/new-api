@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
@@ -41,6 +42,25 @@ func TestPrepareGPTProtoAsyncImageSubmitRouteUsesNativeTextToImagePath(t *testin
 
 	if info.ChannelBaseUrl != "https://example.com" {
 		t.Fatalf("base URL = %q, want https://example.com", info.ChannelBaseUrl)
+	}
+	if info.RequestURLPath != "/api/v3/openai/gpt-image-2/text-to-image" {
+		t.Fatalf("request path = %q, want native text-to-image path", info.RequestURLPath)
+	}
+}
+
+func TestPrepareGPTProtoAsyncImageSubmitRouteKeepsFullURLForCustomChannel(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:       constant.ChannelTypeCustom,
+			ChannelBaseUrl:    "https://example.com/api/v3/openai/gpt-image-2/text-to-image",
+			UpstreamModelName: "gpt-image-2",
+		},
+	}
+
+	prepareGPTProtoAsyncImageSubmitRoute(info, &dto.ImageRequest{Model: "gpt-image-2"})
+
+	if info.ChannelBaseUrl != "https://example.com/api/v3/openai/gpt-image-2/text-to-image" {
+		t.Fatalf("custom channel URL = %q, want full native submit URL", info.ChannelBaseUrl)
 	}
 	if info.RequestURLPath != "/api/v3/openai/gpt-image-2/text-to-image" {
 		t.Fatalf("request path = %q, want native text-to-image path", info.RequestURLPath)

@@ -45,8 +45,14 @@ func prepareGPTProtoAsyncImageSubmitRoute(info *relaycommon.RelayInfo, request *
 	if modelName == "" {
 		return
 	}
-	info.ChannelBaseUrl = normalizeGPTProtoImageSubmitBaseURL(info.ChannelBaseUrl)
-	info.RequestURLPath = "/api/v3/openai/" + modelName + "/text-to-image"
+	requestPath := "/api/v3/openai/" + modelName + "/text-to-image"
+	baseURL := normalizeGPTProtoImageSubmitBaseURL(info.ChannelBaseUrl)
+	if info.ChannelType == constant.ChannelTypeCustom {
+		info.ChannelBaseUrl = baseURL + requestPath
+	} else {
+		info.ChannelBaseUrl = baseURL
+	}
+	info.RequestURLPath = requestPath
 }
 
 func normalizeGPTProtoImageSubmitBaseURL(baseURL string) string {
