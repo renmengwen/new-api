@@ -174,6 +174,8 @@ test('advanced billing helpers read structured advanced pricing context and swit
 test('advanced text task logs can display an already settled quota amount', () => {
   assert.match(hookSource, /advanced_charged_quota/);
   assert.match(hookSource, /quota_per_unit/);
+  assert.match(hookSource, /getAdvancedMatchSummaryNumber/);
+  assert.match(hookSource, /getAdvancedUsageTokenCount/);
   assert.match(
     hookSource,
     /const settledQuota = toAdvancedNumber\(other\?\.advanced_charged_quota\);/,
@@ -186,6 +188,10 @@ test('advanced text task logs can display an already settled quota amount', () =
     hookSource,
     /if \(settledQuota !== null && settledQuotaPerUnit !== null && settledQuotaPerUnit > 0\) \{/,
   );
+  assert.match(hookSource, /const outputRatio = outputPrice > 0 \? outputPrice \/ 2 : inputRatio \*/);
+  assert.match(hookSource, /const inputBillableTokens = inputRatio > 0 && outputRatio > 0/);
+  assert.match(hookSource, /\$\{t\('输入'\)\} \$\{renderNumber\(inputBillableTokens\)\} tokens \/ 1M tokens \* \$\{renderAdvancedPrice\(inputPrice\)\}/);
+  assert.match(hookSource, /\$\{t\('输出'\)\} \$\{renderNumber\(outputTokens\)\} tokens \/ 1M tokens \* \$\{renderAdvancedPrice\(outputPrice\)\}/);
 });
 
 test('advanced non-token billing strings stay readable in UTF-8 source', () => {

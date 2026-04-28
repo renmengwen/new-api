@@ -453,6 +453,11 @@ func collectAdvancedTextInputModalities(ctx AdvancedPricingRuntimeContext) []str
 
 func extractAdvancedPricingRequestInputModalities(request dto.Request) []string {
 	switch req := request.(type) {
+	case *dto.ImageRequest:
+		if strings.TrimSpace(req.Prompt) != "" {
+			return []string{"text"}
+		}
+		return nil
 	case *dto.GeneralOpenAIRequest:
 		return extractGeneralOpenAIRequestInputModalities(req)
 	case *dto.OpenAIResponsesRequest:
@@ -525,6 +530,10 @@ func collectAdvancedTextOutputModalities(ctx AdvancedPricingRuntimeContext) []st
 	modalities := make([]string, 0, 2+len(ctx.OutputModalities))
 	modalities = append(modalities, ctx.OutputModalities...)
 	switch req := ctx.Request.(type) {
+	case *dto.ImageRequest:
+		if isAdvancedPricingImageGenerationPath(ctx.RequestURLPath) {
+			modalities = append(modalities, "image")
+		}
 	case *dto.GeneralOpenAIRequest:
 		modalities = append(modalities, extractAdvancedPricingRawStringSlice(req.Modalities)...)
 		modalities = append(modalities, extractAdvancedPricingGoogleResponseModalities(req.ExtraBody)...)
@@ -546,6 +555,10 @@ func collectAdvancedTextOutputModalities(ctx AdvancedPricingRuntimeContext) []st
 
 func extractAdvancedTextImageSizeTier(ctx AdvancedPricingRuntimeContext) string {
 	switch req := ctx.Request.(type) {
+	case *dto.ImageRequest:
+		if imageSizeTier := deriveAdvancedPricingImageSizeTierFromSize(req.Size); imageSizeTier != "" {
+			return imageSizeTier
+		}
 	case *dto.GeneralOpenAIRequest:
 		if imageSizeTier := extractAdvancedPricingGoogleImageSizeTier(req.ExtraBody); imageSizeTier != "" {
 			return imageSizeTier
@@ -566,6 +579,13 @@ func extractAdvancedTextImageCount(ctx AdvancedPricingRuntimeContext) *int {
 		return nil
 	}
 	switch req := ctx.Request.(type) {
+	case *dto.ImageRequest:
+		if req.N != nil && *req.N > 0 {
+			count := int(*req.N)
+			return &count
+		}
+		defaultCount := 1
+		return &defaultCount
 	case *dto.GeneralOpenAIRequest:
 		if req.N != nil && *req.N > 0 {
 			return cloneAdvancedIntPtr(req.N)

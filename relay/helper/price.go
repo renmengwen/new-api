@@ -58,6 +58,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		if ok {
 			priceData := finalizeAdvancedPriceData(info.OriginModelName, promptTokens, meta, groupRatioInfo, advancedPriceData)
 			priceData = attachAdvancedTextRuntimeContext(info, priceData)
+			priceData = adjustAdvancedTextImageOutputPreConsume(info, promptTokens, meta, priceData)
 			return finalizeModelPriceData(info, priceData), nil
 		}
 		return types.PriceData{}, advancedPricingNoMatchError(info.OriginModelName)
@@ -134,6 +135,61 @@ func finalizeAdvancedPriceData(modelName string, promptTokens int, meta *types.T
 	}
 	applyFreeModelPreConsume(&priceData)
 	return priceData
+}
+
+func adjustAdvancedTextImageOutputPreConsume(info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, priceData types.PriceData) types.PriceData {
+	if !shouldSplitAdvancedTextImageOutputPreConsume(info, priceData) {
+		return priceData
+	}
+	if priceData.FreeModel || priceData.ModelRatio <= 0 || priceData.CompletionRatio <= 0 || priceData.GroupRatioInfo.GroupRatio <= 0 {
+		return priceData
+	}
+
+	outputTokens := 0
+	if meta != nil && meta.MaxTokens > 0 {
+		outputTokens = meta.MaxTokens
+	}
+	if outputTokens <= 0 {
+		return priceData
+	}
+
+	inputTokens := common.Max(promptTokens, common.PreConsumedQuota)
+	inputQuota := float64(inputTokens) * priceData.ModelRatio
+	outputQuota := float64(outputTokens) * priceData.ModelRatio * priceData.CompletionRatio
+	priceData.QuotaToPreConsume = int((inputQuota + outputQuota) * priceData.GroupRatioInfo.GroupRatio)
+	return priceData
+}
+
+func shouldSplitAdvancedTextImageOutputPreConsume(info *relaycommon.RelayInfo, priceData types.PriceData) bool {
+	if info == nil || priceData.UsePrice || priceData.BillingMode != types.BillingModeAdvanced || priceData.AdvancedRuleType != types.AdvancedRuleTypeTextSegment {
+		return false
+	}
+
+	billingUnit := ""
+	if priceData.AdvancedPricingContext != nil {
+		billingUnit = strings.TrimSpace(priceData.AdvancedPricingContext.BillingUnit)
+	}
+	if billingUnit == "" && priceData.AdvancedRuleSnapshot != nil {
+		billingUnit = strings.TrimSpace(priceData.AdvancedRuleSnapshot.BillingUnit)
+	}
+	if billingUnit != "" && billingUnit != types.AdvancedBillingUnitPerMillionTokens {
+		return false
+	}
+
+	if isAdvancedTextImageGenerationPath(info.RequestURLPath) {
+		return true
+	}
+	if priceData.AdvancedRuleSnapshot != nil && strings.EqualFold(priceData.AdvancedRuleSnapshot.OutputModality, "image") {
+		return true
+	}
+	if priceData.AdvancedPricingContext != nil {
+		for _, modality := range priceData.AdvancedPricingContext.OutputModalities {
+			if strings.EqualFold(modality, "image") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func buildPerTokenPriceData(info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo types.GroupRatioInfo, strict bool) (types.PriceData, error) {

@@ -363,6 +363,24 @@ func TestCollectAdvancedTextInputModalitiesIncludesResponsesVideoInputs(t *testi
 	require.Equal(t, []string{"video"}, collectAdvancedTextInputModalities(ctx))
 }
 
+func TestCollectAdvancedTextModalitiesTreatsImageGenerationAsImageOutput(t *testing.T) {
+	n := uint(2)
+	ctx := AdvancedPricingRuntimeContext{
+		RequestURLPath: "/v1/images/generations",
+		Request: &dto.ImageRequest{
+			Prompt: "Girl holding cat",
+			Size:   "2048x2048",
+			N:      &n,
+		},
+	}
+
+	require.Equal(t, []string{"text"}, collectAdvancedTextInputModalities(ctx))
+	require.Equal(t, []string{"image"}, collectAdvancedTextOutputModalities(ctx))
+	require.Equal(t, "2k", extractAdvancedTextImageSizeTier(ctx))
+	require.NotNil(t, extractAdvancedTextImageCount(ctx))
+	require.Equal(t, 2, *extractAdvancedTextImageCount(ctx))
+}
+
 func TestParseAdvancedPricingConfigRejectsDuplicatePriority(t *testing.T) {
 	_, err := ParseAdvancedPricingConfig(`{
       "rules": {

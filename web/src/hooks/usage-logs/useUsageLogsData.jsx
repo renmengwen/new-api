@@ -237,6 +237,24 @@ const getAdvancedPriceSnapshot = (snapshot) => snapshot?.price_snapshot || {};
 
 const getAdvancedThresholdSnapshot = (snapshot) => snapshot?.threshold_snapshot || {};
 
+const getAdvancedMatchSummaryNumber = (snapshot, key) => {
+  const matchSummary = snapshot?.match_summary;
+  if (typeof matchSummary !== 'string' || !key) {
+    return null;
+  }
+  const escapedKey = String(key).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const matched = matchSummary.match(new RegExp(`(?:^|,\\s*)${escapedKey}=([0-9]+(?:\\.[0-9]+)?)`));
+  return matched ? toAdvancedNumber(matched[1]) : null;
+};
+
+const getAdvancedUsageTokenCount = (logValue, snapshot, key) => {
+  const logTokens = toAdvancedNumber(logValue);
+  if (logTokens !== null && logTokens > 0) {
+    return logTokens;
+  }
+  return getAdvancedMatchSummaryNumber(snapshot, key) ?? logTokens ?? 0;
+};
+
 const getAdvancedLegacyMediaUnitPrice = (snapshot) => {
   const matchSummary = snapshot?.match_summary;
   if (typeof matchSummary !== 'string' || matchSummary.length === 0) {
@@ -456,8 +474,8 @@ const buildAdvancedNonTokenFormula = (
 const buildAdvancedTextSegmentFormula = (t, log, other, snapshot) => {
   const priceSnapshot = getAdvancedPriceSnapshot(snapshot);
   const groupRatio = getAdvancedGroupRatio(other);
-  const inputTokens = toAdvancedNumber(log?.prompt_tokens) ?? 0;
-  const outputTokens = toAdvancedNumber(log?.completion_tokens) ?? 0;
+  const inputTokens = getAdvancedUsageTokenCount(log?.prompt_tokens, snapshot, 'input_tokens');
+  const outputTokens = getAdvancedUsageTokenCount(log?.completion_tokens, snapshot, 'output_tokens');
   const inputPrice =
     toAdvancedNumber(priceSnapshot.input_price) ??
     getAdvancedLegacyInputPrice(other) ??
@@ -489,8 +507,26 @@ const buildAdvancedTextSegmentFormula = (t, log, other, snapshot) => {
   const settledQuotaPerUnit = toAdvancedNumber(other?.quota_per_unit);
   if (settledQuota !== null && settledQuotaPerUnit !== null && settledQuotaPerUnit > 0) {
     const settledAmount = settledQuota / settledQuotaPerUnit;
+    const inputRatio = inputPrice > 0 ? inputPrice / 2 : 0;
+    const outputRatio = outputPrice > 0 ? outputPrice / 2 : inputRatio * (toAdvancedNumber(other?.completion_ratio) ?? 0);
+    const preGroupQuota = groupRatio > 0 ? settledQuota / groupRatio : null;
+    const outputQuota = outputTokens * outputRatio;
+    const inputBillableTokens = inputRatio > 0 && outputRatio > 0 && preGroupQuota !== null && preGroupQuota >= outputQuota
+      ? (preGroupQuota - outputQuota) / inputRatio
+      : null;
+    if (inputBillableTokens !== null) {
+      const inputUsageFormula = inputBillableTokens > inputTokens
+        ? `max(${renderNumber(inputTokens)}, ${renderNumber(inputBillableTokens)}) = ${renderNumber(inputBillableTokens)} tokens`
+        : `${renderNumber(inputBillableTokens)} tokens`;
+      return [
+        `${t('本次用量')}：${t('输入')} ${renderNumber(inputTokens)} tokens，${t('输出')} ${renderNumber(outputTokens)} tokens`,
+        `${t('计费用量')}：${t('输入')} ${inputUsageFormula}，${t('输出')} ${renderNumber(outputTokens)} tokens`,
+        `${t('最终计费公式')}：(${t('输入')} ${renderNumber(inputBillableTokens)} tokens / 1M tokens * ${renderAdvancedPrice(inputPrice)} + ${t('输出')} ${renderNumber(outputTokens)} tokens / 1M tokens * ${renderAdvancedPrice(outputPrice)}) * ${t('分组倍率')} ${renderNumber(groupRatio)} = ${renderAdvancedPrice(settledAmount)}`,
+      ];
+    }
     return [
-      `${t('最终计费公式')}：${renderNumber(settledQuota)} quota / ${renderNumber(settledQuotaPerUnit)} = ${renderAdvancedPrice(settledAmount)}`,
+      `${t('本次用量')}：${t('输入')} ${renderNumber(inputTokens)} tokens，${t('输出')} ${renderNumber(outputTokens)} tokens`,
+      `${t('最终计费公式')}：${renderAdvancedPrice(settledAmount)}`,
     ];
   }
 

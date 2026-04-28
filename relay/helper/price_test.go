@@ -848,6 +848,52 @@ func TestModelPriceHelperMatchesAdvancedTextSegmentByImageSizeTier(t *testing.T)
 	require.Equal(t, 67.0, priceData.CompletionRatio)
 }
 
+func TestModelPriceHelperPreConsumesAdvancedImageOutputWithOutputPrice(t *testing.T) {
+	restoreRatioSettings(t)
+
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingModeByJSONString(`{"gpt-image-2":"advanced"}`))
+	require.NoError(t, ratio_setting.UpdateAdvancedPricingRulesByJSONString(`{
+		"gpt-image-2": {
+			"rule_type": "text_segment",
+			"segments": [
+				{
+					"priority": 10,
+					"input_min": 0,
+					"input_max": 1000000,
+					"input_modality": "text",
+					"input_price": 5,
+					"output_price": 30
+				}
+			]
+		}
+	}`))
+
+	request := &dto.ImageRequest{
+		Model:  "gpt-image-2",
+		Prompt: "Girl holding cat",
+		Size:   "1024x1024",
+	}
+	meta := request.GetTokenCountMeta()
+
+	c, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-image-2",
+		UsingGroup:      "default",
+		UserGroup:       "default",
+		Request:         request,
+		RequestURLPath:  "/v1/images/generations",
+	}
+
+	priceData, err := ModelPriceHelper(c, info, 41, meta)
+	require.NoError(t, err)
+
+	require.Equal(t, types.BillingModeAdvanced, priceData.BillingMode)
+	require.Equal(t, 2.5, priceData.ModelRatio)
+	require.Equal(t, 6.0, priceData.CompletionRatio)
+	require.Equal(t, []string{"image"}, priceData.AdvancedPricingContext.OutputModalities)
+	require.Equal(t, 25010, priceData.QuotaToPreConsume)
+}
+
 func TestModelPriceHelperHonorsExplicitPerTokenModeWhenPriceAndRatioBothExist(t *testing.T) {
 	restoreRatioSettings(t)
 
