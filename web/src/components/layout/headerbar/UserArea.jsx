@@ -62,7 +62,7 @@ const UserArea = ({
           getPopupContainer={() => dropdownRef.current}
           render={
             <Dropdown.Menu className='!bg-semi-color-bg-overlay !border-semi-color-border !shadow-lg !rounded-lg dark:!bg-gray-700 dark:!border-gray-600'>
-              <Dropdown.Item
+              {/* <Dropdown.Item
                 onClick={() => {
                   navigate('/console/personal');
                 }}
@@ -73,9 +73,9 @@ const UserArea = ({
                     size='small'
                     className='text-gray-500 dark:text-gray-400'
                   />
-                  {/* <span>{t('个人设置')}</span> */}
+                  <span>{t('个人设置')}</span>
                 </div>
-              </Dropdown.Item>
+              </Dropdown.Item> */}
               <Dropdown.Item
                 onClick={() => {
                   navigate('/console/token');
@@ -90,7 +90,7 @@ const UserArea = ({
                   <span>{t('令牌管理')}</span>
                 </div>
               </Dropdown.Item>
-              <Dropdown.Item
+              {/* <Dropdown.Item
                 onClick={() => {
                   navigate('/console/topup');
                 }}
@@ -101,9 +101,9 @@ const UserArea = ({
                     size='small'
                     className='text-gray-500 dark:text-gray-400'
                   />
-                  {/* <span>{t('钱包管理')}</span> */}
+                  <span>{t('钱包管理')}</span>
                 </div>
-              </Dropdown.Item>
+              </Dropdown.Item> */}
               <Dropdown.Item
                 onClick={() => {
                   setExportCenterVisible(true);
