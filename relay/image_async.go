@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -33,6 +34,9 @@ func isGPTProtoAsyncImageRequest(request *dto.ImageRequest) bool {
 func prepareGPTProtoAsyncImageSubmitRoute(info *relaycommon.RelayInfo, request *dto.ImageRequest) {
 	if info == nil || request == nil {
 		return
+	}
+	if info.ChannelMeta == nil {
+		info.ChannelMeta = &relaycommon.ChannelMeta{}
 	}
 	modelName := strings.TrimSpace(info.UpstreamModelName)
 	if modelName == "" {
@@ -175,6 +179,9 @@ func buildImageTask(taskID string, upstreamTaskID string, responseBody []byte, i
 }
 
 func handleGPTProtoAsyncImageResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, request *dto.ImageRequest) (bool, *types.NewAPIError) {
+	if resp == nil || resp.Body == nil {
+		return true, types.NewOpenAIError(fmt.Errorf("empty upstream image response"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		service.CloseResponseBodyGracefully(resp)
