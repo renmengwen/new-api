@@ -184,6 +184,38 @@ func asyncImageChargedQuota(info *relaycommon.RelayInfo) int {
 	return info.PriceData.Quota
 }
 
+func prepareGPTProtoAsyncImagePriceDataForSettlement(info *relaycommon.RelayInfo) int {
+	chargedQuota := asyncImageChargedQuota(info)
+	if info == nil {
+		return chargedQuota
+	}
+
+	groupRatio := info.PriceData.GroupRatioInfo.GroupRatio
+	if groupRatio <= 0 {
+		groupRatio = 1
+	}
+
+	info.PriceData.Quota = chargedQuota
+	info.PriceData.QuotaToPreConsume = chargedQuota
+	info.PriceData.ModelPrice = float64(chargedQuota) / (common.QuotaPerUnit * groupRatio)
+	info.PriceData.ModelRatio = 0
+	info.PriceData.CompletionRatio = 0
+	info.PriceData.CacheRatio = 0
+	info.PriceData.CacheCreationRatio = 0
+	info.PriceData.CacheCreation5mRatio = 0
+	info.PriceData.CacheCreation1hRatio = 0
+	info.PriceData.ImageRatio = 0
+	info.PriceData.AudioRatio = 0
+	info.PriceData.AudioCompletionRatio = 0
+	info.PriceData.OtherRatios = nil
+	info.PriceData.BillingMode = types.BillingModePerRequest
+	info.PriceData.AdvancedRuleType = ""
+	info.PriceData.AdvancedRuleSnapshot = nil
+	info.PriceData.AdvancedPricingContext = nil
+	info.PriceData.UsePrice = true
+	return chargedQuota
+}
+
 func ensureGPTProtoAsyncImageTaskRelayInfo(info *relaycommon.RelayInfo) {
 	if info != nil && info.TaskRelayInfo == nil {
 		info.TaskRelayInfo = &relaycommon.TaskRelayInfo{}
@@ -261,14 +293,13 @@ func handleGPTProtoAsyncImageResponse(c *gin.Context, resp *http.Response, info 
 
 	ensureGPTProtoAsyncImageTaskRelayInfo(info)
 	info.Action = constant.TaskTypeImageGeneration
+	chargedQuota := prepareGPTProtoAsyncImagePriceDataForSettlement(info)
 	publicTaskID := model.GenerateTaskID()
 	task := buildImageTask(publicTaskID, upstreamTaskID, responseBody, info, request)
 	if insertErr := task.Insert(); insertErr != nil {
 		logger.LogError(c, "insert gptproto image task error: "+insertErr.Error())
 		return true, types.NewOpenAIError(insertErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
-	chargedQuota := asyncImageChargedQuota(info)
-	info.PriceData.Quota = chargedQuota
 	if settleErr := service.SettleBilling(c, info, chargedQuota); settleErr != nil {
 		logger.LogError(c, "settle gptproto image task billing error: "+settleErr.Error())
 	}

@@ -390,3 +390,55 @@ func TestAsyncImageChargedQuotaFallsBackToPreConsumePrice(t *testing.T) {
 		t.Fatalf("charged quota = %d, want 123", quota)
 	}
 }
+
+func TestPrepareGPTProtoAsyncImagePriceDataForSettlementClearsAdvancedTextLogData(t *testing.T) {
+	inputPrice := 5.0
+	info := &relaycommon.RelayInfo{
+		PriceData: types.PriceData{
+			Quota:             0,
+			QuotaToPreConsume: 5210,
+			ModelRatio:        2.5,
+			CompletionRatio:   6,
+			BillingMode:       types.BillingModeAdvanced,
+			AdvancedRuleType:  types.AdvancedRuleTypeTextSegment,
+			AdvancedRuleSnapshot: &types.AdvancedRuleSnapshot{
+				RuleType: types.AdvancedRuleTypeTextSegment,
+				PriceSnapshot: types.AdvancedRulePriceSnapshot{
+					InputPrice: &inputPrice,
+				},
+			},
+			AdvancedPricingContext: &types.AdvancedPricingContextSnapshot{
+				BillingUnit: types.AdvancedBillingUnitPerMillionTokens,
+			},
+			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 2},
+		},
+	}
+
+	chargedQuota := prepareGPTProtoAsyncImagePriceDataForSettlement(info)
+
+	if chargedQuota != 5210 {
+		t.Fatalf("charged quota = %d, want 5210", chargedQuota)
+	}
+	if info.PriceData.Quota != 5210 {
+		t.Fatalf("price quota = %d, want 5210", info.PriceData.Quota)
+	}
+	if info.PriceData.BillingMode != types.BillingModePerRequest {
+		t.Fatalf("billing mode = %q, want %q", info.PriceData.BillingMode, types.BillingModePerRequest)
+	}
+	if info.PriceData.AdvancedRuleType != "" {
+		t.Fatalf("advanced rule type = %q, want empty", info.PriceData.AdvancedRuleType)
+	}
+	if info.PriceData.AdvancedRuleSnapshot != nil {
+		t.Fatalf("advanced rule snapshot should be nil")
+	}
+	if info.PriceData.AdvancedPricingContext != nil {
+		t.Fatalf("advanced pricing context should be nil")
+	}
+	if !info.PriceData.UsePrice {
+		t.Fatalf("UsePrice = false, want true")
+	}
+	wantModelPrice := float64(5210) / (common.QuotaPerUnit * 2)
+	if info.PriceData.ModelPrice != wantModelPrice {
+		t.Fatalf("model price = %f, want %f", info.PriceData.ModelPrice, wantModelPrice)
+	}
+}
