@@ -29,3 +29,20 @@ test('agent and manager detail descriptions use localized keys', () => {
   assert.ok(managersSource.includes("{ key: t('显示名称'), value: detailData.display_name || '-' }"));
   assert.ok(managersSource.includes("key: t('最后活跃')"));
 });
+
+test('agent create modal keeps required agent name and token group fields visible', () => {
+  const agentsSource = readPageSource('AdminAgentsPageV2/index.jsx');
+
+  assert.doesNotMatch(
+    agentsSource,
+    /display: 'none'[\s\S]*<Text type='tertiary'>\{t\('代理商名称'\)\}<\/Text>/,
+  );
+  assert.doesNotMatch(
+    agentsSource,
+    /display: 'none'[\s\S]*<Text type='tertiary'>\{t\('限制令牌分组'\)\}<\/Text>/,
+  );
+  assert.doesNotMatch(
+    agentsSource,
+    /display: 'none'[\s\S]*<Text type='tertiary'>\{t\('可创建令牌分组'\)\}<\/Text>/,
+  );
+});

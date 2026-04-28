@@ -84,7 +84,6 @@ const AdminAgentsPageV2 = () => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const { loading: permissionLoading, hasActionPermission } = useUserPermissions();
-  const hideAllowedTokenGroupFields = true;
 
   const canRead = hasActionPermission('agent_management', 'read');
   const canCreate = hasActionPermission('agent_management', 'create');
@@ -502,9 +501,7 @@ const AdminAgentsPageV2 = () => {
                   />
                 </div>
               )}
-              <div
-                style={hideAllowedTokenGroupFields ? { ...fieldStyle, display: 'none' } : fieldStyle}
-              >
+              <div style={fieldStyle}>
                 <Text type='tertiary'>{t('代理商名称')}</Text>
                 <Input
                   placeholder={t('请输入代理商名称')}
@@ -512,9 +509,7 @@ const AdminAgentsPageV2 = () => {
                   onChange={(value) => setFormState((prev) => ({ ...prev, agent_name: value }))}
                 />
               </div>
-              <div
-                style={hideAllowedTokenGroupFields ? { ...fieldStyle, display: 'none' } : fieldStyle}
-              >
+              <div style={fieldStyle}>
                 <Text type='tertiary'>{t('公司名称')}</Text>
                 <Input
                   placeholder={t('请输入公司名称')}
