@@ -410,7 +410,7 @@ export const AI_MODEL_DOC_ITEMS = [
     path: '/v1/images/generations',
     summary: '提交异步图片生成任务并立即返回 task_id。',
     description:
-      '请求体显式传入 enable_sync_mode=false 时，接口会立即返回本地 task_id；任务会进入任务日志，并由后台轮询上游生成结果。',
+      '请求体显式传入 enable_sync_mode=false 时，接口会立即返回本地 task_id；任务会进入任务日志，并由后台轮询生成结果。response_format 可传 url 或 b64_json，最终结果通过任务查询接口和内容接口获取。',
     requestBody: {
       model: 'gpt-image-2',
       prompt: 'Girl holding cat',
@@ -418,7 +418,7 @@ export const AI_MODEL_DOC_ITEMS = [
       size: '1024x1024',
       background: 'auto',
       enable_sync_mode: false,
-      response_format: 'url',
+      response_format: 'b64_json',
     },
     responseBody: {
       id: 'task_01jzexample',
@@ -438,7 +438,7 @@ export const AI_MODEL_DOC_ITEMS = [
     path: '/v1/images/generations/{task_id}',
     summary: '根据异步图片生成返回的 task_id 查询任务状态和结果。',
     description:
-      '下游调用方可轮询该接口。任务成功后会返回 result_url；同一任务也会展示在控制台的任务日志页面。',
+      '下游调用方可轮询该接口。任务成功后 result_url 指向本站 /content 图片内容地址；如果原请求 response_format=b64_json 且结果可解析为图片，会同时返回 b64_json。同一任务也会展示在控制台的任务日志页面。',
     responseBody: {
       task_id: 'task_01jzexample',
       platform: 'image',
@@ -446,7 +446,23 @@ export const AI_MODEL_DOC_ITEMS = [
       status: 'SUCCESS',
       progress: '100%',
       result_url: 'https://api.example.com/v1/images/generations/task_01jzexample/content',
+      b64_json: 'BASE64_IMAGE',
       fail_reason: '',
+    },
+  }),
+  createDoc({
+    id: 'images-openai-get-task-content',
+    groupKey: 'images',
+    title: '获取图像任务内容',
+    method: 'GET',
+    transport: 'get',
+    path: '/v1/images/generations/{task_id}/content',
+    summary: '根据任务查询返回的 result_url 获取图片二进制内容。',
+    description:
+      '该接口会将远程 URL、data URL 或 base64 结果统一输出为 image/* 响应。API 调用使用 Bearer token，控制台任务日志可用登录态访问。',
+    responseBody: {
+      content_type: 'image/png',
+      body: '<binary image content>',
     },
   }),
   createDoc({

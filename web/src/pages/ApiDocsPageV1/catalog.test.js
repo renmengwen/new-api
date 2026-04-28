@@ -27,6 +27,9 @@ const REQUIRED_DOC_IDS = [
   'images-gemini-openai-chat',
   'images-openai-edit',
   'images-openai-generate',
+  'images-openai-async-generate',
+  'images-openai-get-task',
+  'images-openai-get-task-content',
   'images-qwen-generate',
   'images-qwen-edit',
   'models-native-openai',
@@ -228,4 +231,45 @@ test('catalog video and realtime docs stay aligned with the relay contract', () 
     /Sec-WebSocket-Protocol: realtime, openai-insecure-api-key\.sk-xxxxxxxx, openai-beta\.realtime-v1/,
   );
   assert.doesNotMatch(realtimeDoc.requestExample, /curl '/);
+});
+
+test('catalog image async task docs describe public task and content endpoints', () => {
+  const asyncDoc = getAiModelDocById('images-openai-async-generate');
+  const getTaskDoc = getAiModelDocById('images-openai-get-task');
+  const contentDoc = getAiModelDocById('images-openai-get-task-content');
+  const asyncResponse = JSON.parse(asyncDoc.responseExample);
+  const taskResponse = JSON.parse(getTaskDoc.responseExample);
+
+  assert.equal(asyncDoc.path, '/v1/images/generations');
+  assert.match(asyncDoc.requestExample, /"enable_sync_mode":false/);
+  assert.match(asyncDoc.requestExample, /"response_format":"b64_json"/);
+  assert.equal(asyncResponse.object, 'image.generation.task');
+
+  assert.equal(getTaskDoc.path, '/v1/images/generations/{task_id}');
+  assert.equal(getTaskDoc.transport, 'get');
+  assert.equal(taskResponse.result_url.includes('/content'), true);
+  assert.equal(taskResponse.b64_json, 'BASE64_IMAGE');
+
+  assert.equal(
+    contentDoc.path,
+    '/v1/images/generations/{task_id}/content',
+  );
+  assert.equal(contentDoc.transport, 'get');
+  assert.match(contentDoc.responseExample, /image\/png/);
+
+  const imageDocs = [asyncDoc, getTaskDoc, contentDoc]
+    .map((doc) =>
+      [
+        doc.title,
+        doc.summary,
+        doc.description,
+        doc.requestExample,
+        doc.responseExample,
+      ].join('\n'),
+    )
+    .join('\n');
+  const upstreamNamePattern = new RegExp(
+    `${['GPT', 'Proto'].join('')}|${['gpt', 'proto'].join('')}`,
+  );
+  assert.doesNotMatch(imageDocs, upstreamNamePattern);
 });
