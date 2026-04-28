@@ -1,7 +1,6 @@
 package service
 
 import (
-	"errors"
 	"math"
 	"sort"
 	"strconv"
@@ -14,7 +13,10 @@ import (
 	"gorm.io/gorm"
 )
 
-const quotaCostSummaryUnknownVendor = "未知供应商"
+const (
+	quotaCostSummaryUnknownVendor = "未知供应商"
+	quotaCostSummaryLogBatchSize  = 1000
+)
 
 type quotaCostSummaryAccumulator struct {
 	item                    dto.AdminQuotaCostSummaryItem
@@ -45,6 +47,10 @@ type quotaCostSummaryOther struct {
 }
 
 func ListQuotaCostSummary(query dto.AdminQuotaCostSummaryQuery, pageInfo *common.PageInfo, requesterUserID int, requesterRole int) ([]dto.AdminQuotaCostSummaryItem, int64, error) {
+	query, err := normalizeQuotaCostSummaryQuery(query)
+	if err != nil {
+		return nil, 0, err
+	}
 	items, err := buildQuotaCostSummaryItems(query, requesterUserID, requesterRole)
 	if err != nil {
 		return nil, 0, err
@@ -65,6 +71,10 @@ func ListQuotaCostSummary(query dto.AdminQuotaCostSummaryQuery, pageInfo *common
 }
 
 func ListQuotaCostSummaryForExport(query dto.AdminQuotaCostSummaryQuery, requesterUserID int, requesterRole int, limit int) ([]dto.AdminQuotaCostSummaryItem, error) {
+	query, err := normalizeQuotaCostSummaryQuery(query)
+	if err != nil {
+		return nil, err
+	}
 	items, err := buildQuotaCostSummaryItems(query, requesterUserID, requesterRole)
 	if err != nil {
 		return nil, err
@@ -91,16 +101,11 @@ func buildQuotaCostSummaryItems(query dto.AdminQuotaCostSummaryQuery, requesterU
 		return nil, err
 	}
 
-	logs, err := fetchQuotaCostSummaryLogs(logQuery)
+	accumulators, err := aggregateQuotaCostSummaryLogQuery(logQuery, modelVendorMap)
 	if err != nil {
 		return nil, err
 	}
-	if len(logs) == 0 {
-		return []dto.AdminQuotaCostSummaryItem{}, nil
-	}
-
-	ensureQuotaCostSummaryVendorsForLogs(modelVendorMap, logs)
-	return aggregateQuotaCostSummaryLogs(logs, modelVendorMap), nil
+	return quotaCostSummaryItemsFromAccumulators(accumulators), nil
 }
 
 func buildQuotaCostSummaryLogQuery(query dto.AdminQuotaCostSummaryQuery, modelFilter []string, requesterUserID int, requesterRole int) (*gorm.DB, error) {
@@ -168,7 +173,7 @@ func resolveQuotaCostSummaryModelVendors(vendorFilter string) (map[string]string
 	return modelVendorMap, modelFilter, nil
 }
 
-func ensureQuotaCostSummaryVendorsForLogs(modelVendorMap map[string]string, logs []*model.Log) {
+func ensureQuotaCostSummaryVendorsForLogs(modelVendorMap map[string]string, logs []*model.Log) error {
 	missing := make([]string, 0)
 	seen := make(map[string]struct{})
 	for _, log := range logs {
@@ -186,7 +191,7 @@ func ensureQuotaCostSummaryVendorsForLogs(modelVendorMap map[string]string, logs
 		missing = append(missing, modelName)
 	}
 	if len(missing) == 0 {
-		return
+		return nil
 	}
 
 	type row struct {
@@ -194,11 +199,13 @@ func ensureQuotaCostSummaryVendorsForLogs(modelVendorMap map[string]string, logs
 		VendorName string `gorm:"column:vendor_name"`
 	}
 	var rows []row
-	_ = model.DB.Model(&model.Model{}).
+	if err := model.DB.Model(&model.Model{}).
 		Select("models.model_name, COALESCE(vendors.name, '') AS vendor_name").
 		Joins("LEFT JOIN vendors ON vendors.id = models.vendor_id").
 		Where("models.model_name IN ?", missing).
-		Find(&rows).Error
+		Find(&rows).Error; err != nil {
+		return err
+	}
 	for _, row := range rows {
 		vendorName := strings.TrimSpace(row.VendorName)
 		if vendorName == "" {
@@ -206,41 +213,44 @@ func ensureQuotaCostSummaryVendorsForLogs(modelVendorMap map[string]string, logs
 		}
 		modelVendorMap[row.ModelName] = vendorName
 	}
+	return nil
 }
 
-func fetchQuotaCostSummaryLogs(tx *gorm.DB) ([]*model.Log, error) {
+func fetchQuotaCostSummaryLogBatch(tx *gorm.DB, lastID int) ([]*model.Log, error) {
 	var logs []*model.Log
 	err := tx.Select("logs.id, logs.user_id, logs.username, logs.created_at, logs.type, logs.token_name, logs.model_name, logs.quota, logs.prompt_tokens, logs.completion_tokens, logs.channel_id, logs.other").
+		Where("logs.id > ?", lastID).
 		Order("logs.id asc").
+		Limit(quotaCostSummaryLogBatchSize).
 		Find(&logs).Error
 	return logs, err
 }
 
-func aggregateQuotaCostSummaryLogs(logs []*model.Log, modelVendorMap map[string]string) []dto.AdminQuotaCostSummaryItem {
+func aggregateQuotaCostSummaryLogQuery(tx *gorm.DB, modelVendorMap map[string]string) (map[string]*quotaCostSummaryAccumulator, error) {
 	accumulators := make(map[string]*quotaCostSummaryAccumulator)
-	for _, log := range logs {
-		date := quotaCostSummaryDate(log.CreatedAt)
-		modelName := strings.TrimSpace(log.ModelName)
-		if modelName == "" {
-			modelName = "-"
+	lastID := 0
+	for {
+		logs, err := fetchQuotaCostSummaryLogBatch(tx, lastID)
+		if err != nil {
+			return nil, err
 		}
-		vendorName := modelVendorMap[log.ModelName]
-		if vendorName == "" {
-			vendorName = quotaCostSummaryUnknownVendor
+		if len(logs) == 0 {
+			return accumulators, nil
 		}
-		key := date + "\x00" + modelName + "\x00" + vendorName
-		acc := accumulators[key]
-		if acc == nil {
-			acc = &quotaCostSummaryAccumulator{item: dto.AdminQuotaCostSummaryItem{
-				Date:       date,
-				ModelName:  modelName,
-				VendorName: vendorName,
-			}}
-			accumulators[key] = acc
+		if err := ensureQuotaCostSummaryVendorsForLogs(modelVendorMap, logs); err != nil {
+			return nil, err
 		}
-		applyQuotaCostSummaryLog(acc, log)
+		for _, log := range logs {
+			applyQuotaCostSummaryLogToAccumulators(accumulators, log, modelVendorMap)
+		}
+		lastID = logs[len(logs)-1].Id
+		if len(logs) < quotaCostSummaryLogBatchSize {
+			return accumulators, nil
+		}
 	}
+}
 
+func quotaCostSummaryItemsFromAccumulators(accumulators map[string]*quotaCostSummaryAccumulator) []dto.AdminQuotaCostSummaryItem {
 	items := make([]dto.AdminQuotaCostSummaryItem, 0, len(accumulators))
 	for _, acc := range accumulators {
 		finalizeQuotaCostSummaryAccumulator(acc)
@@ -249,22 +259,52 @@ func aggregateQuotaCostSummaryLogs(logs []*model.Log, modelVendorMap map[string]
 	return items
 }
 
+func applyQuotaCostSummaryLogToAccumulators(accumulators map[string]*quotaCostSummaryAccumulator, log *model.Log, modelVendorMap map[string]string) {
+	date := quotaCostSummaryDate(log.CreatedAt)
+	modelName := strings.TrimSpace(log.ModelName)
+	if modelName == "" {
+		modelName = "-"
+	}
+	vendorName := modelVendorMap[log.ModelName]
+	if vendorName == "" {
+		vendorName = quotaCostSummaryUnknownVendor
+	}
+	key := date + "\x00" + modelName + "\x00" + vendorName
+	acc := accumulators[key]
+	if acc == nil {
+		acc = &quotaCostSummaryAccumulator{item: dto.AdminQuotaCostSummaryItem{
+			Date:       date,
+			ModelName:  modelName,
+			VendorName: vendorName,
+		}}
+		accumulators[key] = acc
+	}
+	applyQuotaCostSummaryLog(acc, log)
+}
+
 func applyQuotaCostSummaryLog(acc *quotaCostSummaryAccumulator, log *model.Log) {
 	other := parseQuotaCostSummaryOther(log.Other)
 	groupRatio := firstPositiveFloat(other.UserGroupRatio, other.GroupRatio, 1)
+	fixedPrice := other.ModelPrice > 0
 	inputUnitPrice := quotaCostSummaryInputUnitPrice(other)
+	if fixedPrice {
+		inputUnitPrice = 0
+	}
 	outputUnitPrice := inputUnitPrice * firstPositiveFloat(other.CompletionRatio, 0)
 	cacheReadUnitPrice := inputUnitPrice * firstPositiveFloat(other.CacheRatio, 0)
 	cacheCreateUnitPrice := inputUnitPrice * firstPositiveFloat(other.CacheCreationRatio, 0)
+	cacheCreateUnitPrice5m := inputUnitPrice * firstPositiveFloat(other.CacheCreationRatio5m, 0)
+	cacheCreateUnitPrice1h := inputUnitPrice * firstPositiveFloat(other.CacheCreationRatio1h, 0)
 
 	cacheReadTokens := positiveInt64(other.CacheTokens)
-	cacheCreateTokens := positiveInt64(other.CacheCreationTokens) +
-		positiveInt64(other.CacheCreationTokens5m) +
-		positiveInt64(other.CacheCreationTokens1h)
+	cacheCreateTokens := positiveInt64(other.CacheCreationTokens)
+	cacheCreateTokens5m := positiveInt64(other.CacheCreationTokens5m)
+	cacheCreateTokens1h := positiveInt64(other.CacheCreationTokens1h)
+	cacheCreateTotalTokens := cacheCreateTokens + cacheCreateTokens5m + cacheCreateTokens1h
 
 	inputTokens := int64(log.PromptTokens)
 	outputTokens := int64(log.CompletionTokens)
-	nonCacheInputTokens := inputTokens - cacheReadTokens - cacheCreateTokens
+	nonCacheInputTokens := inputTokens - cacheReadTokens - cacheCreateTotalTokens
 	if nonCacheInputTokens < 0 {
 		nonCacheInputTokens = 0
 	}
@@ -272,15 +312,23 @@ func applyQuotaCostSummaryLog(acc *quotaCostSummaryAccumulator, log *model.Log) 
 	inputCost := float64(nonCacheInputTokens) / 1000000 * inputUnitPrice * groupRatio
 	outputCost := float64(outputTokens) / 1000000 * outputUnitPrice * groupRatio
 	cacheReadCost := float64(cacheReadTokens) / 1000000 * cacheReadUnitPrice * groupRatio
-	cacheCreateCost := float64(cacheCreateTokens) / 1000000 * cacheCreateUnitPrice * groupRatio
+	cacheCreateCost := float64(cacheCreateTokens)/1000000*cacheCreateUnitPrice*groupRatio +
+		float64(cacheCreateTokens5m)/1000000*cacheCreateUnitPrice5m*groupRatio +
+		float64(cacheCreateTokens1h)/1000000*cacheCreateUnitPrice1h*groupRatio
+	if fixedPrice {
+		inputCost = other.ModelPrice * groupRatio
+		outputCost = 0
+		cacheReadCost = 0
+		cacheCreateCost = 0
+	}
 	paidUSD := quotaToUSD(log.Quota)
 
 	acc.item.CallCount++
 	acc.item.InputTokens += inputTokens
 	acc.item.OutputTokens += outputTokens
 	acc.item.CacheReadTokens += cacheReadTokens
-	acc.item.CacheCreateTokens += cacheCreateTokens
-	acc.item.CacheTokens += cacheReadTokens + cacheCreateTokens
+	acc.item.CacheCreateTokens += cacheCreateTotalTokens
+	acc.item.CacheTokens += cacheReadTokens + cacheCreateTotalTokens
 	acc.item.InputCostUSD += inputCost
 	acc.item.OutputCostUSD += outputCost
 	acc.item.CacheCostUSD += cacheReadCost + cacheCreateCost
@@ -290,6 +338,8 @@ func applyQuotaCostSummaryLog(acc *quotaCostSummaryAccumulator, log *model.Log) 
 	addWeightedUnitPrice(&acc.outputUnitWeighted, &acc.outputUnitWeightTokens, outputUnitPrice, outputTokens)
 	addWeightedUnitPrice(&acc.cacheReadWeighted, &acc.cacheReadWeightTokens, cacheReadUnitPrice, cacheReadTokens)
 	addWeightedUnitPrice(&acc.cacheCreateWeighted, &acc.cacheCreateWeightTokens, cacheCreateUnitPrice, cacheCreateTokens)
+	addWeightedUnitPrice(&acc.cacheCreateWeighted, &acc.cacheCreateWeightTokens, cacheCreateUnitPrice5m, cacheCreateTokens5m)
+	addWeightedUnitPrice(&acc.cacheCreateWeighted, &acc.cacheCreateWeightTokens, cacheCreateUnitPrice1h, cacheCreateTokens1h)
 }
 
 func finalizeQuotaCostSummaryAccumulator(acc *quotaCostSummaryAccumulator) {
@@ -311,9 +361,6 @@ func parseQuotaCostSummaryOther(otherJSON string) quotaCostSummaryOther {
 }
 
 func quotaCostSummaryInputUnitPrice(other quotaCostSummaryOther) float64 {
-	if other.ModelPrice > 0 {
-		return other.ModelPrice
-	}
 	if other.ModelRatio > 0 && common.QuotaPerUnit > 0 {
 		return other.ModelRatio * (1000000 / common.QuotaPerUnit)
 	}
@@ -359,18 +406,30 @@ func filterQuotaCostSummaryItems(items []dto.AdminQuotaCostSummaryItem, query dt
 func sortQuotaCostSummaryItems(items []dto.AdminQuotaCostSummaryItem, sortBy string, sortOrder string) {
 	desc := sortOrder != "asc"
 	sort.SliceStable(items, func(i int, j int) bool {
-		cmp := compareQuotaCostSummaryItem(items[i], items[j], sortBy)
-		if cmp == 0 {
-			cmp = compareQuotaCostSummaryItem(items[i], items[j], "paid_usd")
-			if cmp == 0 {
-				cmp = compareQuotaCostSummaryItem(items[i], items[j], "call_count")
-			}
-		}
+		cmp := compareQuotaCostSummaryItemsWithTieBreakers(items[i], items[j], sortBy)
 		if desc {
 			return cmp > 0
 		}
 		return cmp < 0
 	})
+}
+
+func compareQuotaCostSummaryItemsWithTieBreakers(a dto.AdminQuotaCostSummaryItem, b dto.AdminQuotaCostSummaryItem, sortBy string) int {
+	fields := []string{sortBy, "paid_usd", "call_count", "date", "model_name", "vendor_name"}
+	seen := make(map[string]struct{}, len(fields))
+	for _, field := range fields {
+		if field == "" {
+			continue
+		}
+		if _, ok := seen[field]; ok {
+			continue
+		}
+		seen[field] = struct{}{}
+		if cmp := compareQuotaCostSummaryItem(a, b, field); cmp != 0 {
+			return cmp
+		}
+	}
+	return 0
 }
 
 func compareQuotaCostSummaryItem(a dto.AdminQuotaCostSummaryItem, b dto.AdminQuotaCostSummaryItem, sortBy string) int {
@@ -410,6 +469,10 @@ func compareFloat64(a float64, b float64) int {
 		return 1
 	}
 	return 0
+}
+
+func normalizeQuotaCostSummaryQuery(query dto.AdminQuotaCostSummaryQuery) (dto.AdminQuotaCostSummaryQuery, error) {
+	return dto.NormalizeAdminQuotaCostSummaryQuery(query, common.GetTimestamp())
 }
 
 func normalizeQuotaCostSummaryPageInfo(pageInfo *common.PageInfo) *common.PageInfo {
@@ -454,8 +517,6 @@ func positiveInt64(value int64) int64 {
 }
 
 func ValidateQuotaCostSummaryExport(query dto.AdminQuotaCostSummaryQuery) error {
-	if query.StartTimestamp <= 0 || query.EndTimestamp <= 0 {
-		return errors.New("invalid date range")
-	}
-	return nil
+	_, err := normalizeQuotaCostSummaryQuery(query)
+	return err
 }

@@ -181,6 +181,124 @@ func TestListQuotaCostSummaryScalesLegacyModelRatioByQuotaPerUnit(t *testing.T) 
 	require.InDelta(t, 0.0002, items[0].InputCostUSD, 0.000001)
 }
 
+func TestListQuotaCostSummaryUsesSplitCacheCreationRatios(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	setQuotaCostSummaryQuotaPerUnit(t, 1000000)
+	user := seedQuotaUser(t, db, "cache_create_user", 0)
+	seedQuotaCostSummaryVendorModel(t, db, "Anthropic", "cache-create-model")
+
+	other, err := common.Marshal(map[string]any{
+		"model_ratio":              1.0,
+		"group_ratio":              1.0,
+		"cache_creation_tokens":    20,
+		"cache_creation_ratio":     2.0,
+		"cache_creation_tokens_5m": 30,
+		"cache_creation_ratio_5m":  4.0,
+		"cache_creation_tokens_1h": 50,
+		"cache_creation_ratio_1h":  6.0,
+	})
+	require.NoError(t, err)
+	seedQuotaCostSummaryLog(t, db, model.Log{
+		UserId: user.Id, Username: user.Username, Type: model.LogTypeConsume,
+		CreatedAt: 1714237200, ModelName: "cache-create-model",
+		PromptTokens: 100, Quota: 460, Group: "default", Other: string(other),
+	})
+
+	items, total, err := service.ListQuotaCostSummary(dto.AdminQuotaCostSummaryQuery{
+		StartTimestamp: 1714233600,
+		EndTimestamp:   1714320000,
+	}, &common.PageInfo{Page: 1, PageSize: 10}, 999, common.RoleRootUser)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, items, 1)
+	require.EqualValues(t, 100, items[0].CacheCreateTokens)
+	require.InDelta(t, 4.6, items[0].CacheCreateUnitPrice, 0.000001)
+	require.InDelta(t, 0.00046, items[0].CacheCostUSD, 0.000001)
+	require.InDelta(t, 0.00046, items[0].TotalCostUSD, 0.000001)
+}
+
+func TestListQuotaCostSummaryTreatsModelPriceAsFixedCost(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	setQuotaCostSummaryQuotaPerUnit(t, 1000000)
+	user := seedQuotaUser(t, db, "fixed_price_user", 0)
+	seedQuotaCostSummaryVendorModel(t, db, "TaskVendor", "fixed-price-model")
+
+	other, err := common.Marshal(map[string]any{
+		"model_price": 0.25,
+		"group_ratio": 2.0,
+	})
+	require.NoError(t, err)
+	seedQuotaCostSummaryLog(t, db, model.Log{
+		UserId: user.Id, Username: user.Username, Type: model.LogTypeConsume,
+		CreatedAt: 1714237200, ModelName: "fixed-price-model",
+		Quota: 500000, Group: "default", Other: string(other),
+	})
+
+	items, total, err := service.ListQuotaCostSummary(dto.AdminQuotaCostSummaryQuery{
+		StartTimestamp: 1714233600,
+		EndTimestamp:   1714320000,
+	}, &common.PageInfo{Page: 1, PageSize: 10}, 999, common.RoleRootUser)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, items, 1)
+	require.Zero(t, items[0].InputUnitPriceUSD)
+	require.InDelta(t, 0.5, items[0].InputCostUSD, 0.000001)
+	require.InDelta(t, 0.5, items[0].TotalCostUSD, 0.000001)
+	require.InDelta(t, 0.5, items[0].PaidUSD, 0.000001)
+}
+
+func TestListQuotaCostSummaryRejectsInvalidRawQuery(t *testing.T) {
+	setupAdminQuotaTestDB(t)
+
+	_, _, err := service.ListQuotaCostSummary(dto.AdminQuotaCostSummaryQuery{
+		StartTimestamp: 1714320000,
+		EndTimestamp:   1714233600,
+	}, &common.PageInfo{Page: 1, PageSize: 10}, 999, common.RoleRootUser)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "end_timestamp must be greater than or equal to start_timestamp")
+
+	_, err = service.ListQuotaCostSummaryForExport(dto.AdminQuotaCostSummaryQuery{
+		StartTimestamp: 1714320000 - 91*24*60*60,
+		EndTimestamp:   1714320000,
+	}, 999, common.RoleRootUser, 100)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "date range cannot exceed 90 days")
+}
+
+func TestListQuotaCostSummaryUsesDeterministicTieBreakers(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	setQuotaCostSummaryQuotaPerUnit(t, 1000000)
+	user := seedQuotaUser(t, db, "tie_user", 0)
+	seedQuotaCostSummaryVendorModel(t, db, "VendorC", "gamma-model")
+	seedQuotaCostSummaryVendorModel(t, db, "VendorA", "alpha-model")
+	seedQuotaCostSummaryVendorModel(t, db, "VendorB", "beta-model")
+
+	for _, modelName := range []string{"gamma-model", "alpha-model", "beta-model"} {
+		seedQuotaCostSummaryLog(t, db, model.Log{
+			UserId: user.Id, Username: user.Username, Type: model.LogTypeConsume,
+			CreatedAt: 1714237200, ModelName: modelName,
+			Quota: 1000, Group: "default",
+		})
+	}
+
+	for range 10 {
+		items, total, err := service.ListQuotaCostSummary(dto.AdminQuotaCostSummaryQuery{
+			StartTimestamp: 1714233600,
+			EndTimestamp:   1714320000,
+			SortBy:         "paid_usd",
+			SortOrder:      "asc",
+		}, &common.PageInfo{Page: 1, PageSize: 10}, 999, common.RoleRootUser)
+		require.NoError(t, err)
+		require.EqualValues(t, 3, total)
+		require.Len(t, items, 3)
+		require.Equal(t, []string{"alpha-model", "beta-model", "gamma-model"}, []string{
+			items[0].ModelName,
+			items[1].ModelName,
+			items[2].ModelName,
+		})
+	}
+}
+
 func TestListQuotaCostSummaryFiltersByVendorAndMinimums(t *testing.T) {
 	db := setupAdminQuotaTestDB(t)
 	setQuotaCostSummaryQuotaPerUnit(t, 1000000)
