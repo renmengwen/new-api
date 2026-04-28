@@ -23,9 +23,9 @@ const JOB_TYPE_LABELS = {
   quota_ledger: '额度流水',
   quota_cost_summary: '额度成本汇总',
   admin_audit_logs: '审计日志',
-  admin_analytics_models: '运营分析-模型',
-  admin_analytics_users: '运营分析-用户',
-  admin_analytics_daily: '运营分析-每日',
+  operations_analytics_models: '运营分析-模型',
+  operations_analytics_users: '运营分析-用户',
+  operations_analytics_daily: '运营分析-每日',
 };
 
 const renderTime = (timestamp) => (timestamp ? timestamp2string(timestamp) : '-');
