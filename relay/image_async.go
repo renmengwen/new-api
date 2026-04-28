@@ -197,6 +197,9 @@ func prepareGPTProtoAsyncImagePriceDataForSettlement(info *relaycommon.RelayInfo
 
 	info.PriceData.Quota = chargedQuota
 	info.PriceData.QuotaToPreConsume = chargedQuota
+	if info.PriceData.BillingMode == types.BillingModeAdvanced {
+		return chargedQuota
+	}
 	info.PriceData.ModelPrice = float64(chargedQuota) / (common.QuotaPerUnit * groupRatio)
 	info.PriceData.ModelRatio = 0
 	info.PriceData.CompletionRatio = 0

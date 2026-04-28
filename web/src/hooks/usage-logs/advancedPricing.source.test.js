@@ -171,6 +171,23 @@ test('advanced billing helpers read structured advanced pricing context and swit
   assert.match(hookSource, /free_quota/);
 });
 
+test('advanced text task logs can display an already settled quota amount', () => {
+  assert.match(hookSource, /advanced_charged_quota/);
+  assert.match(hookSource, /quota_per_unit/);
+  assert.match(
+    hookSource,
+    /const settledQuota = toAdvancedNumber\(other\?\.advanced_charged_quota\);/,
+  );
+  assert.match(
+    hookSource,
+    /const settledQuotaPerUnit = toAdvancedNumber\(other\?\.quota_per_unit\);/,
+  );
+  assert.match(
+    hookSource,
+    /if \(settledQuota !== null && settledQuotaPerUnit !== null && settledQuotaPerUnit > 0\) \{/,
+  );
+});
+
 test('advanced non-token billing strings stay readable in UTF-8 source', () => {
   assert.doesNotMatch(
     hookSource,

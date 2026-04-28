@@ -108,3 +108,23 @@ func TestGenerateTextOtherInfo_IncludesAdvancedBillingContextSnapshot(t *testing
 	assert.NotContains(t, otherJSON, "\"BillingUnit\"")
 	assert.NotContains(t, otherJSON, "\"ToolUsageType\"")
 }
+
+func TestAppendTaskPriceDataAdvancedInfoIncludesSettlementQuota(t *testing.T) {
+	contextSnapshot := &types.AdvancedPricingContextSnapshot{
+		BillingUnit: types.AdvancedBillingUnitPerMillionTokens,
+	}
+	priceData := types.PriceData{
+		Quota:                  5210,
+		BillingMode:            types.BillingModeAdvanced,
+		AdvancedRuleType:       types.AdvancedRuleTypeTextSegment,
+		AdvancedRuleSnapshot:   &types.AdvancedRuleSnapshot{RuleType: types.AdvancedRuleTypeTextSegment},
+		AdvancedPricingContext: contextSnapshot,
+	}
+	other := map[string]interface{}{}
+
+	appendTaskPriceDataAdvancedInfo(other, priceData)
+
+	assert.Equal(t, 5210, other["advanced_charged_quota"])
+	assert.Equal(t, common.QuotaPerUnit, other["quota_per_unit"])
+	assert.Same(t, contextSnapshot, other["advanced_pricing_context"])
+}

@@ -391,8 +391,11 @@ func TestAsyncImageChargedQuotaFallsBackToPreConsumePrice(t *testing.T) {
 	}
 }
 
-func TestPrepareGPTProtoAsyncImagePriceDataForSettlementClearsAdvancedTextLogData(t *testing.T) {
+func TestPrepareGPTProtoAsyncImagePriceDataForSettlementPreservesAdvancedTextLogData(t *testing.T) {
 	inputPrice := 5.0
+	context := &types.AdvancedPricingContextSnapshot{
+		BillingUnit: types.AdvancedBillingUnitPerMillionTokens,
+	}
 	info := &relaycommon.RelayInfo{
 		PriceData: types.PriceData{
 			Quota:             0,
@@ -407,10 +410,8 @@ func TestPrepareGPTProtoAsyncImagePriceDataForSettlementClearsAdvancedTextLogDat
 					InputPrice: &inputPrice,
 				},
 			},
-			AdvancedPricingContext: &types.AdvancedPricingContextSnapshot{
-				BillingUnit: types.AdvancedBillingUnitPerMillionTokens,
-			},
-			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 2},
+			AdvancedPricingContext: context,
+			GroupRatioInfo:         types.GroupRatioInfo{GroupRatio: 2},
 		},
 	}
 
@@ -422,23 +423,19 @@ func TestPrepareGPTProtoAsyncImagePriceDataForSettlementClearsAdvancedTextLogDat
 	if info.PriceData.Quota != 5210 {
 		t.Fatalf("price quota = %d, want 5210", info.PriceData.Quota)
 	}
-	if info.PriceData.BillingMode != types.BillingModePerRequest {
-		t.Fatalf("billing mode = %q, want %q", info.PriceData.BillingMode, types.BillingModePerRequest)
+	if info.PriceData.BillingMode != types.BillingModeAdvanced {
+		t.Fatalf("billing mode = %q, want %q", info.PriceData.BillingMode, types.BillingModeAdvanced)
 	}
-	if info.PriceData.AdvancedRuleType != "" {
-		t.Fatalf("advanced rule type = %q, want empty", info.PriceData.AdvancedRuleType)
+	if info.PriceData.AdvancedRuleType != types.AdvancedRuleTypeTextSegment {
+		t.Fatalf("advanced rule type = %q, want %q", info.PriceData.AdvancedRuleType, types.AdvancedRuleTypeTextSegment)
 	}
-	if info.PriceData.AdvancedRuleSnapshot != nil {
-		t.Fatalf("advanced rule snapshot should be nil")
+	if info.PriceData.AdvancedRuleSnapshot == nil {
+		t.Fatalf("advanced rule snapshot should be preserved")
 	}
-	if info.PriceData.AdvancedPricingContext != nil {
-		t.Fatalf("advanced pricing context should be nil")
+	if info.PriceData.AdvancedPricingContext != context {
+		t.Fatalf("advanced pricing context should be preserved")
 	}
-	if !info.PriceData.UsePrice {
-		t.Fatalf("UsePrice = false, want true")
-	}
-	wantModelPrice := float64(5210) / (common.QuotaPerUnit * 2)
-	if info.PriceData.ModelPrice != wantModelPrice {
-		t.Fatalf("model price = %f, want %f", info.PriceData.ModelPrice, wantModelPrice)
+	if info.PriceData.ModelPrice != 0 {
+		t.Fatalf("model price = %f, want 0", info.PriceData.ModelPrice)
 	}
 }

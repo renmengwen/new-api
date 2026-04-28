@@ -485,6 +485,14 @@ const buildAdvancedTextSegmentFormula = (t, log, other, snapshot) => {
   if (nonTokenFormula) {
     return nonTokenFormula;
   }
+  const settledQuota = toAdvancedNumber(other?.advanced_charged_quota);
+  const settledQuotaPerUnit = toAdvancedNumber(other?.quota_per_unit);
+  if (settledQuota !== null && settledQuotaPerUnit !== null && settledQuotaPerUnit > 0) {
+    const settledAmount = settledQuota / settledQuotaPerUnit;
+    return [
+      `${t('最终计费公式')}：${renderNumber(settledQuota)} quota / ${renderNumber(settledQuotaPerUnit)} = ${renderAdvancedPrice(settledAmount)}`,
+    ];
+  }
 
   const baseParts = [];
   let baseAmount = 0;

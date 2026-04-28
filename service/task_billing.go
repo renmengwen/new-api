@@ -162,6 +162,11 @@ func appendTaskPriceDataAdvancedInfo(other map[string]interface{}, priceData typ
 	if priceData.AdvancedRuleSnapshot != nil {
 		other["advanced_rule"] = priceData.AdvancedRuleSnapshot
 	}
+	if priceData.AdvancedPricingContext != nil {
+		other["advanced_pricing_context"] = priceData.AdvancedPricingContext
+	}
+	other["advanced_charged_quota"] = priceData.Quota
+	other["quota_per_unit"] = common.QuotaPerUnit
 }
 
 func appendTaskBillingContextAdvancedInfo(other map[string]interface{}, billingContext *model.TaskBillingContext) {
