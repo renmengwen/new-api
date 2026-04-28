@@ -105,6 +105,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 			}
 		}
 	}
+	if isGPTProtoAsyncImageRequest(request) {
+		return handleGPTProtoAsyncImageResponse(c, httpResp, info, request)
+	}
 
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
 	if newAPIError != nil {

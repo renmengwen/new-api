@@ -165,6 +165,9 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.GET("/fine-tunes/:id/events", controller.RelayNotImplemented)
 		httpRouter.DELETE("/models/:model", controller.RelayNotImplemented)
 	}
+	{
+		relayV1Router.GET("/images/generations/:task_id", controller.GetImageGenerationTask)
+	}
 
 	relayMjRouter := router.Group("/mj")
 	relayMjRouter.Use(middleware.RouteTag("relay"))
