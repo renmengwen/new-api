@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -184,7 +185,23 @@ func buildImageTask(taskID string, upstreamTaskID string, responseBody []byte, i
 	return task
 }
 
-func handleGPTProtoAsyncImageResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, request *dto.ImageRequest) (bool, *types.NewAPIError) {
+func handleGPTProtoAsyncImageResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, request *dto.ImageRequest) (handled bool, apiErr *types.NewAPIError) {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.LogError(c, fmt.Sprintf("async image response panic: %v\n%s", err, string(debug.Stack())))
+			service.CloseResponseBodyGracefully(resp)
+			handled = true
+			apiErr = types.NewOpenAIError(fmt.Errorf("async image response handler failed"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		}
+	}()
+	if info == nil {
+		service.CloseResponseBodyGracefully(resp)
+		return true, types.NewOpenAIError(fmt.Errorf("missing relay info for async image response"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+	if request == nil {
+		service.CloseResponseBodyGracefully(resp)
+		return true, types.NewOpenAIError(fmt.Errorf("missing image request for async image response"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
 	if resp == nil || resp.Body == nil {
 		return true, types.NewOpenAIError(fmt.Errorf("empty upstream image response"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
