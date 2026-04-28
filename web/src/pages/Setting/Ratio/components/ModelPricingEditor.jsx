@@ -49,6 +49,7 @@ import {
   useModelPricingEditorState,
 } from '../hooks/useModelPricingEditorState';
 import {
+  BILLING_MODE_ADVANCED,
   BILLING_MODE_CHANGE_CONFIRM_CONTENT,
   BILLING_MODE_CHANGE_CONFIRM_TITLE,
   canUseAdvancedBilling,
@@ -111,6 +112,7 @@ export default function ModelPricingEditor({
   const isMobile = useIsMobile();
   const [addVisible, setAddVisible] = useState(false);
   const [batchVisible, setBatchVisible] = useState(false);
+  const [batchCopyAdvancedRules, setBatchCopyAdvancedRules] = useState(true);
   const [newModelName, setNewModelName] = useState('');
 
   const {
@@ -156,6 +158,10 @@ export default function ModelPricingEditor({
     selectedModelNames,
     models,
   });
+  const batchCanCopyAdvancedRules =
+    selectedModel?.billingMode === BILLING_MODE_ADVANCED;
+  const batchWillCopyAdvancedRules =
+    batchCanCopyAdvancedRules && batchCopyAdvancedRules;
 
   const columns = useMemo(
     () => [
@@ -266,7 +272,11 @@ export default function ModelPricingEditor({
   };
 
   const handleBatchApply = () => {
-    if (applySelectedModelPricing()) {
+    if (
+      applySelectedModelPricing({
+        copyAdvancedRules: batchWillCopyAdvancedRules,
+      })
+    ) {
       setBatchVisible(false);
     }
   };
@@ -275,7 +285,16 @@ export default function ModelPricingEditor({
     if (batchBillingModeConfirmation.requiresConfirmation) {
       Modal.confirm({
         title: t(batchBillingModeConfirmation.title),
-        content: t(batchBillingModeConfirmation.content),
+        content: (
+          <div>
+            <div>{t(batchBillingModeConfirmation.content)}</div>
+            {batchWillCopyAdvancedRules ? (
+              <div className='mt-2 text-amber-600'>
+                {t('将同时复制当前模型的高级规则内容，并覆盖已勾选模型原有高级规则。')}
+              </div>
+            ) : null}
+          </div>
+        ),
         onOk: handleBatchApply,
       });
       return;
@@ -333,7 +352,10 @@ export default function ModelPricingEditor({
           </Button>
           <Button
             disabled={!selectedModel || selectedModelNames.length === 0}
-            onClick={() => setBatchVisible(true)}
+            onClick={() => {
+              setBatchCopyAdvancedRules(true);
+              setBatchVisible(true);
+            }}
             style={isMobile ? { width: '100%' } : undefined}
           >
             {t('批量应用当前模型价格')}
@@ -907,6 +929,27 @@ export default function ModelPricingEditor({
           <div className='text-xs text-gray-500 mt-3'>
             {t(
               '适合同系列模型一起定价，例如把 gpt-5.1 的价格批量同步到 gpt-5.1-high、gpt-5.1-low 等模型。',
+            )}
+          </div>
+        ) : null}
+        {batchCanCopyAdvancedRules ? (
+          <div className='mt-4'>
+            <Checkbox
+              checked={batchCopyAdvancedRules}
+              onChange={(event) =>
+                setBatchCopyAdvancedRules(event.target.checked)
+              }
+            >
+              {t('同时复制高级规则内容')}
+            </Checkbox>
+            {batchCopyAdvancedRules ? (
+              <div className='text-xs text-amber-600 mt-2'>
+                {t('会覆盖已勾选模型原有高级规则，保存后这些模型将使用当前模型的高级规则。')}
+              </div>
+            ) : (
+              <div className='text-xs text-gray-500 mt-2'>
+                {t('不复制规则内容时，已勾选模型必须已经配置高级规则。')}
+              </div>
             )}
           </div>
         ) : null}

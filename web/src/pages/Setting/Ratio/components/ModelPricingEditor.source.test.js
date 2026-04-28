@@ -125,7 +125,14 @@ test('pricing editor confirms billing mode changes in the price settings page be
   );
   assert.match(
     source,
-    /title:\s*t\(batchBillingModeConfirmation\.title\)[\s\S]*content:\s*t\(batchBillingModeConfirmation\.content\)/,
+    /title:\s*t\(batchBillingModeConfirmation\.title\)[\s\S]*<div>\{t\(batchBillingModeConfirmation\.content\)\}<\/div>/,
+  );
+  assert.match(source, /batchWillCopyAdvancedRules/);
+  assert.match(source, /copyAdvancedRules:\s*batchWillCopyAdvancedRules/);
+  assert.match(source, /t\('同时复制高级规则内容'\)/);
+  assert.match(
+    source,
+    /t\('将同时复制当前模型的高级规则内容，并覆盖已勾选模型原有高级规则。'\)/,
   );
   assert.match(source, /onOk=\{handleBatchApplyConfirm\}/);
   assert.match(

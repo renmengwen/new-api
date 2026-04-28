@@ -135,6 +135,61 @@ export const shouldPersistAdvancedPricingMode = ({
   return Boolean(model.hasExplicitBillingMode) || dirtySet.has(model.name);
 };
 
+const isPlainObject = (value) =>
+  value && typeof value === 'object' && !Array.isArray(value);
+
+const cloneAdvancedPricingRuleSet = (ruleSet) => {
+  if (!isPlainObject(ruleSet)) {
+    return null;
+  }
+  return JSON.parse(JSON.stringify(ruleSet));
+};
+
+const cloneAdvancedPricingRulesMap = (rulesMap) => {
+  if (!isPlainObject(rulesMap)) {
+    return {};
+  }
+
+  return Object.entries(rulesMap).reduce((result, [modelName, ruleSet]) => {
+    const clonedRuleSet = cloneAdvancedPricingRuleSet(ruleSet);
+    if (clonedRuleSet) {
+      result[modelName] = clonedRuleSet;
+    }
+    return result;
+  }, {});
+};
+
+export const copyAdvancedPricingRulesForModels = ({
+  sourceModelName,
+  targetModelNames = [],
+  rulesMap = {},
+}) => {
+  const nextRulesMap = cloneAdvancedPricingRulesMap(rulesMap);
+  const sourceRuleSet = cloneAdvancedPricingRuleSet(
+    nextRulesMap[sourceModelName],
+  );
+  const advancedRuleType =
+    typeof sourceRuleSet?.rule_type === 'string' ? sourceRuleSet.rule_type : '';
+
+  if (!hasValue(advancedRuleType)) {
+    return {
+      rulesMap: nextRulesMap,
+      advancedRuleType: '',
+    };
+  }
+
+  targetModelNames.forEach((modelName) => {
+    if (modelName) {
+      nextRulesMap[modelName] = cloneAdvancedPricingRuleSet(sourceRuleSet);
+    }
+  });
+
+  return {
+    rulesMap: nextRulesMap,
+    advancedRuleType,
+  };
+};
+
 export const buildAdvancedPricingModePayload = ({
   latestModeMap,
   latestRulesMap,
@@ -191,4 +246,37 @@ export const buildAdvancedPricingModePayload = ({
   });
 
   return normalizedLatestModeMap;
+};
+
+export const buildAdvancedPricingConfigPayloadForPricingEditor = ({
+  latestModeMap,
+  latestRulesMap,
+  draftRulesMap = {},
+  copiedRuleNames = [],
+  models,
+  dirtyModeNames = [],
+}) => {
+  const copiedSet =
+    copiedRuleNames instanceof Set ? copiedRuleNames : new Set(copiedRuleNames);
+  const rulesMap = cloneAdvancedPricingRulesMap(latestRulesMap);
+  const normalizedDraftRulesMap = cloneAdvancedPricingRulesMap(draftRulesMap);
+
+  copiedSet.forEach((modelName) => {
+    const copiedRuleSet = normalizedDraftRulesMap[modelName];
+    if (canUseAdvancedBilling({ advancedRuleType: copiedRuleSet?.rule_type })) {
+      rulesMap[modelName] = copiedRuleSet;
+      return;
+    }
+    delete rulesMap[modelName];
+  });
+
+  return {
+    billing_mode: buildAdvancedPricingModePayload({
+      latestModeMap,
+      latestRulesMap: rulesMap,
+      models,
+      dirtyModeNames,
+    }),
+    rules: rulesMap,
+  };
 };

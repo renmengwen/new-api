@@ -61,7 +61,7 @@ test('advanced pricing rules state prefers canonical AdvancedPricingConfig while
   );
   assert.match(
     source,
-    /return buildMediaTaskPreview\(selectedAdvancedConfig\.rules, previewInput\)/,
+    /return buildMediaTaskPreview\(\s*selectedAdvancedConfig\.rules,\s*previewInput,\s*selectedAdvancedConfig\.taskType,\s*\)/,
   );
   assert.match(
     source,

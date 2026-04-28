@@ -31,8 +31,10 @@ import {
   BILLING_MODE_ADVANCED,
   BILLING_MODE_PER_REQUEST,
   BILLING_MODE_PER_TOKEN,
+  buildAdvancedPricingConfigPayloadForPricingEditor,
   buildAdvancedPricingModePayload,
   canUseAdvancedBilling,
+  copyAdvancedPricingRulesForModels,
   getAdvancedRuleTypeText,
   hasValue,
   isBasePricingUnset,
@@ -652,6 +654,10 @@ export function useModelPricingEditorState({
   const [conflictOnly, setConflictOnly] = useState(false);
   const [optionalFieldToggles, setOptionalFieldToggles] = useState({});
   const [billingModeDirtyNames, setBillingModeDirtyNames] = useState(new Set());
+  const [advancedPricingRules, setAdvancedPricingRules] = useState({});
+  const [copiedAdvancedRuleNames, setCopiedAdvancedRuleNames] = useState(
+    new Set(),
+  );
 
   useEffect(() => {
     const canonicalAdvancedPricingConfig = parseAdvancedPricingConfigOption(
@@ -710,7 +716,9 @@ export function useModelPricingEditorState({
         return acc;
       }, {}),
     );
+    setAdvancedPricingRules(sourceMaps.AdvancedPricingRules);
     setBillingModeDirtyNames(new Set());
+    setCopiedAdvancedRuleNames(new Set());
     setSelectedModelName((previous) => {
       if (previous && nextModels.some((model) => model.name === previous)) {
         return previous;
@@ -1059,7 +1067,7 @@ export function useModelPricingEditorState({
     }
   };
 
-  const applySelectedModelPricing = () => {
+  const applySelectedModelPricing = ({ copyAdvancedRules = true } = {}) => {
     if (!selectedModel) {
       showError(t('请先选择一个作为模板的模型'));
       return false;
@@ -1070,8 +1078,26 @@ export function useModelPricingEditorState({
     }
 
     const sourceToggles = optionalFieldToggles[selectedModel.name] || {};
+    const shouldCopyAdvancedRules =
+      selectedModel.billingMode === BILLING_MODE_ADVANCED && copyAdvancedRules;
+    const advancedPricingCopyState = shouldCopyAdvancedRules
+      ? copyAdvancedPricingRulesForModels({
+          sourceModelName: selectedModel.name,
+          targetModelNames: selectedModelNames,
+          rulesMap: advancedPricingRules,
+        })
+      : null;
+
+    if (
+      shouldCopyAdvancedRules &&
+      !hasValue(advancedPricingCopyState.advancedRuleType)
+    ) {
+      showError(t('当前模型未配置高级规则，无法切换到高级规则计费模式'));
+      return false;
+    }
+
     const invalidAdvancedTargets =
-      selectedModel.billingMode === BILLING_MODE_ADVANCED
+      selectedModel.billingMode === BILLING_MODE_ADVANCED && !shouldCopyAdvancedRules
         ? selectedModelNames.filter((modelName) => {
             const targetModel = models.find((item) => item.name === modelName);
             return targetModel && !canUseAdvancedBilling(targetModel);
@@ -1106,6 +1132,11 @@ export function useModelPricingEditorState({
           audioInputPrice: selectedModel.audioInputPrice,
           audioOutputPrice: selectedModel.audioOutputPrice,
         };
+
+        if (shouldCopyAdvancedRules) {
+          nextModel.advancedRuleType = advancedPricingCopyState.advancedRuleType;
+          nextModel.hasInvalidExplicitAdvancedMode = false;
+        }
 
         if (
           nextModel.billingMode === BILLING_MODE_PER_TOKEN &&
@@ -1142,6 +1173,16 @@ export function useModelPricingEditorState({
       });
       return next;
     });
+
+    if (shouldCopyAdvancedRules) {
+      setAdvancedPricingRules(advancedPricingCopyState.rulesMap);
+      setCopiedAdvancedRuleNames((previous) => {
+        const next = new Set(previous);
+        selectedModelNames.forEach((modelName) => next.add(modelName));
+        return next;
+      });
+    }
+
     markBillingModesDirty(changedBillingModeNames);
 
     showSuccess(
@@ -1191,19 +1232,34 @@ export function useModelPricingEditorState({
         });
       }
 
-      output.AdvancedPricingMode = buildAdvancedPricingModePayload({
-        latestModeMap:
-          Object.keys(latestCanonicalAdvancedPricingConfig.billing_mode).length >
-          0
-            ? latestCanonicalAdvancedPricingConfig.billing_mode
-            : parseOptionJSON(latestOptionsByKey.AdvancedPricingMode),
-        latestRulesMap:
-          Object.keys(latestCanonicalAdvancedPricingConfig.rules).length > 0
-            ? latestCanonicalAdvancedPricingConfig.rules
-            : parseOptionJSON(latestOptionsByKey.AdvancedPricingRules),
-        models,
-        dirtyModeNames: billingModeDirtyNames,
-      });
+      const latestAdvancedPricingModeMap =
+        Object.keys(latestCanonicalAdvancedPricingConfig.billing_mode).length >
+        0
+          ? latestCanonicalAdvancedPricingConfig.billing_mode
+          : parseOptionJSON(latestOptionsByKey.AdvancedPricingMode);
+      const latestAdvancedPricingRulesMap =
+        Object.keys(latestCanonicalAdvancedPricingConfig.rules).length > 0
+          ? latestCanonicalAdvancedPricingConfig.rules
+          : parseOptionJSON(latestOptionsByKey.AdvancedPricingRules);
+
+      if (copiedAdvancedRuleNames.size > 0) {
+        output.AdvancedPricingConfig =
+          buildAdvancedPricingConfigPayloadForPricingEditor({
+            latestModeMap: latestAdvancedPricingModeMap,
+            latestRulesMap: latestAdvancedPricingRulesMap,
+            draftRulesMap: advancedPricingRules,
+            copiedRuleNames: copiedAdvancedRuleNames,
+            models,
+            dirtyModeNames: billingModeDirtyNames,
+          });
+      } else {
+        output.AdvancedPricingMode = buildAdvancedPricingModePayload({
+          latestModeMap: latestAdvancedPricingModeMap,
+          latestRulesMap: latestAdvancedPricingRulesMap,
+          models,
+          dirtyModeNames: billingModeDirtyNames,
+        });
+      }
 
       const requestQueue = Object.entries(output).map(([key, value]) =>
         API.put('/api/option/', {

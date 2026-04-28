@@ -26,7 +26,9 @@ import {
   BILLING_MODE_CHANGE_CONFIRM_TITLE,
   BILLING_MODE_PER_REQUEST,
   BILLING_MODE_PER_TOKEN,
+  buildAdvancedPricingConfigPayloadForPricingEditor,
   buildAdvancedPricingModePayload,
+  copyAdvancedPricingRulesForModels,
   canUseAdvancedBilling,
   hasEditableFixedPricingConfig,
   isBasePricingUnset,
@@ -243,6 +245,82 @@ test('buildAdvancedPricingModePayload does not write advanced mode back for dirt
   assert.deepEqual(merged, {
     dirty_without_rule: BILLING_MODE_PER_REQUEST,
   });
+});
+
+test('copyAdvancedPricingRulesForModels deep copies source rules to selected targets', () => {
+  const sourceRuleSet = {
+    rule_type: 'text_segment',
+    segments: [
+      {
+        priority: 10,
+        input_min: 0,
+        input_max: 100,
+        input_price: 1.2,
+      },
+    ],
+  };
+  const result = copyAdvancedPricingRulesForModels({
+    sourceModelName: 'source-model',
+    targetModelNames: ['target-model', 'other-target'],
+    rulesMap: {
+      'source-model': sourceRuleSet,
+      'target-model': {
+        rule_type: 'media_task',
+        segments: [{ priority: 1, unit_price: 0.5 }],
+      },
+    },
+  });
+
+  assert.deepEqual(result.rulesMap['target-model'], sourceRuleSet);
+  assert.deepEqual(result.rulesMap['other-target'], sourceRuleSet);
+  assert.equal(result.advancedRuleType, 'text_segment');
+  assert.notEqual(result.rulesMap['target-model'], sourceRuleSet);
+  assert.notEqual(result.rulesMap['target-model'].segments, sourceRuleSet.segments);
+});
+
+test('buildAdvancedPricingConfigPayloadForPricingEditor includes copied advanced rules before validating advanced modes', () => {
+  const copiedRuleSet = {
+    rule_type: 'text_segment',
+    segments: [{ priority: 10, input_min: 0, input_price: 1.2 }],
+  };
+  const payload = buildAdvancedPricingConfigPayloadForPricingEditor({
+    latestModeMap: {
+      existing: BILLING_MODE_PER_REQUEST,
+    },
+    latestRulesMap: {
+      existing: {
+        rule_type: 'media_task',
+        segments: [{ priority: 1, unit_price: 0.5 }],
+      },
+    },
+    draftRulesMap: {
+      target: copiedRuleSet,
+    },
+    copiedRuleNames: new Set(['target']),
+    models: [
+      {
+        name: 'target',
+        billingMode: BILLING_MODE_ADVANCED,
+        hasExplicitBillingMode: false,
+      },
+    ],
+    dirtyModeNames: new Set(['target']),
+  });
+
+  assert.deepEqual(payload, {
+    billing_mode: {
+      existing: BILLING_MODE_PER_REQUEST,
+      target: BILLING_MODE_ADVANCED,
+    },
+    rules: {
+      existing: {
+        rule_type: 'media_task',
+        segments: [{ priority: 1, unit_price: 0.5 }],
+      },
+      target: copiedRuleSet,
+    },
+  });
+  assert.notEqual(payload.rules.target, copiedRuleSet);
 });
 
 test('advanced availability and unset state require a real advanced rule type', () => {

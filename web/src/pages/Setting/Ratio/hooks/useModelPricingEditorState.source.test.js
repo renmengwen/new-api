@@ -40,7 +40,7 @@ test('pricing state hook resolves visible models separately from full-model save
   assert.doesNotMatch(source, /ModelBillingMode/);
 });
 
-test('pricing state hook reads advanced pricing mode and rules while keeping advanced rules read-only on save', () => {
+test('pricing state hook reads advanced pricing mode and can persist copied advanced rules on save', () => {
   assert.match(source, /options\.AdvancedPricingConfig/);
   assert.match(source, /canonicalAdvancedPricingConfig/);
   assert.match(
@@ -63,15 +63,41 @@ test('pricing state hook reads advanced pricing mode and rules while keeping adv
   );
   assert.match(
     source,
-    /output\.AdvancedPricingMode = buildAdvancedPricingModePayload\(\{/,
+    /const \[advancedPricingRules,\s*setAdvancedPricingRules\] = useState\(\{\}\);/,
   );
   assert.match(
     source,
-    /latestModeMap:\s*Object\.keys\(latestCanonicalAdvancedPricingConfig\.billing_mode\)\.length[\s\S]*latestCanonicalAdvancedPricingConfig\.billing_mode[\s\S]*parseOptionJSON\(latestOptionsByKey\.AdvancedPricingMode\)/,
+    /const \[copiedAdvancedRuleNames,\s*setCopiedAdvancedRuleNames\] = useState\(/,
+  );
+  assert.match(source, /copyAdvancedPricingRulesForModels\(\{/);
+  assert.match(source, /setAdvancedPricingRules\(advancedPricingCopyState\.rulesMap\)/);
+  assert.match(
+    source,
+    /output\.AdvancedPricingConfig =\s*buildAdvancedPricingConfigPayloadForPricingEditor\(\{/,
   );
   assert.match(
     source,
-    /latestRulesMap:\s*Object\.keys\(latestCanonicalAdvancedPricingConfig\.rules\)\.length[\s\S]*latestCanonicalAdvancedPricingConfig\.rules[\s\S]*parseOptionJSON\(latestOptionsByKey\.AdvancedPricingRules\)/,
+    /if \(copiedAdvancedRuleNames\.size > 0\) \{[\s\S]*output\.AdvancedPricingConfig =\s*buildAdvancedPricingConfigPayloadForPricingEditor\(\{/,
+  );
+  assert.match(
+    source,
+    /\} else \{[\s\S]*output\.AdvancedPricingMode = buildAdvancedPricingModePayload\(\{/,
+  );
+  assert.match(
+    source,
+    /latestModeMap:\s*latestAdvancedPricingModeMap/,
+  );
+  assert.match(
+    source,
+    /latestRulesMap:\s*latestAdvancedPricingRulesMap/,
+  );
+  assert.match(
+    source,
+    /draftRulesMap:\s*advancedPricingRules,/,
+  );
+  assert.match(
+    source,
+    /copiedRuleNames:\s*copiedAdvancedRuleNames,/,
   );
   assert.match(
     source,
