@@ -228,6 +228,23 @@ export function getEffectiveModelEnabled(settings, record) {
   return record?.enabled !== false;
 }
 
+export function getModelMonitorResultCounts(summary) {
+  const total = Number(summary?.total_models) || 0;
+  const success = Number(summary?.healthy_models) || 0;
+  const failed =
+    (Number(summary?.partial_models) || 0) +
+    (Number(summary?.unavailable_models) || 0);
+
+  return { total, success, failed };
+}
+
+export function buildModelMonitorResultMessage(summary, t) {
+  return t(
+    '测试完成：总模型 {{total}}，成功 {{success}}，失败 {{failed}}',
+    getModelMonitorResultCounts(summary),
+  );
+}
+
 export function buildModelOverrideSettings(settings, modelName, patch) {
   return {
     ...(settings || {}),

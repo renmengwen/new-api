@@ -27,6 +27,7 @@ import {
   getEffectiveModelEnabled,
   getModelCopyText,
   getModelOverride,
+  getModelMonitorResultCounts,
   getModelStatusDisplay,
   isModelExcludedByPatterns,
   textToPatterns,
@@ -138,6 +139,25 @@ test('excluded model patterns force scheduled testing off', () => {
       enabled: true,
     }),
     false,
+  );
+});
+
+test('getModelMonitorResultCounts summarizes manual test result by model status', () => {
+  assert.deepEqual(
+    getModelMonitorResultCounts({
+      total_models: 6,
+      healthy_models: 2,
+      partial_models: 1,
+      unavailable_models: 2,
+      skipped_models: 1,
+      success_count: 9,
+      failed_count: 4,
+    }),
+    {
+      total: 6,
+      success: 2,
+      failed: 3,
+    },
   );
 });
 

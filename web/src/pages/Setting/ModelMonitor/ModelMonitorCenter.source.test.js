@@ -23,3 +23,21 @@ test('model monitor settings save applies the mutation response before refetchin
   assert.match(source, /const \{ success, message, data \} = res\.data;/);
   assert.match(source, /if \(data\) \{\s+applyMonitorData\(data\);\s+\} else \{\s+await fetchMonitorData\(\);\s+\}/);
 });
+
+test('model monitor table shows model last tested time', () => {
+  assert.match(source, /title: t\('最后测试时间'\)/);
+  assert.match(source, /dataIndex: 'tested_at'/);
+  assert.match(source, /render: \(value\) => formatTestedAt\(value\)/);
+});
+
+test('manual model monitor test reports final model result summary', () => {
+  assert.match(source, /buildModelMonitorResultMessage/);
+  assert.match(source, /finalData = await waitForManualTestResult\(\);/);
+  assert.match(source, /showSuccess\(buildModelMonitorResultMessage\(finalData\.summary, t\)\)/);
+});
+
+test('model monitor page refreshes state while scheduled monitoring is enabled', () => {
+  assert.match(source, /setInterval\(\(\) => \{/);
+  assert.match(source, /fetchMonitorData\(\{ showLoading: false, disableDuplicate: true \}\)/);
+  assert.match(source, /settings\.enabled/);
+});

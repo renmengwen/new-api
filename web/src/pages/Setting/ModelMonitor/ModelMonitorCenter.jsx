@@ -48,6 +48,7 @@ import { API, showError, showSuccess } from '../../../helpers';
 import { useUserPermissions } from '../../../hooks/common/useUserPermissions';
 import {
   buildChannelTagDisplays,
+  buildModelMonitorResultMessage,
   buildModelOverrideSettings,
   formatResponseTime,
   getChannelCopyText,
@@ -254,7 +255,10 @@ export default function ModelMonitorCenter() {
     setItems(Array.isArray(data?.items) ? data.items : []);
   }, []);
 
-  const fetchMonitorData = useCallback(async ({ showLoading = true } = {}) => {
+  const fetchMonitorData = useCallback(async ({
+    showLoading = true,
+    disableDuplicate = false,
+  } = {}) => {
     if (!canRead) {
       return null;
     }
@@ -263,7 +267,7 @@ export default function ModelMonitorCenter() {
     }
     setLoadError('');
     try {
-      const res = await API.get('/api/model_monitor');
+      const res = await API.get('/api/model_monitor', { disableDuplicate });
       const { success, message, data } = res.data;
       if (!success) {
         setLoadError(message || t('加载失败'));
@@ -290,6 +294,29 @@ export default function ModelMonitorCenter() {
     }
     fetchMonitorData();
   }, [canRead, fetchMonitorData, permissionLoading]);
+
+  useEffect(() => {
+    if (permissionLoading || !canRead || !settings.enabled || testing) {
+      return undefined;
+    }
+    const intervalMinutes =
+      Number(settings.interval_minutes) || DEFAULT_SETTINGS.interval_minutes;
+    const intervalMs = Math.min(
+      Math.max(intervalMinutes * 60 * 1000, 30000),
+      60000,
+    );
+    const timer = setInterval(() => {
+      fetchMonitorData({ showLoading: false, disableDuplicate: true });
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }, [
+    canRead,
+    fetchMonitorData,
+    permissionLoading,
+    settings.enabled,
+    settings.interval_minutes,
+    testing,
+  ]);
 
   const modelRows = useMemo(
     () =>
@@ -429,11 +456,15 @@ export default function ModelMonitorCenter() {
     const maxAttempts = 120;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
-      const data = await fetchMonitorData({ showLoading: false });
+      const data = await fetchMonitorData({
+        showLoading: false,
+        disableDuplicate: true,
+      });
       if (!data?.running) {
-        return;
+        return data;
       }
     }
+    return null;
   }, [fetchMonitorData]);
 
   const runManualTest = async () => {
@@ -452,11 +483,18 @@ export default function ModelMonitorCenter() {
       if (data) {
         applyMonitorData(data);
       }
-      showSuccess(message || t('已触发手动测试'));
+      showSuccess(message || t('已触发手动测试，测试结果会自动刷新'));
+      let finalData = data;
       if (data?.running !== false) {
-        await waitForManualTestResult();
+        finalData = await waitForManualTestResult();
       } else {
-        await fetchMonitorData({ showLoading: false });
+        finalData = await fetchMonitorData({
+          showLoading: false,
+          disableDuplicate: true,
+        });
+      }
+      if (finalData?.summary) {
+        showSuccess(buildModelMonitorResultMessage(finalData.summary, t));
       }
     } catch (error) {
       showError(t('测试失败'));
@@ -750,6 +788,12 @@ export default function ModelMonitorCenter() {
       width: 110,
       render: (value, record) =>
         renderStatusTag(value, getModelEnabled(displaySettings, record)),
+    },
+    {
+      title: t('最后测试时间'),
+      dataIndex: 'tested_at',
+      width: 180,
+      render: (value) => formatTestedAt(value),
     },
     {
       title: t('成功/失败'),
