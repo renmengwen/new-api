@@ -143,6 +143,14 @@ func (s *ModelMonitorSetting) ModelEnabled(modelName string) bool {
 	return strings.TrimSpace(modelName) != ""
 }
 
+func (s *ModelMonitorSetting) ModelExcluded(modelName string) bool {
+	if s == nil {
+		return false
+	}
+	s.Normalize()
+	return s.modelExcluded(modelName)
+}
+
 func (s *ModelMonitorSetting) TimeoutSecondsForModel(modelName string) int {
 	if s == nil {
 		return defaultModelMonitorTimeoutSeconds

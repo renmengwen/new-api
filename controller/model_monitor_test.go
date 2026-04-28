@@ -309,6 +309,45 @@ func TestBuildModelMonitorStateMarksDisabledModelsSkipped(t *testing.T) {
 	require.Equal(t, 1, state.Summary.SkippedModels)
 }
 
+func TestBuildModelMonitorStateOmitsExcludedPatternModels(t *testing.T) {
+	disabled := false
+	targets := []modelMonitorTarget{
+		{
+			Model: "gpt-4o",
+			Channels: []modelMonitorChannelTarget{
+				{Channel: &model.Channel{Id: 1, Name: "channel-a", Type: 1, Status: common.ChannelStatusEnabled}},
+			},
+		},
+		{
+			Model: "legacy-chat",
+			Channels: []modelMonitorChannelTarget{
+				{Channel: &model.Channel{Id: 2, Name: "channel-b", Type: 1, Status: common.ChannelStatusEnabled}},
+			},
+		},
+		{
+			Model: "openai/gpt-image-1",
+			Channels: []modelMonitorChannelTarget{
+				{Channel: &model.Channel{Id: 3, Name: "channel-c", Type: 1, Status: common.ChannelStatusEnabled}},
+			},
+		},
+	}
+
+	state := buildModelMonitorStateFromTargets(&operation_setting.ModelMonitorSetting{
+		ExcludedModelPatterns: []string{"*image*"},
+		ModelOverrides: map[string]operation_setting.ModelMonitorModelOverride{
+			"legacy-chat": {Enabled: &disabled},
+		},
+	}, targets, map[modelMonitorStatusKey]modelMonitorStatusRecord{})
+
+	require.Len(t, state.Items, 2)
+	require.Equal(t, []string{"gpt-4o", "legacy-chat"}, []string{state.Items[0].ModelName, state.Items[1].ModelName})
+	require.True(t, state.Items[0].Enabled)
+	require.False(t, state.Items[1].Enabled)
+	require.Equal(t, modelMonitorStatusSkipped, state.Items[1].Status)
+	require.Equal(t, 2, state.Summary.TotalModels)
+	require.Equal(t, 1, state.Summary.SkippedModels)
+}
+
 func TestBuildModelMonitorStateLeavesUntestedTargetsUnknown(t *testing.T) {
 	targets := []modelMonitorTarget{
 		{

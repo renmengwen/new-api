@@ -365,6 +365,9 @@ func detailFromStatusRecord(target modelMonitorChannelTarget, record modelMonito
 func buildModelMonitorStateFromTargets(setting *operation_setting.ModelMonitorSetting, targets []modelMonitorTarget, statusMap map[modelMonitorStatusKey]modelMonitorStatusRecord) modelMonitorStateResponse {
 	items := make([]modelMonitorItem, 0, len(targets))
 	for _, target := range targets {
+		if setting != nil && setting.ModelExcluded(target.Model) {
+			continue
+		}
 		enabled := modelMonitorSettingModelEnabled(setting, target.Model)
 		details := make([]modelMonitorChannelDetail, 0, len(target.Channels))
 		for _, channelTarget := range target.Channels {
