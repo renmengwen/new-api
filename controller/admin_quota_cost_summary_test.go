@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -77,6 +78,29 @@ func requireQuotaCostSummaryItem(t *testing.T, items []dto.AdminQuotaCostSummary
 	}
 	require.Failf(t, "missing quota cost summary item", "date=%s model=%s vendor=%s", date, modelName, vendorName)
 	return dto.AdminQuotaCostSummaryItem{}
+}
+
+func seedQuotaCostSummaryRows(t *testing.T, db *gorm.DB, total int, modelPrefix string) model.User {
+	t.Helper()
+	user := seedQuotaUser(t, db, modelPrefix+"_user", 0)
+	logs := make([]model.Log, 0, total)
+	for index := 0; index < total; index++ {
+		logs = append(logs, model.Log{
+			UserId:           user.Id,
+			Username:         user.Username,
+			Type:             model.LogTypeConsume,
+			CreatedAt:        1714237200 + int64(index),
+			ModelName:        fmt.Sprintf("%s-%04d", modelPrefix, index),
+			TokenName:        "token-" + modelPrefix,
+			PromptTokens:     1,
+			CompletionTokens: 1,
+			Quota:            1,
+			ChannelId:        7,
+			Group:            "default",
+		})
+	}
+	require.NoError(t, db.CreateInBatches(logs, 500).Error)
+	return user
 }
 
 func TestListQuotaCostSummaryAggregatesByDateModelAndVendor(t *testing.T) {
@@ -673,6 +697,47 @@ func TestExportQuotaCostSummaryWritesExcel(t *testing.T) {
 		"0.000000",
 		"0.001000",
 	}, rows[1])
+}
+
+func TestExportQuotaCostSummaryAutoKeepsRequestedLimit2001Sync(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	setQuotaCostSummaryQuotaPerUnit(t, 1000000)
+	seedQuotaCostSummaryRows(t, db, 2001, "sync-limit-model")
+
+	ctx, recorder := newAdminQuotaContext(t, http.MethodPost, "/api/admin/quota/cost-summary/export-auto", map[string]any{
+		"start_timestamp": 1714233600,
+		"end_timestamp":   1714320000,
+		"limit":           2001,
+	})
+
+	ExportQuotaCostSummaryAuto(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", recorder.Header().Get("Content-Type"))
+
+	workbook := openWorkbookBytes(t, recorder.Body.Bytes())
+	rows, err := workbook.GetRows("成本汇总")
+	require.NoError(t, err)
+	require.Len(t, rows, 2002)
+}
+
+func TestDecideQuotaCostSummarySmartExportUses5000ThresholdForRequestedLimit5001(t *testing.T) {
+	setupAdminQuotaTestDB(t)
+
+	decision, err := service.DecideQuotaCostSummarySmartExport(999, common.RoleRootUser, dto.AdminQuotaCostSummaryExportRequest{
+		AdminQuotaCostSummaryQuery: dto.AdminQuotaCostSummaryQuery{
+			StartTimestamp: 1714233600,
+			EndTimestamp:   1714320000,
+		},
+		Limit: 5001,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, service.SmartExportJobTypeQuotaCostSummary, decision.JobType)
+	require.Equal(t, service.SmartExportModeAsync, decision.Mode)
+	require.Equal(t, service.SmartExportReasonExceedsThreshold, decision.Reason)
+	require.Equal(t, service.SmartExportQuotaCostSummaryThreshold, decision.Threshold)
+	require.Equal(t, 5001, decision.ProbedRows)
 }
 
 func TestCreateQuotaCostSummaryExportJobCreatesAsyncJob(t *testing.T) {

@@ -129,13 +129,38 @@ func DecideQuotaCostSummarySmartExport(requesterUserID int, requesterRole int, r
 		return SmartExportDecision{}, err
 	}
 
-	return decideSmartExportWithProbe(SmartExportJobTypeQuotaCostSummary, SmartExportQuotaCostSummaryThreshold, req.Limit, func(limit int) (int, error) {
-		items, err := ListQuotaCostSummaryForExport(query, requesterUserID, requesterRole, limit)
-		if err != nil {
-			return 0, err
+	threshold := SmartExportQuotaCostSummaryThreshold
+	probeLimit := threshold + 1
+	if req.Limit > 0 {
+		if req.Limit > threshold {
+			return SmartExportDecision{
+				JobType:    SmartExportJobTypeQuotaCostSummary,
+				Mode:       SmartExportModeAsync,
+				Reason:     SmartExportReasonExceedsThreshold,
+				Threshold:  threshold,
+				ProbedRows: req.Limit,
+			}, nil
 		}
-		return len(items), nil
-	})
+		probeLimit = req.Limit
+	}
+
+	items, err := ListQuotaCostSummaryForExport(query, requesterUserID, requesterRole, probeLimit)
+	if err != nil {
+		return SmartExportDecision{}, err
+	}
+
+	decision := SmartExportDecision{
+		JobType:    SmartExportJobTypeQuotaCostSummary,
+		Mode:       SmartExportModeSync,
+		Reason:     SmartExportReasonWithinThreshold,
+		Threshold:  threshold,
+		ProbedRows: len(items),
+	}
+	if len(items) > threshold {
+		decision.Mode = SmartExportModeAsync
+		decision.Reason = SmartExportReasonExceedsThreshold
+	}
+	return decision, nil
 }
 
 func DecideAdminAnalyticsSmartExport(requesterUserID int, requesterRole int, req dto.AdminAnalyticsExportRequest) (SmartExportDecision, error) {

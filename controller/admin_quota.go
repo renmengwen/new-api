@@ -221,7 +221,7 @@ func exportQuotaLedgerByRequest(c *gin.Context, requesterUserID int, requesterRo
 }
 
 func exportQuotaCostSummaryByRequest(c *gin.Context, requesterUserID int, requesterRole int, query dto.AdminQuotaCostSummaryQuery, limit int) {
-	items, err := service.ListQuotaCostSummaryForExport(query, requesterUserID, requesterRole, normalizeExportLimit(limit))
+	items, err := service.ListQuotaCostSummaryForExport(query, requesterUserID, requesterRole, normalizeQuotaCostSummaryExportLimit(limit))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -239,6 +239,13 @@ func exportQuotaCostSummaryByRequest(c *gin.Context, requesterUserID int, reques
 	}
 
 	streamExcelFile(c, fileName, content)
+}
+
+func normalizeQuotaCostSummaryExportLimit(limit int) int {
+	if limit <= 0 || limit > service.SmartExportQuotaCostSummaryThreshold {
+		return service.SmartExportQuotaCostSummaryThreshold
+	}
+	return limit
 }
 
 func CreateQuotaLedgerExportJob(c *gin.Context) {
