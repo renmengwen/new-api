@@ -44,6 +44,7 @@ import {
 import { CHANNEL_OPTIONS } from '../../../constants/channel.constants';
 import { stringToColor } from '../../../helpers/render';
 import { Avatar, Space } from '@douyinfe/semi-ui';
+import { isTaskResultPreviewUrl } from './TaskLogsUrl';
 
 const colors = [
   'amber',
@@ -418,7 +419,7 @@ export const getTaskLogsColumns = ({
         // 视频预览：优先使用 result_url，兼容旧数据 fail_reason 中的 URL
         const isSuccess = record.status === 'SUCCESS';
         const resultUrl = record.result_url;
-        const hasResultUrl = typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
+        const hasResultUrl = isTaskResultPreviewUrl(resultUrl);
         if (isSuccess && record.action === TASK_ACTION_IMAGE_GENERATION && hasResultUrl) {
           return (
             <a href={resultUrl} target='_blank' rel='noreferrer'>
