@@ -31,20 +31,20 @@ type quotaCostSummaryAccumulator struct {
 }
 
 type quotaCostSummaryOther struct {
-	ModelRatio            float64 `json:"model_ratio"`
-	ModelPrice            float64 `json:"model_price"`
-	BillingMode           string  `json:"billing_mode"`
-	GroupRatio            float64 `json:"group_ratio"`
-	UserGroupRatio        float64 `json:"user_group_ratio"`
-	CompletionRatio       float64 `json:"completion_ratio"`
-	CacheTokens           int64   `json:"cache_tokens"`
-	CacheRatio            float64 `json:"cache_ratio"`
-	CacheCreationTokens   int64   `json:"cache_creation_tokens"`
-	CacheCreationRatio    float64 `json:"cache_creation_ratio"`
-	CacheCreationTokens5m int64   `json:"cache_creation_tokens_5m"`
-	CacheCreationRatio5m  float64 `json:"cache_creation_ratio_5m"`
-	CacheCreationTokens1h int64   `json:"cache_creation_tokens_1h"`
-	CacheCreationRatio1h  float64 `json:"cache_creation_ratio_1h"`
+	ModelRatio            float64  `json:"model_ratio"`
+	ModelPrice            float64  `json:"model_price"`
+	BillingMode           string   `json:"billing_mode"`
+	GroupRatio            *float64 `json:"group_ratio"`
+	UserGroupRatio        *float64 `json:"user_group_ratio"`
+	CompletionRatio       float64  `json:"completion_ratio"`
+	CacheTokens           int64    `json:"cache_tokens"`
+	CacheRatio            float64  `json:"cache_ratio"`
+	CacheCreationTokens   int64    `json:"cache_creation_tokens"`
+	CacheCreationRatio    float64  `json:"cache_creation_ratio"`
+	CacheCreationTokens5m int64    `json:"cache_creation_tokens_5m"`
+	CacheCreationRatio5m  float64  `json:"cache_creation_ratio_5m"`
+	CacheCreationTokens1h int64    `json:"cache_creation_tokens_1h"`
+	CacheCreationRatio1h  float64  `json:"cache_creation_ratio_1h"`
 }
 
 func ListQuotaCostSummary(query dto.AdminQuotaCostSummaryQuery, pageInfo *common.PageInfo, requesterUserID int, requesterRole int) ([]dto.AdminQuotaCostSummaryItem, int64, error) {
@@ -288,7 +288,7 @@ func applyQuotaCostSummaryLogToAccumulators(accumulators map[string]*quotaCostSu
 
 func applyQuotaCostSummaryLog(acc *quotaCostSummaryAccumulator, log *model.Log) {
 	other := parseQuotaCostSummaryOther(log.Other)
-	groupRatio := firstPositiveFloat(other.UserGroupRatio, other.GroupRatio, 1)
+	groupRatio := quotaCostSummaryGroupRatio(other)
 	advancedBilling := quotaCostSummaryIsAdvancedBilling(other)
 	fixedPrice := other.ModelPrice > 0 && !advancedBilling
 	inputUnitPrice := quotaCostSummaryInputUnitPrice(other)
@@ -300,6 +300,12 @@ func applyQuotaCostSummaryLog(acc *quotaCostSummaryAccumulator, log *model.Log) 
 	cacheCreateUnitPrice := inputUnitPrice * firstPositiveFloat(other.CacheCreationRatio, 0)
 	cacheCreateUnitPrice5m := inputUnitPrice * firstPositiveFloat(other.CacheCreationRatio5m, 0)
 	cacheCreateUnitPrice1h := inputUnitPrice * firstPositiveFloat(other.CacheCreationRatio1h, 0)
+	effectiveInputUnitPrice := inputUnitPrice * groupRatio
+	effectiveOutputUnitPrice := outputUnitPrice * groupRatio
+	effectiveCacheReadUnitPrice := cacheReadUnitPrice * groupRatio
+	effectiveCacheCreateUnitPrice := cacheCreateUnitPrice * groupRatio
+	effectiveCacheCreateUnitPrice5m := cacheCreateUnitPrice5m * groupRatio
+	effectiveCacheCreateUnitPrice1h := cacheCreateUnitPrice1h * groupRatio
 
 	cacheReadTokens := positiveInt64(other.CacheTokens)
 	cacheCreateTokens, cacheCreateTokens5m, cacheCreateTokens1h, cacheCreateTotalTokens := quotaCostSummaryCacheCreationTokens(other)
@@ -311,12 +317,12 @@ func applyQuotaCostSummaryLog(acc *quotaCostSummaryAccumulator, log *model.Log) 
 		nonCacheInputTokens = 0
 	}
 
-	inputCost := float64(nonCacheInputTokens) / 1000000 * inputUnitPrice * groupRatio
-	outputCost := float64(outputTokens) / 1000000 * outputUnitPrice * groupRatio
-	cacheReadCost := float64(cacheReadTokens) / 1000000 * cacheReadUnitPrice * groupRatio
-	cacheCreateCost := float64(cacheCreateTokens)/1000000*cacheCreateUnitPrice*groupRatio +
-		float64(cacheCreateTokens5m)/1000000*cacheCreateUnitPrice5m*groupRatio +
-		float64(cacheCreateTokens1h)/1000000*cacheCreateUnitPrice1h*groupRatio
+	inputCost := float64(nonCacheInputTokens) / 1000000 * effectiveInputUnitPrice
+	outputCost := float64(outputTokens) / 1000000 * effectiveOutputUnitPrice
+	cacheReadCost := float64(cacheReadTokens) / 1000000 * effectiveCacheReadUnitPrice
+	cacheCreateCost := float64(cacheCreateTokens)/1000000*effectiveCacheCreateUnitPrice +
+		float64(cacheCreateTokens5m)/1000000*effectiveCacheCreateUnitPrice5m +
+		float64(cacheCreateTokens1h)/1000000*effectiveCacheCreateUnitPrice1h
 	if fixedPrice {
 		inputCost = other.ModelPrice * groupRatio
 		outputCost = 0
@@ -336,12 +342,12 @@ func applyQuotaCostSummaryLog(acc *quotaCostSummaryAccumulator, log *model.Log) 
 	acc.item.CacheCostUSD += cacheReadCost + cacheCreateCost
 	acc.item.PaidUSD += paidUSD
 
-	addWeightedUnitPrice(&acc.inputUnitWeighted, &acc.inputUnitWeightTokens, inputUnitPrice, nonCacheInputTokens)
-	addWeightedUnitPrice(&acc.outputUnitWeighted, &acc.outputUnitWeightTokens, outputUnitPrice, outputTokens)
-	addWeightedUnitPrice(&acc.cacheReadWeighted, &acc.cacheReadWeightTokens, cacheReadUnitPrice, cacheReadTokens)
-	addWeightedUnitPrice(&acc.cacheCreateWeighted, &acc.cacheCreateWeightTokens, cacheCreateUnitPrice, cacheCreateTokens)
-	addWeightedUnitPrice(&acc.cacheCreateWeighted, &acc.cacheCreateWeightTokens, cacheCreateUnitPrice5m, cacheCreateTokens5m)
-	addWeightedUnitPrice(&acc.cacheCreateWeighted, &acc.cacheCreateWeightTokens, cacheCreateUnitPrice1h, cacheCreateTokens1h)
+	addWeightedUnitPrice(&acc.inputUnitWeighted, &acc.inputUnitWeightTokens, effectiveInputUnitPrice, nonCacheInputTokens)
+	addWeightedUnitPrice(&acc.outputUnitWeighted, &acc.outputUnitWeightTokens, effectiveOutputUnitPrice, outputTokens)
+	addWeightedUnitPrice(&acc.cacheReadWeighted, &acc.cacheReadWeightTokens, effectiveCacheReadUnitPrice, cacheReadTokens)
+	addWeightedUnitPrice(&acc.cacheCreateWeighted, &acc.cacheCreateWeightTokens, effectiveCacheCreateUnitPrice, cacheCreateTokens)
+	addWeightedUnitPrice(&acc.cacheCreateWeighted, &acc.cacheCreateWeightTokens, effectiveCacheCreateUnitPrice5m, cacheCreateTokens5m)
+	addWeightedUnitPrice(&acc.cacheCreateWeighted, &acc.cacheCreateWeightTokens, effectiveCacheCreateUnitPrice1h, cacheCreateTokens1h)
 }
 
 func finalizeQuotaCostSummaryAccumulator(acc *quotaCostSummaryAccumulator) {
@@ -364,6 +370,16 @@ func parseQuotaCostSummaryOther(otherJSON string) quotaCostSummaryOther {
 
 func quotaCostSummaryIsAdvancedBilling(other quotaCostSummaryOther) bool {
 	return strings.EqualFold(strings.TrimSpace(other.BillingMode), "advanced")
+}
+
+func quotaCostSummaryGroupRatio(other quotaCostSummaryOther) float64 {
+	if other.UserGroupRatio != nil && *other.UserGroupRatio != -1 {
+		return *other.UserGroupRatio
+	}
+	if other.GroupRatio != nil {
+		return *other.GroupRatio
+	}
+	return 1
 }
 
 func quotaCostSummaryCacheCreationTokens(other quotaCostSummaryOther) (int64, int64, int64, int64) {
