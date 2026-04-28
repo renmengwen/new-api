@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/QuantumNous/new-api/dto"
@@ -23,6 +24,24 @@ func TestIsGPTProtoAsyncImageRequestRequiresExplicitFalse(t *testing.T) {
 	}
 	if isGPTProtoAsyncImageRequest(&dto.ImageRequest{Model: "dall-e-3", EnableSyncMode: &falseValue}) {
 		t.Fatalf("non GPTProto image model should not be treated as async")
+	}
+}
+
+func TestPrepareGPTProtoAsyncImageSubmitRouteUsesNativeTextToImagePath(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelBaseUrl:    "https://example.com/api/v3/openai/gpt-image-2/text-to-image",
+			UpstreamModelName: "gpt-image-2",
+		},
+	}
+
+	prepareGPTProtoAsyncImageSubmitRoute(info, &dto.ImageRequest{Model: "gpt-image-2"})
+
+	if info.ChannelBaseUrl != "https://example.com" {
+		t.Fatalf("base URL = %q, want https://example.com", info.ChannelBaseUrl)
+	}
+	if info.RequestURLPath != "/api/v3/openai/gpt-image-2/text-to-image" {
+		t.Fatalf("request path = %q, want native text-to-image path", info.RequestURLPath)
 	}
 }
 
@@ -83,6 +102,15 @@ func TestExtractGPTProtoAsyncTaskIDFromURLsArray(t *testing.T) {
 	}
 	if taskID != "pred_urls_123" {
 		t.Fatalf("taskID = %q, want pred_urls_123", taskID)
+	}
+}
+
+func TestExtractGPTProtoAsyncTaskIDReportsMissingIDForSynchronousImageResult(t *testing.T) {
+	_, err := extractGPTProtoAsyncTaskID([]byte(`{
+		"data":[{"url":"https://example.com/generated.png"}]
+	}`))
+	if !errors.Is(err, errAsyncImageTaskIDMissing) {
+		t.Fatalf("err = %v, want errAsyncImageTaskIDMissing", err)
 	}
 }
 

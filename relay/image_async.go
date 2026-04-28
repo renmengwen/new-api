@@ -1,8 +1,9 @@
 package relay
 
 import (
+	"bytes"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -20,11 +21,36 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var errAsyncImageTaskIDMissing = errors.New("async image response missing task id")
+
 func isGPTProtoAsyncImageRequest(request *dto.ImageRequest) bool {
 	return request != nil &&
 		request.EnableSyncMode != nil &&
 		!*request.EnableSyncMode &&
 		strings.HasPrefix(request.Model, "gpt-image-2")
+}
+
+func prepareGPTProtoAsyncImageSubmitRoute(info *relaycommon.RelayInfo, request *dto.ImageRequest) {
+	if info == nil || request == nil {
+		return
+	}
+	modelName := strings.TrimSpace(info.UpstreamModelName)
+	if modelName == "" {
+		modelName = strings.TrimSpace(request.Model)
+	}
+	if modelName == "" {
+		return
+	}
+	info.ChannelBaseUrl = normalizeGPTProtoImageSubmitBaseURL(info.ChannelBaseUrl)
+	info.RequestURLPath = "/api/v3/openai/" + modelName + "/text-to-image"
+}
+
+func normalizeGPTProtoImageSubmitBaseURL(baseURL string) string {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if idx := strings.Index(baseURL, "/api/v3/"); idx >= 0 {
+		return baseURL[:idx]
+	}
+	return baseURL
 }
 
 func extractGPTProtoAsyncTaskID(responseBody []byte) (string, error) {
@@ -63,7 +89,7 @@ func extractGPTProtoAsyncTaskID(responseBody []byte) (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("gptproto async image response missing task id")
+	return "", errAsyncImageTaskIDMissing
 }
 
 func extractPredictionIDsFromURLs(rawURLs json.RawMessage) []string {
@@ -148,17 +174,22 @@ func buildImageTask(taskID string, upstreamTaskID string, responseBody []byte, i
 	return task
 }
 
-func handleGPTProtoAsyncImageResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, request *dto.ImageRequest) *types.NewAPIError {
-	defer service.CloseResponseBodyGracefully(resp)
-
+func handleGPTProtoAsyncImageResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, request *dto.ImageRequest) (bool, *types.NewAPIError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+		service.CloseResponseBodyGracefully(resp)
+		return true, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 	upstreamTaskID, err := extractGPTProtoAsyncTaskID(responseBody)
 	if err != nil {
-		return types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+		if errors.Is(err, errAsyncImageTaskIDMissing) {
+			resp.Body = io.NopCloser(bytes.NewReader(responseBody))
+			return false, nil
+		}
+		service.CloseResponseBodyGracefully(resp)
+		return true, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	defer service.CloseResponseBodyGracefully(resp)
 
 	info.Action = constant.TaskTypeImageGeneration
 	publicTaskID := model.GenerateTaskID()
@@ -182,5 +213,5 @@ func handleGPTProtoAsyncImageResponse(c *gin.Context, resp *http.Response, info 
 		"model":   request.Model,
 		"status":  task.Status,
 	})
-	return nil
+	return true, nil
 }
