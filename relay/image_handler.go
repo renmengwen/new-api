@@ -85,6 +85,10 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	statusCodeMappingStr := c.GetString("status_code_mapping")
 
+	if isGPTProtoAsyncImageRequest(request) {
+		prepareGPTProtoAsyncImageSubmitRoute(info, request)
+	}
+
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
@@ -106,7 +110,10 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		}
 	}
 	if isGPTProtoAsyncImageRequest(request) {
-		return handleGPTProtoAsyncImageResponse(c, httpResp, info, request)
+		handled, asyncErr := handleGPTProtoAsyncImageResponse(c, httpResp, info, request)
+		if handled || asyncErr != nil {
+			return asyncErr
+		}
 	}
 
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
