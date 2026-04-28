@@ -184,6 +184,12 @@ func asyncImageChargedQuota(info *relaycommon.RelayInfo) int {
 	return info.PriceData.Quota
 }
 
+func ensureGPTProtoAsyncImageTaskRelayInfo(info *relaycommon.RelayInfo) {
+	if info != nil && info.TaskRelayInfo == nil {
+		info.TaskRelayInfo = &relaycommon.TaskRelayInfo{}
+	}
+}
+
 func buildImageTask(taskID string, upstreamTaskID string, responseBody []byte, info *relaycommon.RelayInfo) *model.Task {
 	task := model.InitTask(constant.TaskPlatformGPTProtoImage, info)
 	task.TaskID = taskID
@@ -250,6 +256,7 @@ func handleGPTProtoAsyncImageResponse(c *gin.Context, resp *http.Response, info 
 	}
 	defer service.CloseResponseBodyGracefully(resp)
 
+	ensureGPTProtoAsyncImageTaskRelayInfo(info)
 	info.Action = constant.TaskTypeImageGeneration
 	publicTaskID := model.GenerateTaskID()
 	task := buildImageTask(publicTaskID, upstreamTaskID, responseBody, info)

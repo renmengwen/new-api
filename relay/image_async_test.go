@@ -8,11 +8,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestIsGPTProtoAsyncImageRequestRequiresExplicitFalse(t *testing.T) {
@@ -258,6 +262,68 @@ func TestHandleGPTProtoAsyncImageResponseRecoversInternalPanic(t *testing.T) {
 	}
 	if apiErr == nil {
 		t.Fatalf("apiErr is nil")
+	}
+}
+
+func TestHandleGPTProtoAsyncImageResponseInitializesTaskRelayInfo(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oldDB := model.DB
+	oldLogDB := model.LOG_DB
+	oldLogConsumeEnabled := common.LogConsumeEnabled
+	oldBatchUpdateEnabled := common.BatchUpdateEnabled
+	oldRedisEnabled := common.RedisEnabled
+	t.Cleanup(func() {
+		model.DB = oldDB
+		model.LOG_DB = oldLogDB
+		common.LogConsumeEnabled = oldLogConsumeEnabled
+		common.BatchUpdateEnabled = oldBatchUpdateEnabled
+		common.RedisEnabled = oldRedisEnabled
+	})
+
+	db, err := gorm.Open(sqlite.Open("file:image_async_task_relay_info?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+	if err := db.AutoMigrate(&model.Task{}, &model.User{}, &model.Channel{}); err != nil {
+		t.Fatalf("migrate test db: %v", err)
+	}
+	model.DB = db
+	model.LOG_DB = db
+	common.LogConsumeEnabled = false
+	common.BatchUpdateEnabled = false
+	common.RedisEnabled = false
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	resp := &http.Response{
+		Body: io.NopCloser(strings.NewReader(`{"data":{"id":"pred_123"}}`)),
+	}
+	info := &relaycommon.RelayInfo{
+		UserId:          1,
+		OriginModelName: "gpt-image-2",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId: 1,
+		},
+		PriceData: types.PriceData{
+			Quota:             0,
+			QuotaToPreConsume: 0,
+		},
+	}
+
+	handled, apiErr := handleGPTProtoAsyncImageResponse(c, resp, info, &dto.ImageRequest{Model: "gpt-image-2"})
+
+	if !handled {
+		t.Fatalf("handled = false, want true")
+	}
+	if apiErr != nil {
+		t.Fatalf("apiErr = %v, want nil", apiErr)
+	}
+	if info.TaskRelayInfo == nil {
+		t.Fatalf("TaskRelayInfo is nil")
+	}
+	if info.Action != constant.TaskTypeImageGeneration {
+		t.Fatalf("action = %q, want %q", info.Action, constant.TaskTypeImageGeneration)
 	}
 }
 
