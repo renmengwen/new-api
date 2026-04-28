@@ -20,7 +20,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { API, isAdmin, showError, timestamp2string } from '../../helpers';
+import {
+  API,
+  isAdmin,
+  isAgentUser,
+  showError,
+  timestamp2string,
+} from '../../helpers';
 import { getDefaultTime, getInitialTimestamp } from '../../helpers/dashboard';
 import { TIME_OPTIONS } from '../../constants/dashboard.constants';
 import { useIsMobile } from '../common/useIsMobile';
@@ -83,7 +89,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
 
   // ========== 常量 ==========
   const now = new Date();
-  const isAdminUser = isAdmin();
+  const canViewScopedDashboard = isAdmin() || isAgentUser();
 
   // ========== Panel enable flags ==========
   const apiInfoEnabled = statusState?.status?.api_info_enabled ?? true;
@@ -164,7 +170,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
       let localStartTimestamp = Date.parse(start_timestamp) / 1000;
       let localEndTimestamp = Date.parse(end_timestamp) / 1000;
 
-      if (isAdminUser) {
+      if (canViewScopedDashboard) {
         url = `/api/data/?username=${username}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&default_time=${dataExportDefaultTime}`;
       } else {
         url = `/api/data/self/?start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&default_time=${dataExportDefaultTime}`;
@@ -191,7 +197,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     } finally {
       setLoading(false);
     }
-  }, [inputs, dataExportDefaultTime, isAdminUser, now]);
+  }, [inputs, dataExportDefaultTime, canViewScopedDashboard, now]);
 
   const loadUptimeData = useCallback(async () => {
     setUptimeLoading(true);
@@ -298,7 +304,7 @@ export const useDashboardData = (userState, userDispatch, statusState) => {
     timeOptions,
     performanceMetrics,
     getGreeting,
-    isAdminUser,
+    isAdminUser: canViewScopedDashboard,
     hasApiInfoPanel,
     hasInfoPanels,
     apiInfoEnabled,

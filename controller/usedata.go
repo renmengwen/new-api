@@ -6,15 +6,19 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
 
 func GetAllQuotaDates(c *gin.Context) {
+	if !requireAdminActionPermission(c, service.ResourceQuotaManagement, service.ActionReadSummary) {
+		return
+	}
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	username := c.Query("username")
-	dates, err := model.GetAllQuotaDates(startTimestamp, endTimestamp, username)
+	dates, err := service.GetScopedQuotaData(c.GetInt("id"), c.GetInt("role"), startTimestamp, endTimestamp, username)
 	if err != nil {
 		common.ApiError(c, err)
 		return
