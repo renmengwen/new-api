@@ -99,6 +99,7 @@ func TestCreateAgentCreatesOpeningLedgerEntry(t *testing.T) {
 		"agent_name":    "Agent Created",
 		"company_name":  "Shenzhou",
 		"contact_phone": "13800000000",
+		"email":         "agent_created_1@example.com",
 	})
 	CreateAgent(ctx)
 
@@ -140,6 +141,7 @@ func TestCreateAgentPersistsRequestedGroup(t *testing.T) {
 		"agent_name":    "Agent Group",
 		"company_name":  "Shenzhou",
 		"contact_phone": "13800000000",
+		"email":         "agent_group_1@example.com",
 		"group":         "EZModel",
 	})
 	CreateAgent(ctx)
@@ -153,6 +155,28 @@ func TestCreateAgentPersistsRequestedGroup(t *testing.T) {
 	require.Equal(t, "EZModel", user.Group)
 }
 
+func TestCreateAgentRejectsInvalidEmail(t *testing.T) {
+	db := setupAdminAgentTestDB(t)
+
+	ctx, recorder := newAdminAgentContext(t, http.MethodPost, "/api/admin/agents", map[string]any{
+		"username":      "agent_invalid_email",
+		"password":      "12345678",
+		"agent_name":    "Agent Invalid Email",
+		"company_name":  "Shenzhou",
+		"contact_phone": "13800000000",
+		"email":         "not-an-email",
+	})
+	CreateAgent(ctx)
+
+	var response adminAgentAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+
+	var count int64
+	require.NoError(t, db.Model(&model.User{}).Where("username = ?", "agent_invalid_email").Count(&count).Error)
+	require.Zero(t, count)
+}
+
 func TestCreateAgentPersistsAllowedTokenGroups(t *testing.T) {
 	db := setupAdminAgentTestDB(t)
 
@@ -162,6 +186,7 @@ func TestCreateAgentPersistsAllowedTokenGroups(t *testing.T) {
 		"agent_name":                   "Agent Allow",
 		"company_name":                 "Shenzhou",
 		"contact_phone":                "13800000000",
+		"email":                        "agent_allow_g1@example.com",
 		"group":                        "default",
 		"allowed_token_groups_enabled": true,
 		"allowed_token_groups":         []string{"default", "vip"},
@@ -203,6 +228,7 @@ func TestCreateAgentSetsRootCreatorAsInviter(t *testing.T) {
 		"agent_name":    "Root Invited Agent",
 		"company_name":  "Shenzhou",
 		"contact_phone": "13800000000",
+		"email":         "agent_invited_by_root@example.com",
 	})
 	CreateAgent(ctx)
 
@@ -239,6 +265,7 @@ func TestCreateAgentSetsAdminCreatorAsInviter(t *testing.T) {
 		"agent_name":    "Admin Invited Agent",
 		"company_name":  "Shenzhou",
 		"contact_phone": "13800000000",
+		"email":         "agent_invited_by_admin@example.com",
 	})
 	ctx.Set("id", admin.Id)
 	ctx.Set("role", admin.Role)
@@ -354,6 +381,7 @@ func TestUpdateAgentUpdatesProfileAndWritesAudit(t *testing.T) {
 		"agent_name":    "After Agent",
 		"company_name":  "New Co",
 		"contact_phone": "13900000000",
+		"email":         "agent_update_1@example.com",
 		"remark":        "new remark",
 	})
 	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
@@ -376,6 +404,51 @@ func TestUpdateAgentUpdatesProfileAndWritesAudit(t *testing.T) {
 
 	var audit model.AdminAuditLog
 	require.NoError(t, db.Where("action_module = ? AND action_type = ? AND target_id = ?", "agent", "update", user.Id).First(&audit).Error)
+}
+
+func TestUpdateAgentPersistsEmail(t *testing.T) {
+	db := setupAdminAgentTestDB(t)
+
+	user := model.User{
+		Username:    "agent_update_email",
+		Password:    "hashed-password",
+		DisplayName: "Agent Email Before",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAgent,
+		Group:       "default",
+		Email:       "before-agent@example.com",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	require.NoError(t, db.Create(&model.AgentProfile{
+		UserId:       user.Id,
+		AgentName:    "Before Agent",
+		CompanyName:  "Old Co",
+		ContactPhone: "13800000000",
+		Remark:       "old remark",
+		Status:       model.CommonStatusEnabled,
+		CreatedAtTs:  common.GetTimestamp(),
+		UpdatedAtTs:  common.GetTimestamp(),
+	}).Error)
+
+	ctx, recorder := newAdminAgentContext(t, http.MethodPut, "/api/admin/agents/"+strconv.Itoa(user.Id), map[string]any{
+		"display_name":  "Agent Email After",
+		"agent_name":    "After Agent",
+		"company_name":  "New Co",
+		"contact_phone": "13900000000",
+		"email":         "after-agent@example.com",
+		"remark":        "new remark",
+	})
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+	UpdateAgent(ctx)
+
+	var response adminAgentAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var reloaded model.User
+	require.NoError(t, db.First(&reloaded, user.Id).Error)
+	require.Equal(t, "after-agent@example.com", reloaded.Email)
 }
 
 func TestUpdateAgentStatusDisablesAgent(t *testing.T) {

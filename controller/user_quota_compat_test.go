@@ -108,6 +108,7 @@ func TestUpdateUserQuotaChangeCreatesLedgerForEndUser(t *testing.T) {
 		"username":     user.Username,
 		"display_name": user.DisplayName,
 		"password":     "",
+		"email":        "legacy_end_user@example.com",
 		"group":        user.Group,
 		"role":         user.Role,
 		"quota":        950,
@@ -141,6 +142,7 @@ func TestUpdateUserQuotaChangeCreatesLedgerForAgentAndKeepsProfileFields(t *test
 		"username":     user.Username,
 		"display_name": "Agent After",
 		"password":     "",
+		"email":        "legacy_agent_user@example.com",
 		"group":        "vip",
 		"role":         user.Role,
 		"quota":        1000,
@@ -173,6 +175,90 @@ func TestUpdateUserQuotaChangeCreatesLedgerForAgentAndKeepsProfileFields(t *test
 	require.Equal(t, "manual_adjust", ledger.Reason)
 }
 
+func TestUpdateUserPersistsEmail(t *testing.T) {
+	db := setupLegacyUpdateUserQuotaTestDB(t)
+	user := seedLegacyUpdateUserQuotaTarget(t, db, "legacy_email_user", model.UserTypeEndUser, common.RoleCommonUser, 600)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", user.Id).Update("email", "before-legacy@example.com").Error)
+
+	ctx, recorder := newLegacyUpdateUserContext(t, map[string]any{
+		"id":           user.Id,
+		"username":     user.Username,
+		"display_name": user.DisplayName,
+		"password":     "",
+		"email":        "after-legacy@example.com",
+		"group":        user.Group,
+		"role":         user.Role,
+		"quota":        user.Quota,
+		"remark":       user.Remark,
+	})
+	UpdateUser(ctx)
+
+	var response legacyUpdateUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var reloaded model.User
+	require.NoError(t, db.First(&reloaded, user.Id).Error)
+	require.Equal(t, "after-legacy@example.com", reloaded.Email)
+}
+
+func TestUpdateUserRejectsDuplicateEmailFromAnotherUser(t *testing.T) {
+	db := setupLegacyUpdateUserQuotaTestDB(t)
+	existing := seedLegacyUpdateUserQuotaTarget(t, db, "leg_dup_existing", model.UserTypeEndUser, common.RoleCommonUser, 600)
+	user := seedLegacyUpdateUserQuotaTarget(t, db, "leg_dup_target", model.UserTypeEndUser, common.RoleCommonUser, 600)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", existing.Id).Update("email", "legacy-existing@example.com").Error)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", user.Id).Update("email", "legacy-target@example.com").Error)
+
+	ctx, recorder := newLegacyUpdateUserContext(t, map[string]any{
+		"id":           user.Id,
+		"username":     user.Username,
+		"display_name": user.DisplayName,
+		"password":     "",
+		"email":        "legacy-existing@example.com",
+		"group":        user.Group,
+		"role":         user.Role,
+		"quota":        user.Quota,
+		"remark":       user.Remark,
+	})
+	UpdateUser(ctx)
+
+	var response legacyUpdateUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+
+	var reloaded model.User
+	require.NoError(t, db.First(&reloaded, user.Id).Error)
+	require.Equal(t, "legacy-target@example.com", reloaded.Email)
+}
+
+func TestUpdateUserAllowsKeepingOwnEmail(t *testing.T) {
+	db := setupLegacyUpdateUserQuotaTestDB(t)
+	user := seedLegacyUpdateUserQuotaTarget(t, db, "leg_own_target", model.UserTypeEndUser, common.RoleCommonUser, 600)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", user.Id).Update("email", "legacy-own@example.com").Error)
+
+	ctx, recorder := newLegacyUpdateUserContext(t, map[string]any{
+		"id":           user.Id,
+		"username":     user.Username,
+		"display_name": "Own Email Updated",
+		"password":     "",
+		"email":        "legacy-own@example.com",
+		"group":        user.Group,
+		"role":         user.Role,
+		"quota":        user.Quota,
+		"remark":       user.Remark,
+	})
+	UpdateUser(ctx)
+
+	var response legacyUpdateUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var reloaded model.User
+	require.NoError(t, db.First(&reloaded, user.Id).Error)
+	require.Equal(t, "legacy-own@example.com", reloaded.Email)
+	require.Equal(t, "Own Email Updated", reloaded.DisplayName)
+}
+
 func TestUpdateUserQuotaChangeReconcilesLegacyBalanceDriftBeforeAdjust(t *testing.T) {
 	db := setupLegacyUpdateUserQuotaTestDB(t)
 	user := seedLegacyUpdateUserQuotaTarget(t, db, "agents1", model.UserTypeAgent, common.RoleCommonUser, 100000000)
@@ -190,6 +276,7 @@ func TestUpdateUserQuotaChangeReconcilesLegacyBalanceDriftBeforeAdjust(t *testin
 		"username":     user.Username,
 		"display_name": user.DisplayName,
 		"password":     "agents1agents1",
+		"email":        "agents1@example.com",
 		"group":        user.Group,
 		"role":         user.Role,
 		"quota":        1000000,

@@ -12,6 +12,7 @@ type CreateAdminManagerRequest struct {
 	Username    string `json:"username"`
 	Password    string `json:"password"`
 	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
 	Group       string `json:"group"`
 	Remark      string `json:"remark"`
 }
@@ -20,6 +21,7 @@ type UpdateAdminManagerRequest struct {
 	Username    string `json:"username"`
 	Password    string `json:"password"`
 	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
 	Remark      string `json:"remark"`
 }
 
@@ -29,6 +31,7 @@ type AdminManagerListItem struct {
 	DisplayName  string `json:"display_name"`
 	Status       int    `json:"status"`
 	UserType     string `json:"user_type"`
+	Email        string `json:"email"`
 	LastActiveAt int64  `json:"last_active_at"`
 	Remark       string `json:"remark"`
 }
@@ -38,7 +41,7 @@ func ListAdminManagers(pageInfo *common.PageInfo, keyword string) ([]AdminManage
 	var total int64
 
 	query := model.DB.Model(&model.User{}).
-		Select("users.id, users.username, users.display_name, users.status, users.user_type, users.last_active_at, users.remark").
+		Select("users.id, users.username, users.display_name, users.status, users.user_type, users.email, users.last_active_at, users.remark").
 		Where("users.role = ?", common.RoleAdminUser)
 
 	countQuery := model.DB.Model(&model.User{}).
@@ -46,8 +49,8 @@ func ListAdminManagers(pageInfo *common.PageInfo, keyword string) ([]AdminManage
 
 	if keyword != "" {
 		like := "%" + strings.TrimSpace(keyword) + "%"
-		query = query.Where("users.username LIKE ? OR users.display_name LIKE ? OR users.remark LIKE ?", like, like, like)
-		countQuery = countQuery.Where("users.username LIKE ? OR users.display_name LIKE ? OR users.remark LIKE ?", like, like, like)
+		query = query.Where("users.username LIKE ? OR users.display_name LIKE ? OR users.email LIKE ? OR users.remark LIKE ?", like, like, like, like)
+		countQuery = countQuery.Where("users.username LIKE ? OR users.display_name LIKE ? OR users.email LIKE ? OR users.remark LIKE ?", like, like, like, like)
 	}
 
 	if err := countQuery.Count(&total).Error; err != nil {
@@ -66,6 +69,10 @@ func ListAdminManagers(pageInfo *common.PageInfo, keyword string) ([]AdminManage
 }
 
 func CreateAdminManagerWithOperator(req CreateAdminManagerRequest, operatorUserId int, operatorUserType string, ip string) (*model.User, error) {
+	email, err := normalizeRequiredUniqueEmail(req.Email, 0)
+	if err != nil {
+		return nil, err
+	}
 	user := &model.User{
 		Username:    strings.TrimSpace(req.Username),
 		Password:    req.Password,
@@ -73,6 +80,7 @@ func CreateAdminManagerWithOperator(req CreateAdminManagerRequest, operatorUserI
 		Role:        common.RoleAdminUser,
 		Status:      common.UserStatusEnabled,
 		UserType:    model.UserTypeAdmin,
+		Email:       email,
 		Group:       firstNonEmpty(strings.TrimSpace(req.Group), "default"),
 		Remark:      strings.TrimSpace(req.Remark),
 	}
@@ -96,6 +104,7 @@ func CreateAdminManagerWithOperator(req CreateAdminManagerRequest, operatorUserI
 		"username":     user.Username,
 		"display_name": user.DisplayName,
 		"user_type":    user.GetUserType(),
+		"email":        user.Email,
 		"remark":       user.Remark,
 	})
 	if err := CreateAdminAuditLogTx(tx, AuditLogInput{
@@ -135,6 +144,7 @@ func GetAdminManagerDetail(userId int) (map[string]any, error) {
 		"display_name":   user.DisplayName,
 		"status":         user.Status,
 		"user_type":      user.GetUserType(),
+		"email":          user.Email,
 		"last_active_at": user.LastActiveAt,
 		"remark":         user.Remark,
 	}, nil
@@ -151,21 +161,28 @@ func UpdateAdminManagerWithOperator(userId int, req UpdateAdminManagerRequest, o
 
 	nextUsername := firstNonEmpty(strings.TrimSpace(req.Username), user.Username)
 	nextDisplayName := firstNonEmpty(strings.TrimSpace(req.DisplayName), user.DisplayName)
+	nextEmail, err := normalizeRequiredUniqueEmail(req.Email, userId)
+	if err != nil {
+		return err
+	}
 	nextRemark := strings.TrimSpace(req.Remark)
 
 	beforeJSON, _ := common.Marshal(map[string]any{
 		"username":     user.Username,
 		"display_name": user.DisplayName,
+		"email":        user.Email,
 		"remark":       user.Remark,
 	})
 	afterJSON, _ := common.Marshal(map[string]any{
 		"username":     nextUsername,
 		"display_name": nextDisplayName,
+		"email":        nextEmail,
 		"remark":       nextRemark,
 	})
 
 	user.Username = nextUsername
 	user.DisplayName = nextDisplayName
+	user.Email = nextEmail
 	user.Remark = nextRemark
 	updatePassword := strings.TrimSpace(req.Password) != ""
 	if updatePassword {
@@ -194,6 +211,7 @@ func UpdateAdminManagerWithOperator(userId int, req UpdateAdminManagerRequest, o
 	updates := map[string]any{
 		"username":     user.Username,
 		"display_name": user.DisplayName,
+		"email":        user.Email,
 		"remark":       user.Remark,
 	}
 	if updatePassword {
@@ -221,7 +239,10 @@ func UpdateAdminManagerWithOperator(userId int, req UpdateAdminManagerRequest, o
 		return err
 	}
 
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return model.InvalidateUserCache(userId)
 }
 
 func UpdateAdminManagerStatusWithOperator(userId int, status int, operatorUserId int, operatorUserType string, ip string) error {
@@ -273,5 +294,8 @@ func UpdateAdminManagerStatusWithOperator(userId int, status int, operatorUserId
 		return err
 	}
 
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return model.InvalidateUserCache(userId)
 }

@@ -24,6 +24,7 @@ func TestCreateUserPersistsAllowedTokenGroupsInLegacyFlow(t *testing.T) {
 	ctx, recorder := newCreateUserContext(t, map[string]any{
 		"username":                     "legacy-allowed-user",
 		"password":                     "12345678",
+		"email":                        "legacy-allowed-user@example.com",
 		"group":                        "default",
 		"allowed_token_groups_enabled": true,
 		"allowed_token_groups":         []string{"default", "vip"},
@@ -53,6 +54,7 @@ func TestUpdateUserPersistsAllowedTokenGroupsInLegacyFlow(t *testing.T) {
 		"username":                     user.Username,
 		"display_name":                 user.DisplayName,
 		"password":                     "",
+		"email":                        "legacy-upd-allow@example.com",
 		"group":                        "default",
 		"role":                         user.Role,
 		"quota":                        user.Quota,

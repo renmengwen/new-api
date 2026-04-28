@@ -14,6 +14,7 @@ type CreateAgentRequest struct {
 	AgentName                 string   `json:"agent_name"`
 	CompanyName               string   `json:"company_name"`
 	ContactPhone              string   `json:"contact_phone"`
+	Email                     string   `json:"email"`
 	Group                     string   `json:"group"`
 	AllowedTokenGroupsEnabled bool     `json:"allowed_token_groups_enabled"`
 	AllowedTokenGroups        []string `json:"allowed_token_groups"`
@@ -25,6 +26,7 @@ type UpdateAgentRequest struct {
 	AgentName                 string   `json:"agent_name"`
 	CompanyName               string   `json:"company_name"`
 	ContactPhone              string   `json:"contact_phone"`
+	Email                     string   `json:"email"`
 	Group                     string   `json:"group"`
 	AllowedTokenGroupsEnabled bool     `json:"allowed_token_groups_enabled"`
 	AllowedTokenGroups        []string `json:"allowed_token_groups"`
@@ -40,6 +42,7 @@ type AgentListItem struct {
 	AgentName    string `json:"agent_name"`
 	CompanyName  string `json:"company_name"`
 	ContactPhone string `json:"contact_phone"`
+	Email        string `json:"email"`
 }
 
 func CreateAgent(req CreateAgentRequest) (*model.User, error) {
@@ -47,6 +50,10 @@ func CreateAgent(req CreateAgentRequest) (*model.User, error) {
 }
 
 func CreateAgentWithOperator(req CreateAgentRequest, operatorUserId int, operatorUserType string, ip string) (*model.User, error) {
+	email, err := normalizeRequiredUniqueEmail(req.Email, 0)
+	if err != nil {
+		return nil, err
+	}
 	user := &model.User{
 		Username:    strings.TrimSpace(req.Username),
 		Password:    req.Password,
@@ -56,6 +63,7 @@ func CreateAgentWithOperator(req CreateAgentRequest, operatorUserId int, operato
 		UserType:    model.UserTypeAgent,
 		Group:       firstNonEmpty(strings.TrimSpace(req.Group), "default"),
 		Phone:       strings.TrimSpace(req.ContactPhone),
+		Email:       email,
 	}
 
 	inviterId := 0
@@ -167,7 +175,7 @@ func ListAgents(pageInfo *common.PageInfo, keyword string) ([]AgentListItem, int
 	var total int64
 
 	query := model.DB.Model(&model.User{}).
-		Select("users.id, users.username, users.display_name, users.status, users.user_type, agent_profiles.agent_name, agent_profiles.company_name, agent_profiles.contact_phone").
+		Select("users.id, users.username, users.display_name, users.status, users.user_type, users.email, agent_profiles.agent_name, agent_profiles.company_name, agent_profiles.contact_phone").
 		Joins("INNER JOIN agent_profiles ON agent_profiles.user_id = users.id").
 		Where("users.user_type = ?", model.UserTypeAgent)
 
@@ -177,8 +185,8 @@ func ListAgents(pageInfo *common.PageInfo, keyword string) ([]AgentListItem, int
 
 	if keyword != "" {
 		like := "%" + strings.TrimSpace(keyword) + "%"
-		query = query.Where("users.username LIKE ? OR users.display_name LIKE ? OR agent_profiles.agent_name LIKE ?", like, like, like)
-		countQuery = countQuery.Where("users.username LIKE ? OR users.display_name LIKE ? OR agent_profiles.agent_name LIKE ?", like, like, like)
+		query = query.Where("users.username LIKE ? OR users.display_name LIKE ? OR users.email LIKE ? OR agent_profiles.agent_name LIKE ?", like, like, like, like)
+		countQuery = countQuery.Where("users.username LIKE ? OR users.display_name LIKE ? OR users.email LIKE ? OR agent_profiles.agent_name LIKE ?", like, like, like, like)
 	}
 
 	if err := countQuery.Count(&total).Error; err != nil {
@@ -219,6 +227,7 @@ func GetAgentDetail(userId int) (map[string]any, error) {
 		"agent_name":                   profile.AgentName,
 		"company_name":                 profile.CompanyName,
 		"contact_phone":                profile.ContactPhone,
+		"email":                        user.Email,
 		"group":                        user.Group,
 		"allowed_token_groups_enabled": userSetting.AllowedTokenGroupsEnabled,
 		"allowed_token_groups":         userSetting.AllowedTokenGroups,
@@ -251,6 +260,10 @@ func UpdateAgentWithOperator(userId int, req UpdateAgentRequest, operatorUserId 
 	nextAgentName := firstNonEmpty(strings.TrimSpace(req.AgentName), nextDisplayName, profile.AgentName)
 	nextCompanyName := strings.TrimSpace(req.CompanyName)
 	nextContactPhone := strings.TrimSpace(req.ContactPhone)
+	nextEmail, err := normalizeRequiredUniqueEmail(req.Email, userId)
+	if err != nil {
+		return err
+	}
 	nextGroup := firstNonEmpty(strings.TrimSpace(req.Group), user.Group, "default")
 	nextRemark := strings.TrimSpace(req.Remark)
 	assignableGroups := currentTokenGroupDefinitions()
@@ -274,6 +287,7 @@ func UpdateAgentWithOperator(userId int, req UpdateAgentRequest, operatorUserId 
 		"agent_name":                   profile.AgentName,
 		"company_name":                 profile.CompanyName,
 		"contact_phone":                profile.ContactPhone,
+		"email":                        user.Email,
 		"group":                        user.Group,
 		"allowed_token_groups_enabled": user.GetSetting().AllowedTokenGroupsEnabled,
 		"allowed_token_groups":         user.GetSetting().AllowedTokenGroups,
@@ -284,6 +298,7 @@ func UpdateAgentWithOperator(userId int, req UpdateAgentRequest, operatorUserId 
 		"agent_name":                   nextAgentName,
 		"company_name":                 nextCompanyName,
 		"contact_phone":                nextContactPhone,
+		"email":                        nextEmail,
 		"group":                        nextGroup,
 		"allowed_token_groups_enabled": req.AllowedTokenGroupsEnabled,
 		"allowed_token_groups":         normalizedAllowedTokenGroups,
@@ -303,6 +318,7 @@ func UpdateAgentWithOperator(userId int, req UpdateAgentRequest, operatorUserId 
 	if err := tx.Model(&model.User{}).Where("id = ?", userId).Updates(map[string]any{
 		"display_name": nextDisplayName,
 		"phone":        nextContactPhone,
+		"email":        nextEmail,
 		"group":        nextGroup,
 	}).Error; err != nil {
 		tx.Rollback()
@@ -344,7 +360,10 @@ func UpdateAgentWithOperator(userId int, req UpdateAgentRequest, operatorUserId 
 		return err
 	}
 
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return model.InvalidateUserCache(userId)
 }
 
 func UpdateAgentStatus(userId int, status int) error {
@@ -408,7 +427,10 @@ func UpdateAgentStatusWithOperator(userId int, status int, operatorUserId int, o
 		return err
 	}
 
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return model.InvalidateUserCache(userId)
 }
 
 func firstNonEmpty(values ...string) string {

@@ -53,6 +53,7 @@ const AddUserModal = (props) => {
   const getInitValues = () => ({
     username: '',
     display_name: '',
+    email: '',
     password: '',
     remark: '',
     group: getDefaultGroupValue(),
@@ -75,8 +76,13 @@ const AddUserModal = (props) => {
     if (props.supportsAllowedTokenGroups) {
       const currentAllowedGroups =
         formApiRef.current?.getValue('allowed_token_groups') || [];
-      if (!Array.isArray(currentAllowedGroups) || currentAllowedGroups.length === 0) {
-        formApiRef.current?.setValue('allowed_token_groups', [nextDefaultGroup]);
+      if (
+        !Array.isArray(currentAllowedGroups) ||
+        currentAllowedGroups.length === 0
+      ) {
+        formApiRef.current?.setValue('allowed_token_groups', [
+          nextDefaultGroup,
+        ]);
       }
     }
   }, [props.visible, props.groupOptions]);
@@ -188,6 +194,19 @@ const AddUserModal = (props) => {
                   </Col>
                   <Col span={24}>
                     <Form.Input
+                      field='email'
+                      label={t('邮箱地址')}
+                      placeholder={t('请输入邮箱地址')}
+                      type='email'
+                      rules={[
+                        { required: true, message: t('请输入邮箱地址') },
+                        { type: 'email', message: t('无效的邮箱地址') },
+                      ]}
+                      showClear
+                    />
+                  </Col>
+                  <Col span={24}>
+                    <Form.Input
                       field='password'
                       label={t('密码')}
                       type='password'
@@ -210,7 +229,11 @@ const AddUserModal = (props) => {
                     <>
                       <Col
                         span={24}
-                        style={props.hideAllowedTokenGroupFields ? { display: 'none' } : undefined}
+                        style={
+                          props.hideAllowedTokenGroupFields
+                            ? { display: 'none' }
+                            : undefined
+                        }
                       >
                         <Form.Switch
                           field='allowed_token_groups_enabled'
@@ -224,7 +247,11 @@ const AddUserModal = (props) => {
                       </Col>
                       <Col
                         span={24}
-                        style={props.hideAllowedTokenGroupFields ? { display: 'none' } : undefined}
+                        style={
+                          props.hideAllowedTokenGroupFields
+                            ? { display: 'none' }
+                            : undefined
+                        }
                       >
                         <Form.Select
                           field='allowed_token_groups'

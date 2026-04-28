@@ -165,7 +165,8 @@ const EditUserModal = (props) => {
       payload.id = parseInt(userId);
     }
     if (props.supportsAllowedTokenGroups) {
-      const primaryGroup = payload.group || groupOptions?.[0]?.value || 'default';
+      const primaryGroup =
+        payload.group || groupOptions?.[0]?.value || 'default';
       const allowedGroups = Array.isArray(payload.allowed_token_groups)
         ? payload.allowed_token_groups.filter(Boolean)
         : [];
@@ -176,9 +177,7 @@ const EditUserModal = (props) => {
     }
     const response = props.updateUser
       ? await props.updateUser(userId, payload)
-      : (
-          await API.put(userId ? `/api/user/` : `/api/user/self`, payload)
-        ).data;
+      : (await API.put(userId ? `/api/user/` : `/api/user/self`, payload)).data;
     const { success, message } = response;
     if (success) {
       showSuccess(t('用户信息更新成功！'));
@@ -310,6 +309,20 @@ const EditUserModal = (props) => {
 
                     <Col span={24}>
                       <Form.Input
+                        field='email'
+                        label={t('邮箱地址')}
+                        placeholder={t('请输入邮箱地址')}
+                        type='email'
+                        rules={[
+                          { required: true, message: t('请输入邮箱地址') },
+                          { type: 'email', message: t('无效的邮箱地址') },
+                        ]}
+                        showClear
+                      />
+                    </Col>
+
+                    <Col span={24}>
+                      <Form.Input
                         field='remark'
                         label={t('备注')}
                         placeholder={t('请输入备注（仅管理员可见）')}
@@ -357,7 +370,11 @@ const EditUserModal = (props) => {
                         <>
                           <Col
                             span={24}
-                            style={props.hideAllowedTokenGroupFields ? { display: 'none' } : undefined}
+                            style={
+                              props.hideAllowedTokenGroupFields
+                                ? { display: 'none' }
+                                : undefined
+                            }
                           >
                             <Form.Switch
                               field='allowed_token_groups_enabled'
@@ -372,7 +389,11 @@ const EditUserModal = (props) => {
 
                           <Col
                             span={24}
-                            style={props.hideAllowedTokenGroupFields ? { display: 'none' } : undefined}
+                            style={
+                              props.hideAllowedTokenGroupFields
+                                ? { display: 'none' }
+                                : undefined
+                            }
                           >
                             <Form.Select
                               field='allowed_token_groups'
@@ -558,9 +579,7 @@ const EditUserModal = (props) => {
               setAddQuotaLocal(normalizedQuota);
               setAddAmountLocal(
                 normalizedQuota !== ''
-                  ? Number(
-                      quotaToDisplayAmount(normalizedQuota).toFixed(2),
-                    )
+                  ? Number(quotaToDisplayAmount(normalizedQuota).toFixed(2))
                   : '',
               );
             }}

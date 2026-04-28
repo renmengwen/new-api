@@ -17,6 +17,7 @@ type AdminUserListItem struct {
 	ParentAgentId       int    `json:"parent_agent_id"`
 	ParentAgentUsername string `json:"parent_agent_username"`
 	Group               string `json:"group"`
+	Email               string `json:"email"`
 	Quota               int    `json:"quota"`
 	UsedQuota           int    `json:"used_quota"`
 	RequestCount        int    `json:"request_count"`
@@ -74,7 +75,7 @@ func ListAdminUsers(pageInfo *common.PageInfo, keyword string, operatorUserId in
 			"users.id, users.username, users.display_name, users.status, users.user_type, users.parent_agent_id, " +
 				adminUserGroupSelectExpr() +
 				", parent_agents.username AS parent_agent_username" +
-				", users.quota, users.used_quota, users.request_count, users.inviter_id, inviter_users.username AS inviter_username, users.aff_count, users.aff_history, users.remark, users.last_active_at",
+				", users.email, users.quota, users.used_quota, users.request_count, users.inviter_id, inviter_users.username AS inviter_username, users.aff_count, users.aff_history, users.remark, users.last_active_at",
 		)
 	query = ApplyManagedEndUserScope(query, operator)
 	if keyword != "" {
@@ -103,6 +104,10 @@ func CreateAdminUserWithOperator(req CreateAdminUserRequest, operatorUserId int,
 	if err != nil {
 		return nil, err
 	}
+	email, err := normalizeRequiredUniqueEmail(req.Email, 0)
+	if err != nil {
+		return nil, err
+	}
 
 	user := &model.User{
 		Username:      strings.TrimSpace(req.Username),
@@ -112,7 +117,7 @@ func CreateAdminUserWithOperator(req CreateAdminUserRequest, operatorUserId int,
 		Status:        common.UserStatusEnabled,
 		UserType:      model.UserTypeEndUser,
 		ParentAgentId: 0,
-		Email:         strings.TrimSpace(req.Email),
+		Email:         email,
 		Group:         firstNonEmpty(strings.TrimSpace(req.Group), "default"),
 		Remark:        strings.TrimSpace(req.Remark),
 	}
@@ -185,6 +190,7 @@ func CreateAdminUserWithOperator(req CreateAdminUserRequest, operatorUserId int,
 		"display_name":                 user.DisplayName,
 		"user_type":                    user.GetUserType(),
 		"parent_agent_id":              user.ParentAgentId,
+		"email":                        user.Email,
 		"group":                        user.Group,
 		"allowed_token_groups_enabled": req.AllowedTokenGroupsEnabled,
 		"allowed_token_groups":         normalizedAllowedTokenGroups,
@@ -270,7 +276,10 @@ func UpdateAdminUserWithOperator(targetUserId int, req UpdateAdminUserRequest, o
 	nextDisplayName := firstNonEmpty(strings.TrimSpace(req.DisplayName), user.DisplayName, nextUsername)
 	nextGroup := firstNonEmpty(strings.TrimSpace(req.Group), user.Group, "default")
 	nextRemark := strings.TrimSpace(req.Remark)
-	nextEmail := strings.TrimSpace(req.Email)
+	nextEmail, err := normalizeRequiredUniqueEmail(req.Email, user.Id)
+	if err != nil {
+		return err
+	}
 	originalQuota := user.Quota
 	targetQuota := req.Quota
 	quotaChanged := targetQuota != originalQuota
@@ -425,7 +434,10 @@ func UpdateAdminUserWithOperator(targetUserId int, req UpdateAdminUserRequest, o
 		}
 	}
 
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return model.InvalidateUserCache(user.Id)
 }
 
 func UpdateAdminUserStatus(targetUserId int, status int, operatorUserId int, operatorRole int, ip string) error {
@@ -483,7 +495,10 @@ func UpdateAdminUserStatus(targetUserId int, status int, operatorUserId int, ope
 		return err
 	}
 
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return model.InvalidateUserCache(user.Id)
 }
 
 func DeleteAdminUserWithOperator(targetUserId int, operatorUserId int, operatorRole int, ip string) error {

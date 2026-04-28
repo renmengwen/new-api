@@ -4,12 +4,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const modalSource = fs.readFileSync(
-  path.join(process.cwd(), 'web/src/components/table/users/modals/EditUserModal.jsx'),
+  path.join(
+    process.cwd(),
+    'web/src/components/table/users/modals/EditUserModal.jsx',
+  ),
   'utf8',
 );
 
 test('edit user quota adjustment trigger uses a labeled button', () => {
-  assert.ok(modalSource.includes("icon={<IconPlus />}"));
+  assert.ok(modalSource.includes('icon={<IconPlus />}'));
   assert.ok(!modalSource.includes("label={t('添加额度')}"));
   assert.ok(!modalSource.includes("<Form.Slot label=' '>"));
   assert.ok(modalSource.includes("className='invisible'"));
@@ -57,9 +60,18 @@ test('edit user modal keeps allowed token groups logic while hiding the controls
   assert.ok(modalSource.includes("field='allowed_token_groups'"));
   assert.ok(modalSource.includes('optionList={groupOptions}'));
   assert.ok(modalSource.includes('multiple'));
-  assert.ok(
-    modalSource.includes(
-      "style={props.hideAllowedTokenGroupFields ? { display: 'none' } : undefined}",
-    ),
+  assert.match(
+    modalSource,
+    /style=\{[\s\S]*props\.hideAllowedTokenGroupFields[\s\S]*display: 'none'[\s\S]*undefined[\s\S]*\}/,
   );
+});
+
+test('edit user modal requires a valid email address', () => {
+  assert.ok(modalSource.includes("email: '',"));
+  assert.ok(modalSource.includes("field='email'"));
+  assert.ok(modalSource.includes("label={t('邮箱地址')}"));
+  assert.ok(modalSource.includes("placeholder={t('请输入邮箱地址')}"));
+  assert.ok(modalSource.includes("type='email'"));
+  assert.ok(modalSource.includes("message: t('请输入邮箱地址')"));
+  assert.ok(modalSource.includes("message: t('无效的邮箱地址')"));
 });

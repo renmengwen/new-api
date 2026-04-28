@@ -635,6 +635,7 @@ func (user *User) Edit(updatePassword bool) error {
 	updates := map[string]interface{}{
 		"username":     newUser.Username,
 		"display_name": newUser.DisplayName,
+		"email":        newUser.Email,
 		"group":        newUser.Group,
 		"quota":        newUser.Quota,
 		"remark":       newUser.Remark,
@@ -645,6 +646,9 @@ func (user *User) Edit(updatePassword bool) error {
 
 	DB.First(&user, user.Id)
 	if err = DB.Model(user).Updates(updates).Error; err != nil {
+		return err
+	}
+	if err = DB.First(user, user.Id).Error; err != nil {
 		return err
 	}
 
@@ -790,7 +794,15 @@ func (user *User) FillUserByTelegramId() error {
 }
 
 func IsEmailAlreadyTaken(email string) bool {
-	return DB.Unscoped().Where("email = ?", email).Find(&User{}).RowsAffected == 1
+	return DB.Unscoped().Where("email = ?", email).Find(&User{}).RowsAffected > 0
+}
+
+func IsEmailAlreadyTakenByOtherUser(email string, excludedUserId int) bool {
+	query := DB.Unscoped().Where("email = ?", email)
+	if excludedUserId > 0 {
+		query = query.Where("id <> ?", excludedUserId)
+	}
+	return query.Limit(1).Find(&User{}).RowsAffected > 0
 }
 
 func IsWeChatIdAlreadyTaken(wechatId string) bool {

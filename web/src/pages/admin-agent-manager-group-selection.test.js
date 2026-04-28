@@ -23,20 +23,30 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const readPageSource = (relativePath) =>
-  fs.readFileSync(path.join(process.cwd(), 'web/src/pages', relativePath), 'utf8');
+  fs.readFileSync(
+    path.join(process.cwd(), 'web/src/pages', relativePath),
+    'utf8',
+  );
 
 test('agent and manager create modals expose group selectors with loaded options', () => {
   const agentsSource = readPageSource('AdminAgentsPageV2/index.jsx');
   const managersSource = readPageSource('AdminManagersPageV2/index.jsx');
 
   for (const source of [agentsSource, managersSource]) {
-    assert.ok(source.includes('const [groupOptions, setGroupOptions] = useState([]);'));
-    assert.ok(source.includes("const [defaultGroup, setDefaultGroup] = useState('');"));
-    assert.ok(source.includes("API.get('/api/group/')"));
-    assert.ok(source.includes("const nextDefaultGroup = options[0]?.value || '';"));
+    assert.ok(
+      source.includes('const [groupOptions, setGroupOptions] = useState([]);'),
+    );
+    assert.ok(
+      source.includes("const [defaultGroup, setDefaultGroup] = useState('');"),
+    );
+    assert.ok(
+      source.includes("const nextDefaultGroup = options[0]?.value || '';"),
+    );
     assert.ok(source.includes('value={formState.group}'));
   }
 
+  assert.ok(agentsSource.includes("API.get('/api/user/self/groups'"));
+  assert.ok(managersSource.includes("API.get('/api/group/')"));
   assert.ok(agentsSource.includes("{t('分组')}"));
   assert.ok(managersSource.includes("{t('分组')}"));
 });

@@ -44,6 +44,27 @@ type legacyAdminUserRequest struct {
 	AllowedTokenGroups        []string `json:"allowed_token_groups"`
 }
 
+func normalizeLegacyRequiredEmail(c *gin.Context, email string) (string, bool) {
+	normalized := strings.TrimSpace(email)
+	if err := common.Validate.Var(normalized, "required,email,max=50"); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgSettingEmailInvalid)
+		return "", false
+	}
+	return normalized, true
+}
+
+func normalizeLegacyRequiredUniqueEmail(c *gin.Context, email string, excludedUserId int) (string, bool) {
+	normalized, ok := normalizeLegacyRequiredEmail(c, email)
+	if !ok {
+		return "", false
+	}
+	if model.IsEmailAlreadyTakenByOtherUser(normalized, excludedUserId) {
+		common.ApiErrorMsg(c, "邮箱已存在，请更换后重试")
+		return "", false
+	}
+	return normalized, true
+}
+
 func normalizeLegacyAllowedTokenGroups(primaryGroup string, enabled bool, groups []string) []string {
 	normalized := service.NormalizeAllowedTokenGroups(groups)
 	if !enabled {
@@ -653,13 +674,17 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	email, ok := normalizeLegacyRequiredUniqueEmail(c, request.Email, request.Id)
+	if !ok {
+		return
+	}
 	updatedUser := model.User{
 		Id:          request.Id,
 		Username:    strings.TrimSpace(request.Username),
 		Password:    request.Password,
 		DisplayName: request.DisplayName,
 		Role:        request.Role,
-		Email:       strings.TrimSpace(request.Email),
+		Email:       email,
 		Group:       strings.TrimSpace(request.Group),
 		Quota:       request.Quota,
 		Remark:      request.Remark,
@@ -1003,12 +1028,16 @@ func CreateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	email, ok := normalizeLegacyRequiredUniqueEmail(c, request.Email, 0)
+	if !ok {
+		return
+	}
 	user := model.User{
 		Username:    request.Username,
 		Password:    request.Password,
 		DisplayName: request.DisplayName,
 		Role:        request.Role,
-		Email:       strings.TrimSpace(request.Email),
+		Email:       email,
 		Group:       strings.TrimSpace(request.Group),
 		Quota:       request.Quota,
 		Remark:      request.Remark,
@@ -1031,6 +1060,7 @@ func CreateUser(c *gin.Context) {
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
+		Email:       user.Email,
 	}
 	targetGroup := strings.TrimSpace(user.Group)
 	if targetGroup == "" {

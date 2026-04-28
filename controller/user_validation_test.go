@@ -82,6 +82,7 @@ func TestCreateUserReturnsFriendlyMessageForDuplicateUsername(t *testing.T) {
 	ctx, recorder := newCreateUserContext(t, map[string]any{
 		"username": "duplicate-user",
 		"password": "12345678",
+		"email":    "duplicate-user-new@example.com",
 	})
 
 	CreateUser(ctx)
@@ -98,6 +99,7 @@ func TestCreateUserReturnsFriendlyMessageForInvalidPasswordRule(t *testing.T) {
 	ctx, recorder := newCreateUserContext(t, map[string]any{
 		"username": "password-rule-user",
 		"password": "1234567",
+		"email":    "password-rule-user@example.com",
 	})
 
 	CreateUser(ctx)

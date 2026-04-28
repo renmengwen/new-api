@@ -35,7 +35,12 @@ import {
 import { useTranslation } from 'react-i18next';
 import ModalActionFooter from '../../components/common/modals/ModalActionFooter';
 import CardPro from '../../components/common/ui/CardPro';
-import { API, createCardProPagination, showError, showSuccess } from '../../helpers';
+import {
+  API,
+  createCardProPagination,
+  showError,
+  showSuccess,
+} from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
 import { toManagedGroupOptions } from '../../hooks/users/useUsersData.helpers';
@@ -49,6 +54,7 @@ const createEmptyFormState = (defaultGroup = '') => ({
   agent_name: '',
   company_name: '',
   contact_phone: '',
+  email: '',
   remark: '',
   group: defaultGroup,
   allowed_token_groups_enabled: false,
@@ -80,15 +86,21 @@ const fieldStyle = {
   gap: 6,
 };
 
+const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
 const AdminAgentsPageV2 = () => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
-  const { loading: permissionLoading, hasActionPermission } = useUserPermissions();
+  const { loading: permissionLoading, hasActionPermission } =
+    useUserPermissions();
 
   const canRead = hasActionPermission('agent_management', 'read');
   const canCreate = hasActionPermission('agent_management', 'create');
   const canUpdate = hasActionPermission('agent_management', 'update');
-  const canUpdateStatus = hasActionPermission('agent_management', 'update_status');
+  const canUpdateStatus = hasActionPermission(
+    'agent_management',
+    'update_status',
+  );
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -145,7 +157,11 @@ const AdminAgentsPageV2 = () => {
     }
   };
 
-  const loadAgents = async (nextPage = page, nextPageSize = pageSize, nextKeyword = keyword) => {
+  const loadAgents = async (
+    nextPage = page,
+    nextPageSize = pageSize,
+    nextKeyword = keyword,
+  ) => {
     if (!canRead) {
       return;
     }
@@ -222,6 +238,7 @@ const AdminAgentsPageV2 = () => {
       agent_name: record.agent_name || '',
       company_name: record.company_name || '',
       contact_phone: record.contact_phone || '',
+      email: record.email || '',
     });
 
     try {
@@ -238,6 +255,7 @@ const AdminAgentsPageV2 = () => {
         agent_name: data.agent_name || '',
         company_name: data.company_name || '',
         contact_phone: data.contact_phone || '',
+        email: data.email || '',
         remark: data.remark || '',
         group: data.group || defaultGroup,
         allowed_token_groups_enabled:
@@ -252,12 +270,26 @@ const AdminAgentsPageV2 = () => {
   };
 
   const handleSubmit = async () => {
-    if (!editingAgent && (!formState.username.trim() || !formState.password.trim() || !formState.agent_name.trim())) {
-      showError(t('请填写用户名、初始密码和代理商名称'));
+    if (
+      !editingAgent &&
+      (!formState.username.trim() ||
+        !formState.password.trim() ||
+        !formState.agent_name.trim() ||
+        !formState.email.trim())
+    ) {
+      showError(t('请填写用户名、初始密码、代理商名称和邮箱地址'));
       return;
     }
     if (editingAgent && !formState.agent_name.trim()) {
       showError(t('请填写代理商名称'));
+      return;
+    }
+    if (editingAgent && !formState.email.trim()) {
+      showError(t('请输入邮箱地址'));
+      return;
+    }
+    if (!isValidEmail(formState.email.trim())) {
+      showError(t('无效的邮箱地址'));
       return;
     }
 
@@ -286,6 +318,7 @@ const AdminAgentsPageV2 = () => {
             agent_name: formState.agent_name.trim(),
             company_name: formState.company_name.trim(),
             contact_phone: formState.contact_phone.trim(),
+            email: formState.email.trim(),
             remark: formState.remark.trim(),
             group: formState.group,
             allowed_token_groups_enabled:
@@ -298,6 +331,7 @@ const AdminAgentsPageV2 = () => {
             agent_name: formState.agent_name.trim(),
             company_name: formState.company_name.trim(),
             contact_phone: formState.contact_phone.trim(),
+            email: formState.email.trim(),
             remark: formState.remark.trim(),
             group: formState.group,
             allowed_token_groups_enabled:
@@ -317,7 +351,11 @@ const AdminAgentsPageV2 = () => {
       showSuccess(editingAgent ? t('代理商资料已更新') : t('代理商已创建'));
       closeModal();
       await loadAgents(page, pageSize, keyword);
-      if (detailVisible && currentEditingId && detailAgentId === currentEditingId) {
+      if (
+        detailVisible &&
+        currentEditingId &&
+        detailAgentId === currentEditingId
+      ) {
         await loadAgentDetail(currentEditingId);
       }
     } catch (error) {
@@ -329,7 +367,9 @@ const AdminAgentsPageV2 = () => {
 
   const handleStatusUpdate = async (record, enabled) => {
     try {
-      const res = await API.post(`/api/admin/agents/${record.id}/${enabled ? 'enable' : 'disable'}`);
+      const res = await API.post(
+        `/api/admin/agents/${record.id}/${enabled ? 'enable' : 'disable'}`,
+      );
       if (!res.data.success) {
         showError(res.data.message || t('更新代理商状态失败'));
         return;
@@ -364,9 +404,14 @@ const AdminAgentsPageV2 = () => {
         dataIndex: 'username',
         render: (_, record) => (
           <div className='flex flex-col gap-1'>
-            <Text strong>{record.agent_name || record.display_name || record.username}</Text>
+            <Text strong>
+              {record.agent_name || record.display_name || record.username}
+            </Text>
             <Text type='tertiary' size='small'>
               {record.username}
+            </Text>
+            <Text type='tertiary' size='small'>
+              {record.email || '-'}
             </Text>
           </div>
         ),
@@ -442,7 +487,11 @@ const AdminAgentsPageV2 = () => {
   if (!canRead) {
     return (
       <div className='mt-[60px] px-2'>
-        <Banner type='warning' closeIcon={null} description={t('你没有代理商管理的查看权限')} />
+        <Banner
+          type='warning'
+          closeIcon={null}
+          description={t('你没有代理商管理的查看权限')}
+        />
       </div>
     );
   }
@@ -468,7 +517,9 @@ const AdminAgentsPageV2 = () => {
           <div>
             <div className='mb-3 flex flex-col gap-1'>
               <Text strong>{t('基础信息')}</Text>
-              <Text type='tertiary'>{t('维护账号标识、代理商名称和联系信息。')}</Text>
+              <Text type='tertiary'>
+                {t('维护账号标识、代理商名称和联系信息。')}
+              </Text>
             </div>
             <div className='grid gap-3 md:grid-cols-2'>
               {!editingAgent ? (
@@ -478,7 +529,9 @@ const AdminAgentsPageV2 = () => {
                     <Input
                       placeholder={t('请输入登录用户名')}
                       value={formState.username}
-                      onChange={(value) => setFormState((prev) => ({ ...prev, username: value }))}
+                      onChange={(value) =>
+                        setFormState((prev) => ({ ...prev, username: value }))
+                      }
                     />
                   </div>
                   <div style={fieldStyle}>
@@ -487,7 +540,9 @@ const AdminAgentsPageV2 = () => {
                       mode='password'
                       placeholder={t('请输入初始密码')}
                       value={formState.password}
-                      onChange={(value) => setFormState((prev) => ({ ...prev, password: value }))}
+                      onChange={(value) =>
+                        setFormState((prev) => ({ ...prev, password: value }))
+                      }
                     />
                   </div>
                 </>
@@ -497,7 +552,9 @@ const AdminAgentsPageV2 = () => {
                   <Input
                     placeholder={t('请输入显示名称')}
                     value={formState.display_name}
-                    onChange={(value) => setFormState((prev) => ({ ...prev, display_name: value }))}
+                    onChange={(value) =>
+                      setFormState((prev) => ({ ...prev, display_name: value }))
+                    }
                   />
                 </div>
               )}
@@ -506,7 +563,9 @@ const AdminAgentsPageV2 = () => {
                 <Input
                   placeholder={t('请输入代理商名称')}
                   value={formState.agent_name}
-                  onChange={(value) => setFormState((prev) => ({ ...prev, agent_name: value }))}
+                  onChange={(value) =>
+                    setFormState((prev) => ({ ...prev, agent_name: value }))
+                  }
                 />
               </div>
               <div style={fieldStyle}>
@@ -514,7 +573,9 @@ const AdminAgentsPageV2 = () => {
                 <Input
                   placeholder={t('请输入公司名称')}
                   value={formState.company_name}
-                  onChange={(value) => setFormState((prev) => ({ ...prev, company_name: value }))}
+                  onChange={(value) =>
+                    setFormState((prev) => ({ ...prev, company_name: value }))
+                  }
                 />
               </div>
               <div style={fieldStyle}>
@@ -522,7 +583,20 @@ const AdminAgentsPageV2 = () => {
                 <Input
                   placeholder={t('请输入联系电话')}
                   value={formState.contact_phone}
-                  onChange={(value) => setFormState((prev) => ({ ...prev, contact_phone: value }))}
+                  onChange={(value) =>
+                    setFormState((prev) => ({ ...prev, contact_phone: value }))
+                  }
+                />
+              </div>
+              <div style={fieldStyle}>
+                <Text type='tertiary'>{t('邮箱地址')}</Text>
+                <Input
+                  type='email'
+                  placeholder={t('请输入邮箱地址')}
+                  value={formState.email}
+                  onChange={(value) =>
+                    setFormState((prev) => ({ ...prev, email: value }))
+                  }
                 />
               </div>
               {!editingAgent ? (
@@ -565,7 +639,9 @@ const AdminAgentsPageV2 = () => {
                   }
                 />
                 <Text type='tertiary' size='small'>
-                  {t('开启后，用户创建令牌时只能选择下列分组，主分组会自动纳入')}
+                  {t(
+                    '开启后，用户创建令牌时只能选择下列分组，主分组会自动纳入',
+                  )}
                 </Text>
               </div>
               <div style={fieldStyle}>
@@ -592,13 +668,17 @@ const AdminAgentsPageV2 = () => {
           <div style={sectionBlockStyle}>
             <div className='mb-3 flex flex-col gap-1'>
               <Text strong>{t('备注信息')}</Text>
-              <Text type='tertiary'>{t('补充合作背景、负责人或特殊说明。')}</Text>
+              <Text type='tertiary'>
+                {t('补充合作背景、负责人或特殊说明。')}
+              </Text>
             </div>
             <TextArea
               rows={3}
               placeholder={t('请输入备注信息')}
               value={formState.remark}
-              onChange={(value) => setFormState((prev) => ({ ...prev, remark: value }))}
+              onChange={(value) =>
+                setFormState((prev) => ({ ...prev, remark: value }))
+              }
             />
           </div>
         </div>
@@ -621,7 +701,11 @@ const AdminAgentsPageV2 = () => {
           <div className='flex flex-col gap-2'>
             <Banner type='warning' closeIcon={null} description={detailError} />
             <div>
-              <Button size='small' type='tertiary' onClick={() => loadAgentDetail(detailAgentId)}>
+              <Button
+                size='small'
+                type='tertiary'
+                onClick={() => loadAgentDetail(detailAgentId)}
+              >
                 {t('重试')}
               </Button>
             </div>
@@ -633,11 +717,16 @@ const AdminAgentsPageV2 = () => {
               <div className='flex items-start justify-between gap-4'>
                 <div className='flex flex-col gap-1'>
                   <Title heading={6} style={{ margin: 0 }}>
-                    {detailData.agent_name || detailData.display_name || detailData.username}
+                    {detailData.agent_name ||
+                      detailData.display_name ||
+                      detailData.username}
                   </Title>
                   <Text type='tertiary'>{detailData.username}</Text>
                 </div>
-                <Tag color={detailData.status === 1 ? 'green' : 'red'} shape='circle'>
+                <Tag
+                  color={detailData.status === 1 ? 'green' : 'red'}
+                  shape='circle'
+                >
                   {detailData.status === 1 ? t('启用') : t('停用')}
                 </Tag>
               </div>
@@ -645,14 +734,20 @@ const AdminAgentsPageV2 = () => {
             <div style={mergedSectionStyle}>
               <div className='mb-3 flex flex-col gap-1'>
                 <Text strong>{t('账号资料')}</Text>
-                <Text type='tertiary'>{t('查看代理商名称、公司信息和联系方式。')}</Text>
+                <Text type='tertiary'>
+                  {t('查看代理商名称、公司信息和联系方式。')}
+                </Text>
               </div>
               <Descriptions
                 data={[
                   { key: t('显示名称'), value: detailData.display_name || '-' },
                   { key: t('代理商名称'), value: detailData.agent_name || '-' },
                   { key: t('公司名称'), value: detailData.company_name || '-' },
-                  { key: t('联系电话'), value: detailData.contact_phone || '-' },
+                  {
+                    key: t('联系电话'),
+                    value: detailData.contact_phone || '-',
+                  },
+                  { key: t('邮箱地址'), value: detailData.email || '-' },
                 ]}
                 columns={2}
               />
@@ -660,17 +755,27 @@ const AdminAgentsPageV2 = () => {
                 <div className='mb-3 flex flex-col gap-1'>
                   <Text strong>{t('备注信息')}</Text>
                 </div>
-                <Text style={{ whiteSpace: 'pre-wrap' }}>{detailData.remark || '-'}</Text>
+                <Text style={{ whiteSpace: 'pre-wrap' }}>
+                  {detailData.remark || '-'}
+                </Text>
               </div>
               <div style={sectionBlockStyle}>
                 <div className='mb-3 flex flex-col gap-1'>
                   <Text strong>{t('额度摘要')}</Text>
-                  <Text type='tertiary'>{t('查看当前可用额度和冻结额度。')}</Text>
+                  <Text type='tertiary'>
+                    {t('查看当前可用额度和冻结额度。')}
+                  </Text>
                 </div>
                 <Descriptions
                   data={[
-                    { key: t('当前额度'), value: detailData.quota_summary?.balance ?? 0 },
-                    { key: t('冻结额度'), value: detailData.quota_summary?.frozen_balance ?? 0 },
+                    {
+                      key: t('当前额度'),
+                      value: detailData.quota_summary?.balance ?? 0,
+                    },
+                    {
+                      key: t('冻结额度'),
+                      value: detailData.quota_summary?.frozen_balance ?? 0,
+                    },
                   ]}
                   columns={2}
                 />
@@ -685,17 +790,28 @@ const AdminAgentsPageV2 = () => {
         descriptionArea={
           <div className='flex flex-col gap-1'>
             <Text strong>{t('代理商管理')}</Text>
-            <Text type='tertiary'>{t('维护代理商账号、资料信息和启停状态。')}</Text>
+            <Text type='tertiary'>
+              {t('维护代理商账号、资料信息和启停状态。')}
+            </Text>
           </div>
         }
         actionsArea={
           <div className='flex flex-wrap items-center gap-2'>
             {canCreate ? (
-              <Button size='small' theme='light' type='primary' onClick={openCreateModal}>
+              <Button
+                size='small'
+                theme='light'
+                type='primary'
+                onClick={openCreateModal}
+              >
                 {t('新增代理商')}
               </Button>
             ) : null}
-            <Button size='small' type='tertiary' onClick={() => loadAgents(page, pageSize, keyword)}>
+            <Button
+              size='small'
+              type='tertiary'
+              onClick={() => loadAgents(page, pageSize, keyword)}
+            >
               {t('刷新')}
             </Button>
           </div>
@@ -704,12 +820,16 @@ const AdminAgentsPageV2 = () => {
           <div className='flex flex-col md:flex-row items-center gap-2 w-full'>
             <Input
               size='small'
-              placeholder={t('搜索用户名、显示名称或代理商名称')}
+              placeholder={t('搜索用户名、显示名称、邮箱或代理商名称')}
               value={keyword}
               onChange={setKeyword}
               style={{ width: isMobile ? '100%' : 320 }}
             />
-            <Button size='small' type='tertiary' onClick={() => loadAgents(1, pageSize, keyword)}>
+            <Button
+              size='small'
+              type='tertiary'
+              onClick={() => loadAgents(1, pageSize, keyword)}
+            >
               {t('查询')}
             </Button>
             <Button size='small' type='tertiary' onClick={resetFilters}>
@@ -739,7 +859,11 @@ const AdminAgentsPageV2 = () => {
           <div className='mb-3 flex flex-col gap-2'>
             <Banner type='warning' closeIcon={null} description={listError} />
             <div>
-              <Button size='small' type='tertiary' onClick={() => loadAgents(page, pageSize, keyword)}>
+              <Button
+                size='small'
+                type='tertiary'
+                onClick={() => loadAgents(page, pageSize, keyword)}
+              >
                 {t('重新加载')}
               </Button>
             </div>
@@ -752,7 +876,13 @@ const AdminAgentsPageV2 = () => {
           dataSource={agents}
           loading={loading}
           pagination={false}
-          empty={<Empty description={keyword.trim() ? t('没有匹配的代理商') : t('暂无代理商数据')} />}
+          empty={
+            <Empty
+              description={
+                keyword.trim() ? t('没有匹配的代理商') : t('暂无代理商数据')
+              }
+            />
+          }
         />
       </CardPro>
     </div>

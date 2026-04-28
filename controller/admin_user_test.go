@@ -403,6 +403,7 @@ func TestCreateAdminUserForAgentCreatesOpeningLedgerEntry(t *testing.T) {
 		"username":     "agent_created_user",
 		"password":     "12345678",
 		"display_name": "Agent Created User",
+		"email":        "agent_created_user@example.com",
 		"remark":       "created by agent",
 	}, agent.Id, common.RoleAdminUser)
 
@@ -439,6 +440,56 @@ func TestCreateAdminUserForAgentCreatesOpeningLedgerEntry(t *testing.T) {
 	require.NoError(t, db.Where("action_module = ? AND action_type = ? AND target_type = ? AND target_id = ?", service.ResourceUserManagement, service.ActionCreate, "user", user.Id).First(&audit).Error)
 }
 
+func TestCreateAdminUserRejectsInvalidEmail(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	agent := seedManagedUser(t, db, "agt_email_op", model.UserTypeAgent, common.RoleAdminUser, 0, 0)
+	grantPermissionActions(t, db, agent.Id, model.UserTypeAgent,
+		permissionGrant{Resource: service.ResourceUserManagement, Action: service.ActionCreate},
+	)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodPost, "/api/admin/users", map[string]any{
+		"username":     "bad_email_user",
+		"password":     "12345678",
+		"display_name": "Invalid Email User",
+		"email":        "not-an-email",
+		"remark":       "created by agent",
+	}, agent.Id, common.RoleAdminUser)
+
+	CreateAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+
+	var count int64
+	require.NoError(t, db.Model(&model.User{}).Where("username = ?", "bad_email_user").Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestCreateAdminUserRejectsDuplicateEmail(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	existing := seedManagedUser(t, db, "dup_email_existing", model.UserTypeEndUser, common.RoleCommonUser, 120, 0)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", existing.Id).Update("email", "duplicate-admin-user@example.com").Error)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodPost, "/api/admin/users", map[string]any{
+		"username":     "dup_email_new",
+		"password":     "12345678",
+		"display_name": "Duplicate Email User",
+		"email":        "duplicate-admin-user@example.com",
+		"remark":       "duplicate email",
+	}, 999, common.RoleRootUser)
+
+	CreateAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+
+	var count int64
+	require.NoError(t, db.Model(&model.User{}).Where("username = ?", "dup_email_new").Count(&count).Error)
+	require.Zero(t, count)
+}
+
 func TestCreateAdminUserPersistsRequestedGroup(t *testing.T) {
 	db := setupAdminUserTestDB(t)
 
@@ -446,6 +497,7 @@ func TestCreateAdminUserPersistsRequestedGroup(t *testing.T) {
 		"username":     "managed_group_user",
 		"password":     "12345678",
 		"display_name": "Managed Group User",
+		"email":        "managed_group_user@example.com",
 		"group":        "EZModel",
 		"remark":       "with group",
 	}, 999, common.RoleRootUser)
@@ -468,6 +520,7 @@ func TestCreateAdminUserPersistsAllowedTokenGroups(t *testing.T) {
 		"username":                     "managed_group_u1",
 		"password":                     "12345678",
 		"display_name":                 "Allowed User",
+		"email":                        "managed_group_u1@example.com",
 		"group":                        "default",
 		"allowed_token_groups_enabled": true,
 		"allowed_token_groups":         []string{"default", "vip"},
@@ -540,7 +593,7 @@ func TestUpdateAdminUserRejectsWhitelistOutsideAgentAssignableGroups(t *testing.
 		"allowed_token_groups_enabled": true,
 		"allowed_token_groups":         []string{"default", "beta"},
 		"remark":                       "should fail",
-		"email":                        "",
+		"email":                        "managed_allowed_groups_target@example.com",
 		"quota":                        target.Quota,
 	}, agent.Id, common.RoleAdminUser)
 	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(target.Id)}}
@@ -550,6 +603,101 @@ func TestUpdateAdminUserRejectsWhitelistOutsideAgentAssignableGroups(t *testing.
 	var response adminUserAPIResponse
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.False(t, response.Success)
+}
+
+func TestUpdateAdminUserRejectsInvalidEmail(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	agent := seedManagedUser(t, db, "agt_upd_email_op", model.UserTypeAgent, common.RoleAdminUser, 0, 0)
+	target := seedManagedUser(t, db, "upd_email_target", model.UserTypeEndUser, common.RoleCommonUser, 120, agent.Id)
+	require.NoError(t, db.Create(&model.AgentUserRelation{
+		AgentUserId: agent.Id,
+		EndUserId:   target.Id,
+		BindSource:  "manual",
+		BindAt:      common.GetTimestamp(),
+		Status:      model.CommonStatusEnabled,
+		CreatedAtTs: common.GetTimestamp(),
+	}).Error)
+	grantPermissionActions(t, db, agent.Id, model.UserTypeAgent,
+		permissionGrant{Resource: service.ResourceUserManagement, Action: service.ActionUpdate},
+	)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodPut, "/api/admin/users/"+strconv.Itoa(target.Id), map[string]any{
+		"username":     target.Username,
+		"display_name": target.DisplayName,
+		"password":     "",
+		"group":        target.Group,
+		"remark":       target.Remark,
+		"email":        "invalid-email",
+		"quota":        target.Quota,
+	}, agent.Id, common.RoleAdminUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(target.Id)}}
+
+	UpdateAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+
+	var reloaded model.User
+	require.NoError(t, db.First(&reloaded, target.Id).Error)
+	require.NotEqual(t, "invalid-email", reloaded.Email)
+}
+
+func TestUpdateAdminUserRejectsDuplicateEmailFromAnotherUser(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	existing := seedManagedUser(t, db, "upd_dup_email_existing", model.UserTypeEndUser, common.RoleCommonUser, 120, 0)
+	target := seedManagedUser(t, db, "upd_dup_email_target", model.UserTypeEndUser, common.RoleCommonUser, 120, 0)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", existing.Id).Update("email", "existing-admin-user@example.com").Error)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", target.Id).Update("email", "target-admin-user@example.com").Error)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodPut, "/api/admin/users/"+strconv.Itoa(target.Id), map[string]any{
+		"username":     target.Username,
+		"display_name": target.DisplayName,
+		"password":     "",
+		"group":        target.Group,
+		"remark":       target.Remark,
+		"email":        "existing-admin-user@example.com",
+		"quota":        target.Quota,
+	}, 999, common.RoleRootUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(target.Id)}}
+
+	UpdateAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+
+	var reloaded model.User
+	require.NoError(t, db.First(&reloaded, target.Id).Error)
+	require.Equal(t, "target-admin-user@example.com", reloaded.Email)
+}
+
+func TestUpdateAdminUserAllowsKeepingOwnEmail(t *testing.T) {
+	db := setupAdminUserTestDB(t)
+	target := seedManagedUser(t, db, "upd_own_email_target", model.UserTypeEndUser, common.RoleCommonUser, 120, 0)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", target.Id).Update("email", "own-admin-user@example.com").Error)
+
+	ctx, recorder := newAdminUserJSONContext(t, http.MethodPut, "/api/admin/users/"+strconv.Itoa(target.Id), map[string]any{
+		"username":     target.Username,
+		"display_name": "Own Email Updated",
+		"password":     "",
+		"group":        target.Group,
+		"remark":       target.Remark,
+		"email":        "own-admin-user@example.com",
+		"quota":        target.Quota,
+	}, 999, common.RoleRootUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(target.Id)}}
+
+	UpdateAdminUser(ctx)
+
+	var response adminUserAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var reloaded model.User
+	require.NoError(t, db.First(&reloaded, target.Id).Error)
+	require.Equal(t, "own-admin-user@example.com", reloaded.Email)
+	require.Equal(t, "Own Email Updated", reloaded.DisplayName)
 }
 
 func TestDeleteAdminUserForAgentDeletesManagedUser(t *testing.T) {
@@ -628,7 +776,7 @@ func TestUpdateAdminUserForAgentQuotaDecreaseReturnsBalanceAndCreatesLedger(t *t
 		"password":     "",
 		"group":        "vip",
 		"remark":       "quota-adjusted",
-		"email":        "",
+		"email":        "managed_quota_tgt@example.com",
 		"quota":        80,
 	}, agent.Id, common.RoleCommonUser)
 	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(target.Id)}}
@@ -691,7 +839,7 @@ func TestUpdateAdminUserForAgentQuotaIncreaseConsumesAgentBalanceAndCreatesLedge
 		"password":     "",
 		"group":        target.Group,
 		"remark":       target.Remark,
-		"email":        "",
+		"email":        "managed_quota_inc@example.com",
 		"quota":        210,
 	}, agent.Id, common.RoleCommonUser)
 	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(target.Id)}}
@@ -750,7 +898,7 @@ func TestUpdateAdminUserWithBlankPasswordAcceptsHashedStoredPassword(t *testing.
 		"password":     "",
 		"group":        target.Group,
 		"remark":       target.Remark,
-		"email":        "",
+		"email":        "managed_hash_pwd@example.com",
 		"quota":        210,
 	}, agent.Id, common.RoleCommonUser)
 	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(target.Id)}}

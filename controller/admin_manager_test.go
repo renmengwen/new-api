@@ -106,6 +106,7 @@ func TestCreateAdminManagerCreatesOpeningLedgerEntry(t *testing.T) {
 		"username":     "admin_created_1",
 		"password":     "12345678",
 		"display_name": "Admin Created",
+		"email":        "admin_created_1@example.com",
 		"remark":       "ops",
 	})
 
@@ -146,6 +147,7 @@ func TestCreateAdminManagerPersistsRequestedGroup(t *testing.T) {
 		"username":     "admin_group_1",
 		"password":     "12345678",
 		"display_name": "Admin Group",
+		"email":        "admin_group_1@example.com",
 		"remark":       "ops",
 		"group":        "EZModel",
 	})
@@ -159,6 +161,28 @@ func TestCreateAdminManagerPersistsRequestedGroup(t *testing.T) {
 	var user model.User
 	require.NoError(t, db.Where("username = ?", "admin_group_1").First(&user).Error)
 	require.Equal(t, "EZModel", user.Group)
+}
+
+func TestCreateAdminManagerRejectsInvalidEmail(t *testing.T) {
+	db := setupAdminManagerTestDB(t)
+
+	ctx, recorder := newAdminManagerContext(t, http.MethodPost, "/api/admin/admin-users", map[string]any{
+		"username":     "admin_invalid_email",
+		"password":     "12345678",
+		"display_name": "Admin Invalid Email",
+		"email":        "not-an-email",
+		"remark":       "ops",
+	})
+
+	CreateAdminManager(ctx)
+
+	var response adminManagerAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
+
+	var count int64
+	require.NoError(t, db.Model(&model.User{}).Where("username = ?", "admin_invalid_email").Count(&count).Error)
+	require.Zero(t, count)
 }
 
 func TestGetAdminManagersReturnsAdminUsers(t *testing.T) {
@@ -217,6 +241,7 @@ func TestUpdateAdminManagerUpdatesProfileAndWritesAudit(t *testing.T) {
 
 	ctx, recorder := newAdminManagerContext(t, http.MethodPut, "/api/admin/admin-users/"+strconv.Itoa(user.Id), map[string]any{
 		"display_name": "After",
+		"email":        "admin_edit_1@example.com",
 		"remark":       "updated",
 	})
 	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
@@ -235,6 +260,40 @@ func TestUpdateAdminManagerUpdatesProfileAndWritesAudit(t *testing.T) {
 	var audit model.AdminAuditLog
 	require.NoError(t, db.Where("action_module = ? AND target_type = ? AND target_id = ?", "admin_management", "user", user.Id).Order("id desc").First(&audit).Error)
 	require.Equal(t, "update", audit.ActionType)
+}
+
+func TestUpdateAdminManagerPersistsEmail(t *testing.T) {
+	db := setupAdminManagerTestDB(t)
+
+	user := model.User{
+		Username:    "admin_email_edit_1",
+		Password:    "hashed-password",
+		DisplayName: "Before",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		UserType:    model.UserTypeAdmin,
+		Group:       "default",
+		AffCode:     "adminemaile1",
+		Email:       "before-admin@example.com",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	ctx, recorder := newAdminManagerContext(t, http.MethodPut, "/api/admin/admin-users/"+strconv.Itoa(user.Id), map[string]any{
+		"display_name": "After",
+		"email":        "after-admin@example.com",
+		"remark":       "updated",
+	})
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+
+	UpdateAdminManager(ctx)
+
+	var response adminManagerAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+
+	var updated model.User
+	require.NoError(t, db.First(&updated, user.Id).Error)
+	require.Equal(t, "after-admin@example.com", updated.Email)
 }
 
 func TestUpdateAdminManagerStatusDisablesAdmin(t *testing.T) {

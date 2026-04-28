@@ -35,7 +35,13 @@ import {
 import { useTranslation } from 'react-i18next';
 import ModalActionFooter from '../../components/common/modals/ModalActionFooter';
 import CardPro from '../../components/common/ui/CardPro';
-import { API, createCardProPagination, showError, showSuccess, timestamp2string } from '../../helpers';
+import {
+  API,
+  createCardProPagination,
+  showError,
+  showSuccess,
+  timestamp2string,
+} from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
 import { toGroupOptions } from '../../hooks/users/useUsersData.helpers';
@@ -46,6 +52,7 @@ const emptyFormState = {
   username: '',
   password: '',
   display_name: '',
+  email: '',
   remark: '',
   group: '',
 };
@@ -75,15 +82,21 @@ const fieldStyle = {
   gap: 6,
 };
 
+const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
 const AdminManagersPageV2 = () => {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
-  const { loading: permissionLoading, hasActionPermission } = useUserPermissions();
+  const { loading: permissionLoading, hasActionPermission } =
+    useUserPermissions();
 
   const canRead = hasActionPermission('admin_management', 'read');
   const canCreate = hasActionPermission('admin_management', 'create');
   const canUpdate = hasActionPermission('admin_management', 'update');
-  const canUpdateStatus = hasActionPermission('admin_management', 'update_status');
+  const canUpdateStatus = hasActionPermission(
+    'admin_management',
+    'update_status',
+  );
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -132,7 +145,11 @@ const AdminManagersPageV2 = () => {
     }
   };
 
-  const loadManagers = async (nextPage = page, nextPageSize = pageSize, nextKeyword = keyword) => {
+  const loadManagers = async (
+    nextPage = page,
+    nextPageSize = pageSize,
+    nextKeyword = keyword,
+  ) => {
     if (!canRead) {
       return;
     }
@@ -205,6 +222,7 @@ const AdminManagersPageV2 = () => {
       username: record.username || '',
       password: '',
       display_name: record.display_name || '',
+      email: record.email || '',
       remark: record.remark || '',
       group: record.group || defaultGroup,
     });
@@ -220,6 +238,7 @@ const AdminManagersPageV2 = () => {
         username: data.username || '',
         password: '',
         display_name: data.display_name || '',
+        email: data.email || '',
         remark: data.remark || '',
         group: data.group || defaultGroup,
       });
@@ -229,8 +248,21 @@ const AdminManagersPageV2 = () => {
   };
 
   const handleSubmit = async () => {
-    if (!editingRecord && (!formState.username.trim() || !formState.password.trim())) {
-      showError(t('请填写用户名和初始密码'));
+    if (
+      !editingRecord &&
+      (!formState.username.trim() ||
+        !formState.password.trim() ||
+        !formState.email.trim())
+    ) {
+      showError(t('请填写用户名、初始密码和邮箱地址'));
+      return;
+    }
+    if (editingRecord && !formState.email.trim()) {
+      showError(t('请输入邮箱地址'));
+      return;
+    }
+    if (!isValidEmail(formState.email.trim())) {
+      showError(t('无效的邮箱地址'));
       return;
     }
 
@@ -245,6 +277,7 @@ const AdminManagersPageV2 = () => {
         username: formState.username.trim(),
         password: formState.password,
         display_name: formState.display_name.trim(),
+        email: formState.email.trim(),
         remark: formState.remark.trim(),
         group: formState.group,
       };
@@ -274,7 +307,9 @@ const AdminManagersPageV2 = () => {
 
   const handleStatusUpdate = async (record, enabled) => {
     try {
-      const res = await API.post(`/api/admin/admin-users/${record.id}/${enabled ? 'enable' : 'disable'}`);
+      const res = await API.post(
+        `/api/admin/admin-users/${record.id}/${enabled ? 'enable' : 'disable'}`,
+      );
       if (!res.data.success) {
         showError(res.data.message || t('更新管理员状态失败'));
         return;
@@ -312,6 +347,9 @@ const AdminManagersPageV2 = () => {
             <Text strong>{record.display_name || record.username}</Text>
             <Text type='tertiary' size='small'>
               {record.username}
+            </Text>
+            <Text type='tertiary' size='small'>
+              {record.email || '-'}
             </Text>
           </div>
         ),
@@ -387,7 +425,11 @@ const AdminManagersPageV2 = () => {
   if (!canRead) {
     return (
       <div className='mt-[60px] px-2'>
-        <Banner type='warning' closeIcon={null} description={t('你没有管理员管理的查看权限')} />
+        <Banner
+          type='warning'
+          closeIcon={null}
+          description={t('你没有管理员管理的查看权限')}
+        />
       </div>
     );
   }
@@ -413,7 +455,9 @@ const AdminManagersPageV2 = () => {
           <div>
             <div className='mb-3 flex flex-col gap-1'>
               <Text strong>{t('基础信息')}</Text>
-              <Text type='tertiary'>{t('维护管理员账号标识、显示名称和密码信息。')}</Text>
+              <Text type='tertiary'>
+                {t('维护管理员账号标识、显示名称和密码信息。')}
+              </Text>
             </div>
             <div className='grid gap-3 md:grid-cols-2'>
               <div style={fieldStyle}>
@@ -422,11 +466,15 @@ const AdminManagersPageV2 = () => {
                   disabled={Boolean(editingRecord)}
                   placeholder={t('请输入登录用户名')}
                   value={formState.username}
-                  onChange={(value) => setFormState((prev) => ({ ...prev, username: value }))}
+                  onChange={(value) =>
+                    setFormState((prev) => ({ ...prev, username: value }))
+                  }
                 />
               </div>
               <div style={fieldStyle}>
-                <Text type='tertiary'>{editingRecord ? t('重置密码') : t('初始密码')}</Text>
+                <Text type='tertiary'>
+                  {editingRecord ? t('重置密码') : t('初始密码')}
+                </Text>
                 <Input
                   mode='password'
                   placeholder={
@@ -435,7 +483,9 @@ const AdminManagersPageV2 = () => {
                       : t('请输入初始密码，长度 8 到 20 位')
                   }
                   value={formState.password}
-                  onChange={(value) => setFormState((prev) => ({ ...prev, password: value }))}
+                  onChange={(value) =>
+                    setFormState((prev) => ({ ...prev, password: value }))
+                  }
                 />
               </div>
               <div style={fieldStyle}>
@@ -443,7 +493,20 @@ const AdminManagersPageV2 = () => {
                 <Input
                   placeholder={t('请输入显示名称')}
                   value={formState.display_name}
-                  onChange={(value) => setFormState((prev) => ({ ...prev, display_name: value }))}
+                  onChange={(value) =>
+                    setFormState((prev) => ({ ...prev, display_name: value }))
+                  }
+                />
+              </div>
+              <div style={fieldStyle}>
+                <Text type='tertiary'>{t('邮箱地址')}</Text>
+                <Input
+                  type='email'
+                  placeholder={t('请输入邮箱地址')}
+                  value={formState.email}
+                  onChange={(value) =>
+                    setFormState((prev) => ({ ...prev, email: value }))
+                  }
                 />
               </div>
               {!editingRecord ? (
@@ -464,13 +527,17 @@ const AdminManagersPageV2 = () => {
           <div style={sectionBlockStyle}>
             <div className='mb-3 flex flex-col gap-1'>
               <Text strong>{t('备注信息')}</Text>
-              <Text type='tertiary'>{t('补充岗位职责、权限说明或交接备注，仅后台可见。')}</Text>
+              <Text type='tertiary'>
+                {t('补充岗位职责、权限说明或交接备注，仅后台可见。')}
+              </Text>
             </div>
             <TextArea
               rows={3}
               placeholder={t('请输入备注信息')}
               value={formState.remark}
-              onChange={(value) => setFormState((prev) => ({ ...prev, remark: value }))}
+              onChange={(value) =>
+                setFormState((prev) => ({ ...prev, remark: value }))
+              }
             />
           </div>
         </div>
@@ -493,13 +560,19 @@ const AdminManagersPageV2 = () => {
           <div className='flex flex-col gap-2'>
             <Banner type='warning' closeIcon={null} description={detailError} />
             <div>
-              <Button size='small' type='tertiary' onClick={() => loadDetail(detailId)}>
+              <Button
+                size='small'
+                type='tertiary'
+                onClick={() => loadDetail(detailId)}
+              >
                 {t('重试')}
               </Button>
             </div>
           </div>
         ) : null}
-        {!detailLoading && !detailError && !detailData ? <Empty description={t('暂无详情数据')} /> : null}
+        {!detailLoading && !detailError && !detailData ? (
+          <Empty description={t('暂无详情数据')} />
+        ) : null}
         {!detailLoading && !detailError && detailData ? (
           <div className='flex flex-col gap-4'>
             <div style={sectionStyle}>
@@ -510,7 +583,10 @@ const AdminManagersPageV2 = () => {
                   </Title>
                   <Text type='tertiary'>{detailData.username}</Text>
                 </div>
-                <Tag color={detailData.status === 1 ? 'green' : 'red'} shape='circle'>
+                <Tag
+                  color={detailData.status === 1 ? 'green' : 'red'}
+                  shape='circle'
+                >
                   {detailData.status === 1 ? t('启用') : t('停用')}
                 </Tag>
               </div>
@@ -518,15 +594,20 @@ const AdminManagersPageV2 = () => {
             <div style={mergedSectionStyle}>
               <div className='mb-3 flex flex-col gap-1'>
                 <Text strong>{t('账号资料')}</Text>
-                <Text type='tertiary'>{t('查看管理员账号的显示名称、最近活跃时间和备注信息。')}</Text>
+                <Text type='tertiary'>
+                  {t('查看管理员账号的显示名称、最近活跃时间和备注信息。')}
+                </Text>
               </div>
               <Descriptions
                 data={[
                   { key: t('登录用户名'), value: detailData.username || '-' },
                   { key: t('显示名称'), value: detailData.display_name || '-' },
+                  { key: t('邮箱地址'), value: detailData.email || '-' },
                   {
                     key: t('最后活跃'),
-                    value: detailData.last_active_at ? timestamp2string(detailData.last_active_at) : '-',
+                    value: detailData.last_active_at
+                      ? timestamp2string(detailData.last_active_at)
+                      : '-',
                   },
                 ]}
                 columns={2}
@@ -535,7 +616,9 @@ const AdminManagersPageV2 = () => {
                 <div className='mb-3 flex flex-col gap-1'>
                   <Text strong>{t('备注信息')}</Text>
                 </div>
-                <Text style={{ whiteSpace: 'pre-wrap' }}>{detailData.remark || '-'}</Text>
+                <Text style={{ whiteSpace: 'pre-wrap' }}>
+                  {detailData.remark || '-'}
+                </Text>
               </div>
             </div>
           </div>
@@ -547,17 +630,30 @@ const AdminManagersPageV2 = () => {
         descriptionArea={
           <div className='flex flex-col gap-1'>
             <Text strong>{t('管理员管理')}</Text>
-            <Text type='tertiary'>{t('维护后台管理员账号、状态和基础资料，权限配置请前往用户权限管理。')}</Text>
+            <Text type='tertiary'>
+              {t(
+                '维护后台管理员账号、状态和基础资料，权限配置请前往用户权限管理。',
+              )}
+            </Text>
           </div>
         }
         actionsArea={
           <div className='flex flex-wrap items-center gap-2'>
             {canCreate ? (
-              <Button size='small' theme='light' type='primary' onClick={openCreateModal}>
+              <Button
+                size='small'
+                theme='light'
+                type='primary'
+                onClick={openCreateModal}
+              >
                 {t('新增管理员')}
               </Button>
             ) : null}
-            <Button size='small' type='tertiary' onClick={() => loadManagers(page, pageSize, keyword)}>
+            <Button
+              size='small'
+              type='tertiary'
+              onClick={() => loadManagers(page, pageSize, keyword)}
+            >
               {t('刷新')}
             </Button>
           </div>
@@ -566,12 +662,16 @@ const AdminManagersPageV2 = () => {
           <div className='flex flex-col md:flex-row items-center gap-2 w-full'>
             <Input
               size='small'
-              placeholder={t('搜索用户名、显示名称或备注')}
+              placeholder={t('搜索用户名、显示名称、邮箱或备注')}
               value={keyword}
               onChange={setKeyword}
               style={{ width: isMobile ? '100%' : 320 }}
             />
-            <Button size='small' type='tertiary' onClick={() => loadManagers(1, pageSize, keyword)}>
+            <Button
+              size='small'
+              type='tertiary'
+              onClick={() => loadManagers(1, pageSize, keyword)}
+            >
               {t('查询')}
             </Button>
             <Button size='small' type='tertiary' onClick={resetFilters}>
@@ -601,7 +701,11 @@ const AdminManagersPageV2 = () => {
           <div className='mb-3 flex flex-col gap-2'>
             <Banner type='warning' closeIcon={null} description={listError} />
             <div>
-              <Button size='small' type='tertiary' onClick={() => loadManagers(page, pageSize, keyword)}>
+              <Button
+                size='small'
+                type='tertiary'
+                onClick={() => loadManagers(page, pageSize, keyword)}
+              >
                 {t('重新加载')}
               </Button>
             </div>
@@ -614,7 +718,13 @@ const AdminManagersPageV2 = () => {
           columns={columns}
           dataSource={items}
           pagination={false}
-          empty={<Empty description={keyword.trim() ? t('没有匹配的管理员') : t('暂无管理员数据')} />}
+          empty={
+            <Empty
+              description={
+                keyword.trim() ? t('没有匹配的管理员') : t('暂无管理员数据')
+              }
+            />
+          }
         />
       </CardPro>
     </div>
