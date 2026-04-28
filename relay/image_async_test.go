@@ -2,7 +2,10 @@ package relay
 
 import (
 	"errors"
+	"io"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/constant"
@@ -155,6 +158,68 @@ func TestHandleGPTProtoAsyncImageResponseRejectsNilResponse(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 
 	handled, apiErr := handleGPTProtoAsyncImageResponse(c, nil, &relaycommon.RelayInfo{}, &dto.ImageRequest{Model: "gpt-image-2"})
+
+	if !handled {
+		t.Fatalf("handled = false, want true")
+	}
+	if apiErr == nil {
+		t.Fatalf("apiErr is nil")
+	}
+}
+
+func TestHandleGPTProtoAsyncImageResponseRejectsNilRelayInfo(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	resp := &http.Response{
+		Body: io.NopCloser(strings.NewReader(`{"data":{"id":"pred_123"}}`)),
+	}
+
+	handled, apiErr := handleGPTProtoAsyncImageResponse(c, resp, nil, &dto.ImageRequest{Model: "gpt-image-2"})
+
+	if !handled {
+		t.Fatalf("handled = false, want true")
+	}
+	if apiErr == nil {
+		t.Fatalf("apiErr is nil")
+	}
+}
+
+func TestHandleGPTProtoAsyncImageResponseRejectsNilImageRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	resp := &http.Response{
+		Body: io.NopCloser(strings.NewReader(`{"data":{"id":"pred_123"}}`)),
+	}
+
+	handled, apiErr := handleGPTProtoAsyncImageResponse(c, resp, &relaycommon.RelayInfo{}, nil)
+
+	if !handled {
+		t.Fatalf("handled = false, want true")
+	}
+	if apiErr == nil {
+		t.Fatalf("apiErr is nil")
+	}
+}
+
+type panicReadCloser struct{}
+
+func (panicReadCloser) Read(_ []byte) (int, error) {
+	panic("read panic")
+}
+
+func (panicReadCloser) Close() error {
+	return nil
+}
+
+func TestHandleGPTProtoAsyncImageResponseRecoversInternalPanic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	resp := &http.Response{Body: panicReadCloser{}}
+
+	handled, apiErr := handleGPTProtoAsyncImageResponse(c, resp, &relaycommon.RelayInfo{}, &dto.ImageRequest{Model: "gpt-image-2"})
 
 	if !handled {
 		t.Fatalf("handled = false, want true")
