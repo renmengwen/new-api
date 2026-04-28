@@ -2,11 +2,13 @@ package relay
 
 import (
 	"errors"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
+	"github.com/gin-gonic/gin"
 )
 
 func TestIsGPTProtoAsyncImageRequestRequiresExplicitFalse(t *testing.T) {
@@ -39,6 +41,19 @@ func TestPrepareGPTProtoAsyncImageSubmitRouteUsesNativeTextToImagePath(t *testin
 
 	if info.ChannelBaseUrl != "https://example.com" {
 		t.Fatalf("base URL = %q, want https://example.com", info.ChannelBaseUrl)
+	}
+	if info.RequestURLPath != "/api/v3/openai/gpt-image-2/text-to-image" {
+		t.Fatalf("request path = %q, want native text-to-image path", info.RequestURLPath)
+	}
+}
+
+func TestPrepareGPTProtoAsyncImageSubmitRouteInitializesMissingChannelMeta(t *testing.T) {
+	info := &relaycommon.RelayInfo{}
+
+	prepareGPTProtoAsyncImageSubmitRoute(info, &dto.ImageRequest{Model: "gpt-image-2"})
+
+	if info.ChannelMeta == nil {
+		t.Fatalf("ChannelMeta is nil")
 	}
 	if info.RequestURLPath != "/api/v3/openai/gpt-image-2/text-to-image" {
 		t.Fatalf("request path = %q, want native text-to-image path", info.RequestURLPath)
@@ -111,6 +126,21 @@ func TestExtractGPTProtoAsyncTaskIDReportsMissingIDForSynchronousImageResult(t *
 	}`))
 	if !errors.Is(err, errAsyncImageTaskIDMissing) {
 		t.Fatalf("err = %v, want errAsyncImageTaskIDMissing", err)
+	}
+}
+
+func TestHandleGPTProtoAsyncImageResponseRejectsNilResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+
+	handled, apiErr := handleGPTProtoAsyncImageResponse(c, nil, &relaycommon.RelayInfo{}, &dto.ImageRequest{Model: "gpt-image-2"})
+
+	if !handled {
+		t.Fatalf("handled = false, want true")
+	}
+	if apiErr == nil {
+		t.Fatalf("apiErr is nil")
 	}
 }
 
