@@ -33,6 +33,38 @@ func TestIsGPTProtoAsyncImageRequestRequiresExplicitFalse(t *testing.T) {
 	}
 }
 
+func TestShouldUseGPTProtoAsyncImageRequestRequiresSupportedChannel(t *testing.T) {
+	falseValue := false
+	request := &dto.ImageRequest{Model: "gpt-image-2", EnableSyncMode: &falseValue}
+
+	if shouldUseGPTProtoAsyncImageRequest(&relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:    constant.ChannelTypeOpenAI,
+			ChannelBaseUrl: "https://api.openai.com",
+		},
+	}, request) {
+		t.Fatalf("plain OpenAI-compatible channel should not use native async image route")
+	}
+
+	if !shouldUseGPTProtoAsyncImageRequest(&relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:    constant.ChannelTypeOpenAI,
+			ChannelBaseUrl: "https://gptproto.com",
+		},
+	}, request) {
+		t.Fatalf("supported native async image channel should use native async image route")
+	}
+
+	if !shouldUseGPTProtoAsyncImageRequest(&relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:    constant.ChannelTypeCustom,
+			ChannelBaseUrl: "https://example.com/api/v3/openai/gpt-image-2/text-to-image",
+		},
+	}, request) {
+		t.Fatalf("custom native text-to-image endpoint should use native async image route")
+	}
+}
+
 func TestPrepareGPTProtoAsyncImageSubmitRouteUsesNativeTextToImagePath(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		ChannelMeta: &relaycommon.ChannelMeta{

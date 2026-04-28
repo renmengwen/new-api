@@ -32,6 +32,35 @@ func isGPTProtoAsyncImageRequest(request *dto.ImageRequest) bool {
 		strings.HasPrefix(request.Model, "gpt-image-2")
 }
 
+func shouldUseGPTProtoAsyncImageRequest(info *relaycommon.RelayInfo, request *dto.ImageRequest) bool {
+	return isGPTProtoAsyncImageRequest(request) && isGPTProtoAsyncImageChannel(info)
+}
+
+func isGPTProtoAsyncImageChannel(info *relaycommon.RelayInfo) bool {
+	if info == nil || info.ChannelMeta == nil {
+		return false
+	}
+	baseURL := strings.TrimSpace(info.ChannelBaseUrl)
+	if baseURL == "" {
+		return false
+	}
+
+	lowerBaseURL := strings.ToLower(baseURL)
+	if strings.Contains(lowerBaseURL, "/api/v3/openai/") || strings.HasSuffix(lowerBaseURL, "/api/v3/openai") {
+		return true
+	}
+
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return strings.Contains(lowerBaseURL, "gptproto")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" {
+		host = strings.ToLower(strings.Split(strings.Trim(parsed.Path, "/"), "/")[0])
+	}
+	return strings.Contains(host, "gptproto")
+}
+
 func prepareGPTProtoAsyncImageSubmitRoute(info *relaycommon.RelayInfo, request *dto.ImageRequest) {
 	if info == nil || request == nil {
 		return
@@ -226,14 +255,14 @@ func handleGPTProtoAsyncImageResponse(c *gin.Context, resp *http.Response, info 
 	task := buildImageTask(publicTaskID, upstreamTaskID, responseBody, info)
 	if insertErr := task.Insert(); insertErr != nil {
 		logger.LogError(c, "insert gptproto image task error: "+insertErr.Error())
-	} else {
-		chargedQuota := asyncImageChargedQuota(info)
-		info.PriceData.Quota = chargedQuota
-		if settleErr := service.SettleBilling(c, info, chargedQuota); settleErr != nil {
-			logger.LogError(c, "settle gptproto image task billing error: "+settleErr.Error())
-		}
-		service.LogTaskConsumption(c, info)
+		return true, types.NewOpenAIError(insertErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	chargedQuota := asyncImageChargedQuota(info)
+	info.PriceData.Quota = chargedQuota
+	if settleErr := service.SettleBilling(c, info, chargedQuota); settleErr != nil {
+		logger.LogError(c, "settle gptproto image task billing error: "+settleErr.Error())
+	}
+	service.LogTaskConsumption(c, info)
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":      publicTaskID,

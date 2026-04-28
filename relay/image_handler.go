@@ -85,7 +85,8 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	statusCodeMappingStr := c.GetString("status_code_mapping")
 
-	if isGPTProtoAsyncImageRequest(request) {
+	useGPTProtoAsyncImage := shouldUseGPTProtoAsyncImageRequest(info, request)
+	if useGPTProtoAsyncImage {
 		prepareGPTProtoAsyncImageSubmitRoute(info, request)
 	}
 
@@ -113,7 +114,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 			}
 		}
 	}
-	if isGPTProtoAsyncImageRequest(request) {
+	if useGPTProtoAsyncImage {
 		handled, asyncErr := handleGPTProtoAsyncImageResponse(c, httpResp, info, request)
 		if handled || asyncErr != nil {
 			return asyncErr
