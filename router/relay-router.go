@@ -166,6 +166,7 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.DELETE("/models/:model", controller.RelayNotImplemented)
 	}
 	{
+		relayV1Router.GET("/images/generations/:task_id/content", controller.GetImageGenerationContent)
 		relayV1Router.GET("/images/generations/:task_id", controller.GetImageGenerationTask)
 	}
 

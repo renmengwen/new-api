@@ -445,7 +445,7 @@ export const AI_MODEL_DOC_ITEMS = [
       action: 'image_generation',
       status: 'SUCCESS',
       progress: '100%',
-      result_url: 'https://example.com/generated.png',
+      result_url: 'https://api.example.com/v1/images/generations/task_01jzexample/content',
       fail_reason: '',
     },
   }),
