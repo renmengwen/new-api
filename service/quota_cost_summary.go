@@ -415,7 +415,10 @@ func quotaToUSD(quota int) float64 {
 }
 
 func addWeightedUnitPrice(total *float64, weight *int64, price float64, tokens int64) {
-	if price <= 0 || tokens <= 0 {
+	if tokens <= 0 {
+		return
+	}
+	if price < 0 {
 		return
 	}
 	*total += price * float64(tokens)

@@ -252,6 +252,49 @@ func TestListQuotaCostSummaryReturnsEffectiveUnitPricesWithGroupRatio(t *testing
 	require.InDelta(t, 0.00056, items[0].CacheCostUSD, 0.000001)
 }
 
+func TestListQuotaCostSummaryWeightsZeroPriceRowsInUnitPrices(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	setQuotaCostSummaryQuotaPerUnit(t, 1000000)
+	user := seedQuotaUser(t, db, "mixed_free_user", 0)
+	seedQuotaCostSummaryVendorModel(t, db, "OpenAI", "mixed-free-model")
+
+	freeOther, err := common.Marshal(map[string]any{
+		"model_ratio":      2.0,
+		"group_ratio":      1.0,
+		"user_group_ratio": 0.0,
+	})
+	require.NoError(t, err)
+	chargedOther, err := common.Marshal(map[string]any{
+		"model_ratio":      2.0,
+		"group_ratio":      1.0,
+		"user_group_ratio": -1.0,
+	})
+	require.NoError(t, err)
+
+	seedQuotaCostSummaryLog(t, db, model.Log{
+		UserId: user.Id, Username: user.Username, Type: model.LogTypeConsume,
+		CreatedAt: 1714237200, ModelName: "mixed-free-model",
+		PromptTokens: 100, Quota: 0, Group: "default", Other: string(freeOther),
+	})
+	seedQuotaCostSummaryLog(t, db, model.Log{
+		UserId: user.Id, Username: user.Username, Type: model.LogTypeConsume,
+		CreatedAt: 1714237300, ModelName: "mixed-free-model",
+		PromptTokens: 100, Quota: 200, Group: "default", Other: string(chargedOther),
+	})
+
+	items, total, err := service.ListQuotaCostSummary(dto.AdminQuotaCostSummaryQuery{
+		StartTimestamp: 1714233600,
+		EndTimestamp:   1714320000,
+	}, &common.PageInfo{Page: 1, PageSize: 10}, 999, common.RoleRootUser)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, items, 1)
+	require.EqualValues(t, 200, items[0].InputTokens)
+	require.InDelta(t, 1.0, items[0].InputUnitPriceUSD, 0.000001)
+	require.InDelta(t, 0.0002, items[0].InputCostUSD, 0.000001)
+	require.InDelta(t, 0.0002, items[0].TotalCostUSD, 0.000001)
+}
+
 func TestListQuotaCostSummaryUsesSplitCacheCreationRatios(t *testing.T) {
 	db := setupAdminQuotaTestDB(t)
 	setQuotaCostSummaryQuotaPerUnit(t, 1000000)
