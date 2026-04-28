@@ -314,8 +314,8 @@ func quotaCostSummaryInputUnitPrice(other quotaCostSummaryOther) float64 {
 	if other.ModelPrice > 0 {
 		return other.ModelPrice
 	}
-	if other.ModelRatio > 0 {
-		return other.ModelRatio * 2
+	if other.ModelRatio > 0 && common.QuotaPerUnit > 0 {
+		return other.ModelRatio * (1000000 / common.QuotaPerUnit)
 	}
 	return 0
 }
