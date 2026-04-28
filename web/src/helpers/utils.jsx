@@ -1049,16 +1049,27 @@ export const getModelPriceItems = (
 };
 
 // 格式化价格信息（用于卡片视图）
-export const formatPriceInfo = (priceData, t, quotaDisplayType = 'USD') => {
+export const formatPriceInfo = (
+  priceData,
+  t,
+  quotaDisplayType = 'USD',
+  maxItems,
+) => {
   const items = getModelPriceItems(priceData, t, quotaDisplayType);
+  const displayItems =
+    maxItems && items.length > maxItems ? items.slice(0, maxItems) : items;
+  const hasMore = maxItems && items.length > maxItems;
   return (
     <>
-      {items.map((item) => (
+      {displayItems.map((item) => (
         <span key={item.key} style={{ color: 'var(--semi-color-text-1)' }}>
           {item.label} {item.value}
           {item.suffix}
         </span>
       ))}
+      {hasMore && (
+        <span style={{ color: 'var(--semi-color-text-2)' }}>...</span>
+      )}
     </>
   );
 };
