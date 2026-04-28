@@ -33,6 +33,7 @@ type quotaCostSummaryAccumulator struct {
 type quotaCostSummaryOther struct {
 	ModelRatio            float64 `json:"model_ratio"`
 	ModelPrice            float64 `json:"model_price"`
+	BillingMode           string  `json:"billing_mode"`
 	GroupRatio            float64 `json:"group_ratio"`
 	UserGroupRatio        float64 `json:"user_group_ratio"`
 	CompletionRatio       float64 `json:"completion_ratio"`
@@ -206,6 +207,9 @@ func ensureQuotaCostSummaryVendorsForLogs(modelVendorMap map[string]string, logs
 		Find(&rows).Error; err != nil {
 		return err
 	}
+	for _, modelName := range missing {
+		modelVendorMap[modelName] = quotaCostSummaryUnknownVendor
+	}
 	for _, row := range rows {
 		vendorName := strings.TrimSpace(row.VendorName)
 		if vendorName == "" {
@@ -285,9 +289,10 @@ func applyQuotaCostSummaryLogToAccumulators(accumulators map[string]*quotaCostSu
 func applyQuotaCostSummaryLog(acc *quotaCostSummaryAccumulator, log *model.Log) {
 	other := parseQuotaCostSummaryOther(log.Other)
 	groupRatio := firstPositiveFloat(other.UserGroupRatio, other.GroupRatio, 1)
-	fixedPrice := other.ModelPrice > 0
+	advancedBilling := quotaCostSummaryIsAdvancedBilling(other)
+	fixedPrice := other.ModelPrice > 0 && !advancedBilling
 	inputUnitPrice := quotaCostSummaryInputUnitPrice(other)
-	if fixedPrice {
+	if fixedPrice || advancedBilling {
 		inputUnitPrice = 0
 	}
 	outputUnitPrice := inputUnitPrice * firstPositiveFloat(other.CompletionRatio, 0)
@@ -297,10 +302,7 @@ func applyQuotaCostSummaryLog(acc *quotaCostSummaryAccumulator, log *model.Log) 
 	cacheCreateUnitPrice1h := inputUnitPrice * firstPositiveFloat(other.CacheCreationRatio1h, 0)
 
 	cacheReadTokens := positiveInt64(other.CacheTokens)
-	cacheCreateTokens := positiveInt64(other.CacheCreationTokens)
-	cacheCreateTokens5m := positiveInt64(other.CacheCreationTokens5m)
-	cacheCreateTokens1h := positiveInt64(other.CacheCreationTokens1h)
-	cacheCreateTotalTokens := cacheCreateTokens + cacheCreateTokens5m + cacheCreateTokens1h
+	cacheCreateTokens, cacheCreateTokens5m, cacheCreateTokens1h, cacheCreateTotalTokens := quotaCostSummaryCacheCreationTokens(other)
 
 	inputTokens := int64(log.PromptTokens)
 	outputTokens := int64(log.CompletionTokens)
@@ -358,6 +360,28 @@ func parseQuotaCostSummaryOther(otherJSON string) quotaCostSummaryOther {
 	}
 	_ = common.UnmarshalJsonStr(otherJSON, &other)
 	return other
+}
+
+func quotaCostSummaryIsAdvancedBilling(other quotaCostSummaryOther) bool {
+	return strings.EqualFold(strings.TrimSpace(other.BillingMode), "advanced")
+}
+
+func quotaCostSummaryCacheCreationTokens(other quotaCostSummaryOther) (int64, int64, int64, int64) {
+	totalCreation := positiveInt64(other.CacheCreationTokens)
+	split5m := positiveInt64(other.CacheCreationTokens5m)
+	split1h := positiveInt64(other.CacheCreationTokens1h)
+	if split5m > 0 || split1h > 0 {
+		splitTotal := split5m + split1h
+		baseCreation := totalCreation - splitTotal
+		if baseCreation < 0 {
+			baseCreation = 0
+		}
+		if totalCreation < splitTotal {
+			totalCreation = splitTotal
+		}
+		return baseCreation, split5m, split1h, totalCreation
+	}
+	return totalCreation, 0, 0, totalCreation
 }
 
 func quotaCostSummaryInputUnitPrice(other quotaCostSummaryOther) float64 {

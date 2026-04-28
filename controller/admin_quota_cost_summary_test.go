@@ -190,11 +190,11 @@ func TestListQuotaCostSummaryUsesSplitCacheCreationRatios(t *testing.T) {
 	other, err := common.Marshal(map[string]any{
 		"model_ratio":              1.0,
 		"group_ratio":              1.0,
-		"cache_creation_tokens":    20,
+		"cache_creation_tokens":    100,
 		"cache_creation_ratio":     2.0,
-		"cache_creation_tokens_5m": 30,
+		"cache_creation_tokens_5m": 40,
 		"cache_creation_ratio_5m":  4.0,
-		"cache_creation_tokens_1h": 50,
+		"cache_creation_tokens_1h": 30,
 		"cache_creation_ratio_1h":  6.0,
 	})
 	require.NoError(t, err)
@@ -212,9 +212,9 @@ func TestListQuotaCostSummaryUsesSplitCacheCreationRatios(t *testing.T) {
 	require.EqualValues(t, 1, total)
 	require.Len(t, items, 1)
 	require.EqualValues(t, 100, items[0].CacheCreateTokens)
-	require.InDelta(t, 4.6, items[0].CacheCreateUnitPrice, 0.000001)
-	require.InDelta(t, 0.00046, items[0].CacheCostUSD, 0.000001)
-	require.InDelta(t, 0.00046, items[0].TotalCostUSD, 0.000001)
+	require.InDelta(t, 4.0, items[0].CacheCreateUnitPrice, 0.000001)
+	require.InDelta(t, 0.0004, items[0].CacheCostUSD, 0.000001)
+	require.InDelta(t, 0.0004, items[0].TotalCostUSD, 0.000001)
 }
 
 func TestListQuotaCostSummaryTreatsModelPriceAsFixedCost(t *testing.T) {
@@ -244,6 +244,37 @@ func TestListQuotaCostSummaryTreatsModelPriceAsFixedCost(t *testing.T) {
 	require.Zero(t, items[0].InputUnitPriceUSD)
 	require.InDelta(t, 0.5, items[0].InputCostUSD, 0.000001)
 	require.InDelta(t, 0.5, items[0].TotalCostUSD, 0.000001)
+	require.InDelta(t, 0.5, items[0].PaidUSD, 0.000001)
+}
+
+func TestListQuotaCostSummaryDoesNotTreatAdvancedModelPriceAsFixedCost(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	setQuotaCostSummaryQuotaPerUnit(t, 1000000)
+	user := seedQuotaUser(t, db, "advanced_price_user", 0)
+	seedQuotaCostSummaryVendorModel(t, db, "AdvancedVendor", "advanced-price-model")
+
+	other, err := common.Marshal(map[string]any{
+		"billing_mode": "advanced",
+		"model_price":  0.25,
+		"group_ratio":  2.0,
+	})
+	require.NoError(t, err)
+	seedQuotaCostSummaryLog(t, db, model.Log{
+		UserId: user.Id, Username: user.Username, Type: model.LogTypeConsume,
+		CreatedAt: 1714237200, ModelName: "advanced-price-model",
+		Quota: 500000, Group: "default", Other: string(other),
+	})
+
+	items, total, err := service.ListQuotaCostSummary(dto.AdminQuotaCostSummaryQuery{
+		StartTimestamp: 1714233600,
+		EndTimestamp:   1714320000,
+	}, &common.PageInfo{Page: 1, PageSize: 10}, 999, common.RoleRootUser)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, items, 1)
+	require.Zero(t, items[0].InputUnitPriceUSD)
+	require.Zero(t, items[0].InputCostUSD)
+	require.Zero(t, items[0].TotalCostUSD)
 	require.InDelta(t, 0.5, items[0].PaidUSD, 0.000001)
 }
 
