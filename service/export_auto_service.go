@@ -24,6 +24,7 @@ const (
 	SmartExportJobTypeUsageLogs            = "usage_logs"
 	SmartExportJobTypeAdminAuditLogs       = "admin_audit_logs"
 	SmartExportJobTypeQuotaLedger          = "quota_ledger"
+	SmartExportJobTypeQuotaCostSummary     = "quota_cost_summary"
 	SmartExportJobTypeAdminAnalyticsModels = "operations_analytics_models"
 	SmartExportJobTypeAdminAnalyticsUsers  = "operations_analytics_users"
 	SmartExportJobTypeAdminAnalyticsDaily  = "operations_analytics_daily"
@@ -34,6 +35,7 @@ const (
 	SmartExportUsageLogsLongTextThreshold = 800
 	SmartExportAdminAuditThreshold        = 3000
 	SmartExportQuotaLedgerThreshold       = 3000
+	SmartExportQuotaCostSummaryThreshold  = 5000
 	SmartExportAdminAnalyticsThreshold    = 5000
 	smartExportSyncLimit                  = 2000
 )
@@ -118,6 +120,21 @@ func DecideQuotaLedgerSmartExport(requesterUserID int, requesterRole int, req dt
 			return 0, err
 		}
 		return probeQuotaLedgerRows(query, limit)
+	})
+}
+
+func DecideQuotaCostSummarySmartExport(requesterUserID int, requesterRole int, req dto.AdminQuotaCostSummaryExportRequest) (SmartExportDecision, error) {
+	query, err := dto.NormalizeAdminQuotaCostSummaryQuery(req.AdminQuotaCostSummaryQuery, common.GetTimestamp())
+	if err != nil {
+		return SmartExportDecision{}, err
+	}
+
+	return decideSmartExportWithProbe(SmartExportJobTypeQuotaCostSummary, SmartExportQuotaCostSummaryThreshold, req.Limit, func(limit int) (int, error) {
+		items, err := ListQuotaCostSummaryForExport(query, requesterUserID, requesterRole, limit)
+		if err != nil {
+			return 0, err
+		}
+		return len(items), nil
 	})
 }
 

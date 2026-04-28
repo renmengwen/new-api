@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -557,6 +558,62 @@ func positiveInt64(value int64) int64 {
 		return 0
 	}
 	return value
+}
+
+func QuotaCostSummaryExportHeaders() []string {
+	return []string{
+		"日期",
+		"模型名称",
+		"供应商名称",
+		"结算含税价input",
+		"结算含税价output",
+		"输入tokens",
+		"输出tokens",
+		"调用次数",
+		"input费用",
+		"output费用",
+		"缓存创建",
+		"缓存读取",
+		"缓存创建单价",
+		"缓存读取单价",
+		"cache的token",
+		"cache的金额",
+		"总费用（USD）",
+		"折扣",
+		"实付金额（USD）",
+	}
+}
+
+func BuildQuotaCostSummaryExportRows(items []dto.AdminQuotaCostSummaryItem) [][]string {
+	rows := make([][]string, 0, len(items))
+	for _, item := range items {
+		rows = append(rows, []string{
+			item.Date,
+			item.ModelName,
+			item.VendorName,
+			formatUSDNumber(item.InputUnitPriceUSD),
+			formatUSDNumber(item.OutputUnitPriceUSD),
+			strconv.FormatInt(item.InputTokens, 10),
+			strconv.FormatInt(item.OutputTokens, 10),
+			strconv.FormatInt(item.CallCount, 10),
+			formatUSDNumber(item.InputCostUSD),
+			formatUSDNumber(item.OutputCostUSD),
+			strconv.FormatInt(item.CacheCreateTokens, 10),
+			strconv.FormatInt(item.CacheReadTokens, 10),
+			formatUSDNumber(item.CacheCreateUnitPrice),
+			formatUSDNumber(item.CacheReadUnitPrice),
+			strconv.FormatInt(item.CacheTokens, 10),
+			formatUSDNumber(item.CacheCostUSD),
+			formatUSDNumber(item.TotalCostUSD),
+			formatUSDNumber(item.DiscountUSD),
+			formatUSDNumber(item.PaidUSD),
+		})
+	}
+	return rows
+}
+
+func formatUSDNumber(value float64) string {
+	return fmt.Sprintf("%.6f", value)
 }
 
 func ValidateQuotaCostSummaryExport(query dto.AdminQuotaCostSummaryQuery) error {

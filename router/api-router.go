@@ -346,6 +346,9 @@ func SetApiRouter(router *gin.Engine) {
 			adminQuotaRoute.POST("/ledger/export", controller.ExportQuotaLedger)
 			adminQuotaRoute.POST("/ledger/export-jobs", controller.CreateQuotaLedgerExportJob)
 			adminQuotaRoute.POST("/ledger/export-auto", controller.ExportQuotaLedgerAuto)
+			adminQuotaRoute.GET("/cost-summary", controller.GetQuotaCostSummary)
+			adminQuotaRoute.POST("/cost-summary/export-auto", controller.ExportQuotaCostSummaryAuto)
+			adminQuotaRoute.POST("/cost-summary/export-jobs", controller.CreateQuotaCostSummaryExportJob)
 		}
 
 		adminAuditRoute := apiRouter.Group("/admin/audit-logs")
