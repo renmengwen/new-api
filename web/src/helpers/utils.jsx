@@ -618,6 +618,53 @@ export const selectFilter = (input, option) => {
 
 // -------------------------------
 // 模型定价计算工具函数
+const hasFinitePriceValue = (value) =>
+  value !== undefined &&
+  value !== null &&
+  value !== '' &&
+  Number.isFinite(Number(value));
+
+const resolveAdvancedBillingUnit = (ruleSet, segment) =>
+  segment?.billing_unit || ruleSet?.billing_unit || 'per_million_tokens';
+
+const buildAdvancedRangeText = (label, minValue, maxValue) => {
+  if (!hasFinitePriceValue(minValue) && !hasFinitePriceValue(maxValue)) {
+    return '';
+  }
+
+  const minText = hasFinitePriceValue(minValue) ? Number(minValue) : '-inf';
+  const maxText = hasFinitePriceValue(maxValue) ? Number(maxValue) : '+inf';
+  return `${label}[${minText}, ${maxText}]`;
+};
+
+const buildAdvancedSegmentTitle = (segment, index, t) => {
+  const ranges = [
+    buildAdvancedRangeText(t('输入'), segment?.input_min, segment?.input_max),
+    buildAdvancedRangeText(t('输出'), segment?.output_min, segment?.output_max),
+  ].filter(Boolean);
+  const priority = hasFinitePriceValue(segment?.priority)
+    ? Number(segment.priority)
+    : index + 1;
+  const summary = ranges.length > 0 ? ranges.join(' / ') : t('默认');
+
+  return `${t('分段')} ${priority}: ${summary}`;
+};
+
+const getAdvancedUnitSuffix = (billingUnit, unitLabel) => {
+  switch (billingUnit) {
+    case 'per_million_tokens':
+      return ` / 1${unitLabel} Tokens`;
+    case 'per_second':
+      return ' / second';
+    case 'per_image':
+      return ' / image';
+    case 'per_1000_calls':
+      return ' / 1000 calls';
+    default:
+      return billingUnit ? ` / ${billingUnit}` : '';
+  }
+};
+
 export const calculateModelPrice = ({
   record,
   selectedGroup,
@@ -656,6 +703,74 @@ export const calculateModelPrice = ({
   }
 
   // 2. 根据计费类型计算价格
+  if (record.billing_mode === 'advanced' && record.advanced_rule_set) {
+    const ruleSet = record.advanced_rule_set;
+    const segments = Array.isArray(ruleSet.segments) ? ruleSet.segments : [];
+    if (segments.length > 0) {
+      let symbol = '$';
+      if (currency === 'CNY') {
+        symbol = '￥';
+      } else if (currency === 'CUSTOM') {
+        try {
+          const statusStr = localStorage.getItem('status');
+          if (statusStr) {
+            const s = JSON.parse(statusStr);
+            symbol = s?.custom_currency_symbol || '¤';
+          } else {
+            symbol = '¤';
+          }
+        } catch (e) {
+          symbol = '¤';
+        }
+      }
+
+      const unitDivisor = tokenUnit === 'K' ? 1000 : 1;
+      const unitLabel = tokenUnit === 'K' ? 'K' : 'M';
+      const formatAdvancedPrice = (value, billingUnit) => {
+        if (!hasFinitePriceValue(value)) {
+          return null;
+        }
+        const divisor = billingUnit === 'per_million_tokens' ? unitDivisor : 1;
+        const rawDisplayPrice = displayPrice(Number(value) * usedGroupRatio);
+        const numericPrice =
+          parseFloat(rawDisplayPrice.replace(/[^0-9.]/g, '')) / divisor;
+        return `${symbol}${numericPrice.toFixed(precision)}`;
+      };
+
+      return {
+        isAdvanced: true,
+        isAdvancedTextSegment: ruleSet.rule_type === 'text_segment',
+        isAdvancedMediaTask: ruleSet.rule_type === 'media_task',
+        isTokensDisplay: quotaDisplayType === 'TOKENS',
+        segments: segments.map((segment, index) => {
+          const billingUnit = resolveAdvancedBillingUnit(ruleSet, segment);
+          return {
+            key: `advanced-segment-${index}`,
+            rawSegment: segment,
+            title: buildAdvancedSegmentTitle(segment, index, (key) => key),
+            inputPrice: formatAdvancedPrice(segment.input_price, billingUnit),
+            completionPrice: formatAdvancedPrice(
+              segment.output_price,
+              billingUnit,
+            ),
+            cachePrice: formatAdvancedPrice(
+              segment.cache_read_price,
+              billingUnit,
+            ),
+            createCachePrice: formatAdvancedPrice(
+              segment.cache_create_price ?? segment.cache_write_price,
+              billingUnit,
+            ),
+            unitPrice: formatAdvancedPrice(segment.unit_price, billingUnit),
+            unitSuffix: getAdvancedUnitSuffix(billingUnit, unitLabel),
+          };
+        }),
+        usedGroup,
+        usedGroupRatio,
+      };
+    }
+  }
+
   if (record.quota_type === 0) {
     // 按量计费
     const isTokensDisplay = quotaDisplayType === 'TOKENS';
@@ -776,6 +891,55 @@ export const getModelPriceItems = (
   t,
   quotaDisplayType = 'USD',
 ) => {
+  if (priceData.isAdvanced) {
+    return (priceData.segments || [])
+      .flatMap((segment, index) => [
+        {
+          key: `${segment.key}-title`,
+          label: segment.rawSegment
+            ? buildAdvancedSegmentTitle(segment.rawSegment, index, t)
+            : segment.title,
+          value: '',
+          suffix: '',
+        },
+        {
+          key: `${segment.key}-input`,
+          label: t('输入价格'),
+          value: segment.inputPrice,
+          suffix: segment.unitSuffix,
+        },
+        {
+          key: `${segment.key}-completion`,
+          label: t('补全价格'),
+          value: segment.completionPrice,
+          suffix: segment.unitSuffix,
+        },
+        {
+          key: `${segment.key}-cache`,
+          label: t('缓存读取价格'),
+          value: segment.cachePrice,
+          suffix: segment.unitSuffix,
+        },
+        {
+          key: `${segment.key}-create-cache`,
+          label: t('缓存写单价'),
+          value: segment.createCachePrice,
+          suffix: segment.unitSuffix,
+        },
+        {
+          key: `${segment.key}-unit`,
+          label: t('任务单价'),
+          value: segment.unitPrice,
+          suffix: segment.unitSuffix,
+        },
+      ])
+      .filter(
+        (item) =>
+          item.key.endsWith('-title') ||
+          (item.value !== null && item.value !== undefined && item.value !== ''),
+      );
+  }
+
   if (priceData.isPerToken) {
     if (quotaDisplayType === 'TOKENS' || priceData.isTokensDisplay) {
       return [

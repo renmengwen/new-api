@@ -358,7 +358,7 @@ export const normalizeTextSegmentRule = (rule, index = 0) => ({
     rule?.cacheReadPrice ?? rule?.cache_read_price,
   ),
   cacheWritePrice: normalizeNumericField(
-    rule?.cacheWritePrice ?? rule?.cache_write_price,
+    rule?.cacheWritePrice ?? rule?.cache_create_price ?? rule?.cache_write_price,
   ),
   cacheStoragePrice: normalizeNumericField(
     rule?.cacheStoragePrice ?? rule?.cache_storage_price,
@@ -908,7 +908,7 @@ export const serializeTextSegmentRule = (rule) => {
   );
   setSerializedNumberField(
     serializedRule,
-    'cache_write_price',
+    'cache_create_price',
     normalizedRule.cacheWritePrice,
   );
   setSerializedNumberField(

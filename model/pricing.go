@@ -1,7 +1,6 @@
 package model
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -15,24 +14,27 @@ import (
 )
 
 type Pricing struct {
-	ModelName              string                  `json:"model_name"`
-	Description            string                  `json:"description,omitempty"`
-	Icon                   string                  `json:"icon,omitempty"`
-	Tags                   string                  `json:"tags,omitempty"`
-	VendorID               int                     `json:"vendor_id,omitempty"`
-	QuotaType              int                     `json:"quota_type"`
-	ModelRatio             float64                 `json:"model_ratio"`
-	ModelPrice             float64                 `json:"model_price"`
-	OwnerBy                string                  `json:"owner_by"`
-	CompletionRatio        float64                 `json:"completion_ratio"`
-	CacheRatio             *float64                `json:"cache_ratio,omitempty"`
-	CreateCacheRatio       *float64                `json:"create_cache_ratio,omitempty"`
-	ImageRatio             *float64                `json:"image_ratio,omitempty"`
-	AudioRatio             *float64                `json:"audio_ratio,omitempty"`
-	AudioCompletionRatio   *float64                `json:"audio_completion_ratio,omitempty"`
-	EnableGroup            []string                `json:"enable_groups"`
-	SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types"`
-	PricingVersion         string                  `json:"pricing_version,omitempty"`
+	ModelName              string                                `json:"model_name"`
+	Description            string                                `json:"description,omitempty"`
+	Icon                   string                                `json:"icon,omitempty"`
+	Tags                   string                                `json:"tags,omitempty"`
+	VendorID               int                                   `json:"vendor_id,omitempty"`
+	QuotaType              int                                   `json:"quota_type"`
+	ModelRatio             float64                               `json:"model_ratio"`
+	ModelPrice             float64                               `json:"model_price"`
+	OwnerBy                string                                `json:"owner_by"`
+	CompletionRatio        float64                               `json:"completion_ratio"`
+	CacheRatio             *float64                              `json:"cache_ratio,omitempty"`
+	CreateCacheRatio       *float64                              `json:"create_cache_ratio,omitempty"`
+	ImageRatio             *float64                              `json:"image_ratio,omitempty"`
+	AudioRatio             *float64                              `json:"audio_ratio,omitempty"`
+	AudioCompletionRatio   *float64                              `json:"audio_completion_ratio,omitempty"`
+	EnableGroup            []string                              `json:"enable_groups"`
+	SupportedEndpointTypes []constant.EndpointType               `json:"supported_endpoint_types"`
+	BillingMode            types.BillingMode                     `json:"billing_mode,omitempty"`
+	AdvancedRuleType       types.AdvancedRuleType                `json:"advanced_rule_type,omitempty"`
+	AdvancedRuleSet        *ratio_setting.AdvancedPricingRuleSet `json:"advanced_rule_set,omitempty"`
+	PricingVersion         string                                `json:"pricing_version,omitempty"`
 }
 
 type PricingVendor struct {
@@ -208,7 +210,7 @@ func updatePricing() {
 			continue
 		}
 		var raw map[string]interface{}
-		if err := json.Unmarshal([]byte(meta.Endpoints), &raw); err == nil {
+		if err := common.Unmarshal([]byte(meta.Endpoints), &raw); err == nil {
 			endpoints := make([]string, 0, len(raw))
 			for k, v := range raw {
 				switch v.(type) {
@@ -252,7 +254,7 @@ func updatePricing() {
 			continue
 		}
 		var raw map[string]interface{}
-		if err := json.Unmarshal([]byte(meta.Endpoints), &raw); err == nil {
+		if err := common.Unmarshal([]byte(meta.Endpoints), &raw); err == nil {
 			for k, v := range raw {
 				switch val := v.(type) {
 				case string:
@@ -292,15 +294,35 @@ func updatePricing() {
 			pricing.Tags = meta.Tags
 			pricing.VendorID = meta.VendorID
 		}
+		effectiveBillingMode := ratio_setting.GetEffectiveBillingMode(model)
+		advancedRuleSet, hasAdvancedRuleSet := ratio_setting.GetAdvancedPricingRuleSet(model)
+		advancedActive := effectiveBillingMode == types.BillingModeAdvanced && hasAdvancedRuleSet
+		if advancedActive {
+			pricing.BillingMode = types.BillingModeAdvanced
+			pricing.AdvancedRuleType = advancedRuleSet.RuleType
+			pricing.AdvancedRuleSet = &advancedRuleSet
+			if advancedRuleSet.RuleType == types.AdvancedRuleTypeMediaTask {
+				pricing.QuotaType = 1
+			} else {
+				pricing.QuotaType = 0
+			}
+		}
+
 		modelPrice, findPrice := ratio_setting.GetModelPrice(model, false)
 		if findPrice {
 			pricing.ModelPrice = modelPrice
-			pricing.QuotaType = 1
+			if !advancedActive {
+				pricing.BillingMode = types.BillingModePerRequest
+				pricing.QuotaType = 1
+			}
 		} else {
 			modelRatio, _, _ := ratio_setting.GetModelRatio(model)
 			pricing.ModelRatio = modelRatio
 			pricing.CompletionRatio = ratio_setting.GetCompletionRatio(model)
-			pricing.QuotaType = 0
+			if !advancedActive {
+				pricing.BillingMode = types.BillingModePerToken
+				pricing.QuotaType = 0
+			}
 		}
 		if cacheRatio, ok := ratio_setting.GetCacheRatio(model); ok {
 			pricing.CacheRatio = &cacheRatio

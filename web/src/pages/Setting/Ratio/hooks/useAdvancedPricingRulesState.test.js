@@ -1335,7 +1335,7 @@ test('normalizeAdvancedPricingConfig round-trips canonical text_segment configs 
         output_max: 512,
         output_price: 0,
         cache_read_price: 0,
-        cache_write_price: 0.4,
+        cache_create_price: 0.4,
         service_tier: 'premium',
       },
     ],
