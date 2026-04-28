@@ -63,6 +63,8 @@ const colors = [
   'yellow',
 ];
 
+const TASK_ACTION_IMAGE_GENERATION = 'image_generation';
+
 // Render functions
 const renderTimestamp = (timestampInSeconds) => {
   const date = new Date(timestampInSeconds * 1000); // 从秒转换为毫秒
@@ -132,6 +134,12 @@ const renderType = (type, t) => {
       return (
         <Tag color='blue' shape='circle' prefixIcon={<Sparkles size={14} />}>
           {t('视频Remix')}
+        </Tag>
+      );
+    case TASK_ACTION_IMAGE_GENERATION:
+      return (
+        <Tag color='violet' shape='circle' prefixIcon={<Sparkles size={14} />}>
+          {t('图片生成')}
         </Tag>
       );
     default:
@@ -408,15 +416,23 @@ export const getTaskLogsColumns = ({
         }
 
         // 视频预览：优先使用 result_url，兼容旧数据 fail_reason 中的 URL
+        const isSuccess = record.status === 'SUCCESS';
+        const resultUrl = record.result_url;
+        const hasResultUrl = typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
+        if (isSuccess && record.action === TASK_ACTION_IMAGE_GENERATION && hasResultUrl) {
+          return (
+            <a href={resultUrl} target='_blank' rel='noreferrer'>
+              {t('点击查看图片')}
+            </a>
+          );
+        }
+
         const isVideoTask =
           record.action === TASK_ACTION_GENERATE ||
           record.action === TASK_ACTION_TEXT_GENERATE ||
           record.action === TASK_ACTION_FIRST_TAIL_GENERATE ||
           record.action === TASK_ACTION_REFERENCE_GENERATE ||
           record.action === TASK_ACTION_REMIX_GENERATE;
-        const isSuccess = record.status === 'SUCCESS';
-        const resultUrl = record.result_url;
-        const hasResultUrl = typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
         if (isSuccess && isVideoTask && hasResultUrl) {
           return (
             <a
