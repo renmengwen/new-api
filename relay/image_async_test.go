@@ -338,10 +338,42 @@ func TestBuildImageTaskUsesSettledAsyncImageQuota(t *testing.T) {
 		},
 	}
 
-	task := buildImageTask("task_public", "pred_123", []byte(`{"id":"pred_123"}`), info)
+	task := buildImageTask("task_public", "pred_123", []byte(`{"id":"pred_123"}`), info, nil)
 
 	if task.Quota != 456 {
 		t.Fatalf("task quota = %d, want 456", task.Quota)
+	}
+}
+
+func TestBuildImageTaskStoresRequestedResponseFormat(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+	request := &dto.ImageRequest{Model: "gpt-image-2", ResponseFormat: "b64_json"}
+
+	task := buildImageTask("task_public", "pred_123", []byte(`{"id":"pred_123"}`), info, request)
+
+	if task.Properties.ResponseFormat != "b64_json" {
+		t.Fatalf("response format = %q, want b64_json", task.Properties.ResponseFormat)
+	}
+}
+
+func TestTaskModel2DtoUsesLocalImageContentURL(t *testing.T) {
+	task := &model.Task{
+		TaskID:   "task_public",
+		Platform: constant.TaskPlatformGPTProtoImage,
+		Action:   constant.TaskTypeImageGeneration,
+		Status:   model.TaskStatusSuccess,
+		PrivateData: model.TaskPrivateData{
+			ResultURL: "iVBORw0KGgo=",
+		},
+	}
+
+	got := TaskModel2Dto(task)
+
+	if got.ResultURL != "/v1/images/generations/task_public/content" {
+		t.Fatalf("result_url = %q", got.ResultURL)
 	}
 }
 

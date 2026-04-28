@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -575,7 +576,7 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Action:     task.Action,
 		Status:     string(task.Status),
 		FailReason: task.FailReason,
-		ResultURL:  task.GetResultURL(),
+		ResultURL:  taskDtoResultURL(task),
 		SubmitTime: task.SubmitTime,
 		StartTime:  task.StartTime,
 		FinishTime: task.FinishTime,
@@ -584,4 +585,17 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Username:   task.Username,
 		Data:       task.Data,
 	}
+}
+
+func taskDtoResultURL(task *model.Task) string {
+	if task == nil {
+		return ""
+	}
+	resultURL := task.GetResultURL()
+	if task.Action == constant.TaskTypeImageGeneration &&
+		task.Status == model.TaskStatusSuccess &&
+		strings.TrimSpace(resultURL) != "" {
+		return "/v1/images/generations/" + url.PathEscape(task.TaskID) + "/content"
+	}
+	return resultURL
 }

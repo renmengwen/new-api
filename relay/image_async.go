@@ -190,9 +190,12 @@ func ensureGPTProtoAsyncImageTaskRelayInfo(info *relaycommon.RelayInfo) {
 	}
 }
 
-func buildImageTask(taskID string, upstreamTaskID string, responseBody []byte, info *relaycommon.RelayInfo) *model.Task {
+func buildImageTask(taskID string, upstreamTaskID string, responseBody []byte, info *relaycommon.RelayInfo, request *dto.ImageRequest) *model.Task {
 	task := model.InitTask(constant.TaskPlatformGPTProtoImage, info)
 	task.TaskID = taskID
+	if request != nil {
+		task.Properties.ResponseFormat = strings.TrimSpace(request.ResponseFormat)
+	}
 	task.PrivateData.RequestId = info.RequestId
 	task.PrivateData.UpstreamTaskID = upstreamTaskID
 	task.PrivateData.BillingSource = info.BillingSource
@@ -259,7 +262,7 @@ func handleGPTProtoAsyncImageResponse(c *gin.Context, resp *http.Response, info 
 	ensureGPTProtoAsyncImageTaskRelayInfo(info)
 	info.Action = constant.TaskTypeImageGeneration
 	publicTaskID := model.GenerateTaskID()
-	task := buildImageTask(publicTaskID, upstreamTaskID, responseBody, info)
+	task := buildImageTask(publicTaskID, upstreamTaskID, responseBody, info, request)
 	if insertErr := task.Insert(); insertErr != nil {
 		logger.LogError(c, "insert gptproto image task error: "+insertErr.Error())
 		return true, types.NewOpenAIError(insertErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)

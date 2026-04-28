@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,6 +38,50 @@ func setupImageTaskTestDB(t *testing.T) {
 			_ = sqlDB.Close()
 		}
 	})
+}
+
+func TestGetImageGenerationContentStreamsStoredBase64Image(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupImageTaskTestDB(t)
+
+	const imageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+	wantBytes, err := base64.StdEncoding.DecodeString(imageBase64)
+	if err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+
+	task := &model.Task{
+		TaskID:   "task_base64",
+		UserId:   7,
+		Platform: constant.TaskPlatformGPTProtoImage,
+		Action:   constant.TaskTypeImageGeneration,
+		Status:   model.TaskStatusSuccess,
+		Progress: "100%",
+		PrivateData: model.TaskPrivateData{
+			ResultURL: imageBase64,
+		},
+	}
+	if err := model.DB.Create(task).Error; err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "https://api.example.test/v1/images/generations/task_base64/content", nil)
+	ctx.Params = gin.Params{{Key: "task_id", Value: "task_base64"}}
+	ctx.Set("id", 7)
+
+	GetImageGenerationContent(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if contentType := recorder.Header().Get("Content-Type"); contentType != "image/png" {
+		t.Fatalf("Content-Type = %q, want image/png", contentType)
+	}
+	if got := recorder.Body.Bytes(); string(got) != string(wantBytes) {
+		t.Fatalf("body bytes = %v, want %v", got, wantBytes)
+	}
 }
 
 func TestGetImageGenerationTaskReturnsDocumentedPublicShape(t *testing.T) {
@@ -99,6 +144,53 @@ func TestGetImageGenerationTaskReturnsDocumentedPublicShape(t *testing.T) {
 		t.Fatalf("status = %v, want %s", payload["status"], model.TaskStatusSuccess)
 	}
 	if payload["result_url"] != "https://api.example.test/v1/images/generations/task_public/content" {
+		t.Fatalf("result_url = %v", payload["result_url"])
+	}
+}
+
+func TestGetImageGenerationTaskReturnsB64JSONWhenRequested(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupImageTaskTestDB(t)
+
+	const imageBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+	task := &model.Task{
+		TaskID:   "task_b64_json",
+		UserId:   7,
+		Platform: constant.TaskPlatformGPTProtoImage,
+		Action:   constant.TaskTypeImageGeneration,
+		Status:   model.TaskStatusSuccess,
+		Progress: "100%",
+		Properties: model.Properties{
+			OriginModelName: "gpt-image-2",
+			ResponseFormat:  "b64_json",
+		},
+		PrivateData: model.TaskPrivateData{
+			ResultURL: imageBase64,
+		},
+	}
+	if err := model.DB.Create(task).Error; err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "https://api.example.test/v1/images/generations/task_b64_json", nil)
+	ctx.Params = gin.Params{{Key: "task_id", Value: "task_b64_json"}}
+	ctx.Set("id", 7)
+
+	GetImageGenerationTask(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var payload map[string]any
+	if err := common.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload["b64_json"] != imageBase64 {
+		t.Fatalf("b64_json = %v", payload["b64_json"])
+	}
+	if payload["result_url"] != "https://api.example.test/v1/images/generations/task_b64_json/content" {
 		t.Fatalf("result_url = %v", payload["result_url"])
 	}
 }

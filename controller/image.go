@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -47,7 +48,7 @@ func GetImageGenerationTask(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	payload := gin.H{
 		"task_id":     task.TaskID,
 		"platform":    "image",
 		"action":      constant.TaskTypeImageGeneration,
@@ -55,7 +56,13 @@ func GetImageGenerationTask(c *gin.Context) {
 		"progress":    task.Progress,
 		"result_url":  imageGenerationResultURL(c, task),
 		"fail_reason": task.FailReason,
-	})
+	}
+	if imageGenerationWantsB64JSON(task) {
+		if b64JSON := imageGenerationB64JSON(task); b64JSON != "" {
+			payload["b64_json"] = b64JSON
+		}
+	}
+	c.JSON(http.StatusOK, payload)
 }
 
 func imageGenerationResultURL(c *gin.Context, task *model.Task) string {
@@ -94,6 +101,32 @@ func imageGenerationContentURL(c *gin.Context, taskID string) string {
 	return path
 }
 
+func imageGenerationWantsB64JSON(task *model.Task) bool {
+	return task != nil && strings.EqualFold(strings.TrimSpace(task.Properties.ResponseFormat), "b64_json")
+}
+
+func imageGenerationB64JSON(task *model.Task) string {
+	if task == nil || task.Status != model.TaskStatusSuccess {
+		return ""
+	}
+	value := strings.TrimSpace(task.GetResultURL())
+	if value == "" {
+		return ""
+	}
+	if strings.HasPrefix(value, "data:") {
+		parts := strings.SplitN(value, ",", 2)
+		if len(parts) != 2 {
+			return ""
+		}
+		value = parts[1]
+	}
+	imageBytes, _, err := decodeImageBase64(value)
+	if err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(imageBytes)
+}
+
 func GetImageGenerationContent(c *gin.Context) {
 	taskID := c.Param("task_id")
 	task, exist, err := model.GetByTaskId(c.GetInt("id"), taskID)
@@ -116,8 +149,15 @@ func GetImageGenerationContent(c *gin.Context) {
 		return
 	}
 	if strings.HasPrefix(imageURL, "data:") {
-		if err := writeVideoDataURL(c, imageURL); err != nil {
+		if err := writeImageDataURL(c, imageURL); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to decode image data URL for task %s: %s", taskID, err.Error()))
+			imageGenerationProxyError(c, http.StatusBadGateway, "server_error", "Failed to fetch image content")
+		}
+		return
+	}
+	if handled, err := writeImageBase64Content(c, imageURL); handled {
+		if err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to decode image base64 for task %s: %s", taskID, err.Error()))
 			imageGenerationProxyError(c, http.StatusBadGateway, "server_error", "Failed to fetch image content")
 		}
 		return
@@ -172,6 +212,92 @@ func GetImageGenerationContent(c *gin.Context) {
 	if _, err := io.Copy(c.Writer, resp.Body); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to stream image content: %s", err.Error()))
 	}
+}
+
+func writeImageDataURL(c *gin.Context, dataURL string) error {
+	parts := strings.SplitN(dataURL, ",", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid data url")
+	}
+
+	header := parts[0]
+	payload := parts[1]
+	if !strings.HasPrefix(header, "data:") || !strings.Contains(header, ";base64") {
+		return fmt.Errorf("unsupported data url")
+	}
+
+	mimeType := strings.TrimPrefix(header, "data:")
+	if idx := strings.Index(mimeType, ";"); idx >= 0 {
+		mimeType = mimeType[:idx]
+	}
+	imageBytes, detectedMimeType, err := decodeImageBase64(payload)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(mimeType) == "" {
+		mimeType = detectedMimeType
+	}
+	if !strings.HasPrefix(mimeType, "image/") {
+		return fmt.Errorf("unsupported image content type %s", mimeType)
+	}
+	return writeImageBytes(c, mimeType, imageBytes)
+}
+
+func writeImageBase64Content(c *gin.Context, value string) (bool, error) {
+	imageBytes, mimeType, err := decodeImageBase64(value)
+	if err != nil {
+		return false, nil
+	}
+	return true, writeImageBytes(c, mimeType, imageBytes)
+}
+
+func decodeImageBase64(value string) ([]byte, string, error) {
+	payload := compactBase64String(strings.TrimSpace(value))
+	if payload == "" {
+		return nil, "", fmt.Errorf("empty base64 image")
+	}
+
+	var lastErr error
+	for _, encoding := range []*base64.Encoding{
+		base64.StdEncoding,
+		base64.RawStdEncoding,
+		base64.URLEncoding,
+		base64.RawURLEncoding,
+	} {
+		imageBytes, err := encoding.DecodeString(payload)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		mimeType := http.DetectContentType(imageBytes)
+		if !strings.HasPrefix(mimeType, "image/") {
+			return nil, "", fmt.Errorf("decoded base64 content is %s, not image", mimeType)
+		}
+		return imageBytes, mimeType, nil
+	}
+	if lastErr != nil {
+		return nil, "", lastErr
+	}
+	return nil, "", fmt.Errorf("invalid base64 image")
+}
+
+func compactBase64String(value string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case ' ', '\n', '\r', '\t':
+			return -1
+		default:
+			return r
+		}
+	}, value)
+}
+
+func writeImageBytes(c *gin.Context, mimeType string, imageBytes []byte) error {
+	c.Writer.Header().Set("Content-Type", mimeType)
+	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
+	c.Writer.WriteHeader(http.StatusOK)
+	_, err := c.Writer.Write(imageBytes)
+	return err
 }
 
 func contextWithImageTimeout(c *gin.Context) (context.Context, context.CancelFunc) {
