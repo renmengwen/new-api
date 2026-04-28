@@ -392,6 +392,41 @@ func TestListQuotaCostSummaryDoesNotTreatAdvancedModelPriceAsFixedCost(t *testin
 	require.InDelta(t, 0.5, items[0].PaidUSD, 0.000001)
 }
 
+func TestListQuotaCostSummaryUsesAdvancedTokenPricingFromRatios(t *testing.T) {
+	db := setupAdminQuotaTestDB(t)
+	setQuotaCostSummaryQuotaPerUnit(t, 1000000)
+	user := seedQuotaUser(t, db, "advanced_token_user", 0)
+	seedQuotaCostSummaryVendorModel(t, db, "AdvancedVendor", "advanced-token-model")
+
+	other, err := common.Marshal(map[string]any{
+		"billing_mode":     "advanced",
+		"model_price":      0.25,
+		"model_ratio":      1.0,
+		"completion_ratio": 2.0,
+		"group_ratio":      2.0,
+	})
+	require.NoError(t, err)
+	seedQuotaCostSummaryLog(t, db, model.Log{
+		UserId: user.Id, Username: user.Username, Type: model.LogTypeConsume,
+		CreatedAt: 1714237200, ModelName: "advanced-token-model",
+		PromptTokens: 100, CompletionTokens: 50, Quota: 400, Group: "default", Other: string(other),
+	})
+
+	items, total, err := service.ListQuotaCostSummary(dto.AdminQuotaCostSummaryQuery{
+		StartTimestamp: 1714233600,
+		EndTimestamp:   1714320000,
+	}, &common.PageInfo{Page: 1, PageSize: 10}, 999, common.RoleRootUser)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, items, 1)
+	require.InDelta(t, 2.0, items[0].InputUnitPriceUSD, 0.000001)
+	require.InDelta(t, 4.0, items[0].OutputUnitPriceUSD, 0.000001)
+	require.InDelta(t, 0.0002, items[0].InputCostUSD, 0.000001)
+	require.InDelta(t, 0.0002, items[0].OutputCostUSD, 0.000001)
+	require.InDelta(t, 0.0004, items[0].TotalCostUSD, 0.000001)
+	require.InDelta(t, 0.0004, items[0].PaidUSD, 0.000001)
+}
+
 func TestListQuotaCostSummaryRejectsInvalidRawQuery(t *testing.T) {
 	setupAdminQuotaTestDB(t)
 

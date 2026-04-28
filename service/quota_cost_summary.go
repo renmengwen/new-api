@@ -292,7 +292,7 @@ func applyQuotaCostSummaryLog(acc *quotaCostSummaryAccumulator, log *model.Log) 
 	advancedBilling := quotaCostSummaryIsAdvancedBilling(other)
 	fixedPrice := other.ModelPrice > 0 && !advancedBilling
 	inputUnitPrice := quotaCostSummaryInputUnitPrice(other)
-	if fixedPrice || advancedBilling {
+	if fixedPrice {
 		inputUnitPrice = 0
 	}
 	outputUnitPrice := inputUnitPrice * firstPositiveFloat(other.CompletionRatio, 0)
