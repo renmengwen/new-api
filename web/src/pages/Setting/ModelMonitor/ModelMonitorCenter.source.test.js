@@ -41,3 +41,8 @@ test('model monitor page refreshes state while scheduled monitoring is enabled',
   assert.match(source, /fetchMonitorData\(\{ showLoading: false, disableDuplicate: true \}\)/);
   assert.match(source, /settings\.enabled/);
 });
+
+test('model monitor summary shows excluded model count', () => {
+  assert.match(source, /label: t\('已排除'\)/);
+  assert.match(source, /value: summary\.excluded_models/);
+});

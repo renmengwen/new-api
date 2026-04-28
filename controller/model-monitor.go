@@ -364,8 +364,10 @@ func detailFromStatusRecord(target modelMonitorChannelTarget, record modelMonito
 
 func buildModelMonitorStateFromTargets(setting *operation_setting.ModelMonitorSetting, targets []modelMonitorTarget, statusMap map[modelMonitorStatusKey]modelMonitorStatusRecord) modelMonitorStateResponse {
 	items := make([]modelMonitorItem, 0, len(targets))
+	excludedModels := 0
 	for _, target := range targets {
 		if setting != nil && setting.ModelExcluded(target.Model) {
+			excludedModels++
 			continue
 		}
 		enabled := modelMonitorSettingModelEnabled(setting, target.Model)
@@ -383,9 +385,11 @@ func buildModelMonitorStateFromTargets(setting *operation_setting.ModelMonitorSe
 		item.TimeoutSeconds = modelMonitorTimeoutSeconds(setting, target.Model)
 		items = append(items, item)
 	}
+	summary := summarizeModelMonitorItems(items)
+	summary.ExcludedModels = excludedModels
 	return modelMonitorStateResponse{
 		Settings: modelMonitorSettingsDTO(setting),
-		Summary:  summarizeModelMonitorItems(items),
+		Summary:  summary,
 		Items:    items,
 	}
 }

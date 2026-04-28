@@ -346,6 +346,7 @@ func TestBuildModelMonitorStateOmitsExcludedPatternModels(t *testing.T) {
 	require.Equal(t, modelMonitorStatusSkipped, state.Items[1].Status)
 	require.Equal(t, 2, state.Summary.TotalModels)
 	require.Equal(t, 1, state.Summary.SkippedModels)
+	require.Equal(t, 1, state.Summary.ExcludedModels)
 }
 
 func TestBuildModelMonitorStateLeavesUntestedTargetsUnknown(t *testing.T) {

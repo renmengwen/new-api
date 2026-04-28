@@ -41,6 +41,7 @@ type ModelMonitorSummary struct {
 	PartialModels     int   `json:"partial_models"`
 	UnavailableModels int   `json:"unavailable_models"`
 	SkippedModels     int   `json:"skipped_models"`
+	ExcludedModels    int   `json:"excluded_models"`
 	TotalChannels     int   `json:"total_channels"`
 	FailedChannels    int   `json:"failed_channels"`
 	EnabledModels     int   `json:"enabled_models"`

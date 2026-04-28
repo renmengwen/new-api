@@ -81,6 +81,7 @@ const DEFAULT_SUMMARY = {
   partial_models: 0,
   unavailable_models: 0,
   skipped_models: 0,
+  excluded_models: 0,
   total_channels: 0,
   failed_channels: 0,
 };
@@ -663,6 +664,7 @@ export default function ModelMonitorCenter() {
     { label: t('部分异常'), value: summary.partial_models, color: 'yellow' },
     { label: t('不可用'), value: summary.unavailable_models, color: 'red' },
     { label: t('已跳过'), value: summary.skipped_models, color: 'grey' },
+    { label: t('已排除'), value: summary.excluded_models, color: 'grey' },
     { label: t('渠道总数'), value: summary.total_channels },
     { label: t('失败渠道'), value: summary.failed_channels, color: 'red' },
   ];
