@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Banner, Button, Empty, Input, Modal, Select, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Empty, Input, Modal, Select, Table, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import CardPro from '../../components/common/ui/CardPro';
 import {
@@ -44,6 +44,7 @@ import {
 } from '../../helpers/quotaLedgerDisplay';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useUserPermissions } from '../../hooks/common/useUserPermissions';
+import CostSummaryTab from './CostSummaryTab';
 import {
   changeCommittedPage,
   changeCommittedPageSize,
@@ -306,108 +307,115 @@ const AdminQuotaLedgerPageV2 = () => {
 
   return (
     <div className='mt-[60px] px-2'>
-      <CardPro
-        type='type3'
-        descriptionArea={
-          <div className='flex flex-col gap-1'>
-            <Text strong>{t('额度流水')}</Text>
-            <Text type='tertiary'>{t('查看调额、充值、回收、消耗等额度账本记录。')}</Text>
-          </div>
-        }
-        actionsArea={
-          <div className='flex flex-wrap items-center gap-2'>
-            <Button
-              size='small'
-              type='tertiary'
-              onClick={exportLedger}
-              disabled={loading || exportLoading}
-            >
-              {t('导出 Excel')}
-            </Button>
-            <Button size='small' type='tertiary' onClick={() => loadLedger(queryState)}>
-              {t('刷新')}
-            </Button>
-          </div>
-        }
-        searchArea={
-          <div className='flex flex-col md:flex-row items-center gap-2 w-full'>
-            <Input
-              size='small'
-              placeholder={t('按用户 ID 筛选')}
-              value={userId}
-              onChange={(value) => setQueryState((currentState) => updateDraftFilters(currentState, { userId: value }))}
-              style={{ width: isMobile ? '100%' : 200 }}
-            />
-            <Select
-              value={entryType}
-              onChange={(value) => setQueryState((currentState) => updateDraftFilters(currentState, { entryType: value }))}
-              optionList={QUOTA_LEDGER_ENTRY_TYPE_OPTIONS}
-              style={{ width: isMobile ? '100%' : 220 }}
-            />
-            <Button
-              size='small'
-              type='tertiary'
-              onClick={() => {
-                const nextQueryState = commitQuotaLedgerFilters(queryState);
+      <Tabs type='line' defaultActiveKey='ledger'>
+        <Tabs.TabPane tab={t('流水明细')} itemKey='ledger'>
+          <CardPro
+            type='type3'
+            descriptionArea={
+              <div className='flex flex-col gap-1'>
+                <Text strong>{t('额度流水')}</Text>
+                <Text type='tertiary'>{t('查看调额、充值、回收、消耗等额度账本记录。')}</Text>
+              </div>
+            }
+            actionsArea={
+              <div className='flex flex-wrap items-center gap-2'>
+                <Button
+                  size='small'
+                  type='tertiary'
+                  onClick={exportLedger}
+                  disabled={loading || exportLoading}
+                >
+                  {t('导出 Excel')}
+                </Button>
+                <Button size='small' type='tertiary' onClick={() => loadLedger(queryState)}>
+                  {t('刷新')}
+                </Button>
+              </div>
+            }
+            searchArea={
+              <div className='flex flex-col md:flex-row items-center gap-2 w-full'>
+                <Input
+                  size='small'
+                  placeholder={t('按用户 ID 筛选')}
+                  value={userId}
+                  onChange={(value) => setQueryState((currentState) => updateDraftFilters(currentState, { userId: value }))}
+                  style={{ width: isMobile ? '100%' : 200 }}
+                />
+                <Select
+                  value={entryType}
+                  onChange={(value) => setQueryState((currentState) => updateDraftFilters(currentState, { entryType: value }))}
+                  optionList={QUOTA_LEDGER_ENTRY_TYPE_OPTIONS}
+                  style={{ width: isMobile ? '100%' : 220 }}
+                />
+                <Button
+                  size='small'
+                  type='tertiary'
+                  onClick={() => {
+                    const nextQueryState = commitQuotaLedgerFilters(queryState);
+                    setQueryState(nextQueryState);
+                    loadLedger(nextQueryState);
+                  }}
+                >
+                  {t('查询')}
+                </Button>
+                <Button size='small' type='tertiary' onClick={resetFilters}>
+                  {t('重置')}
+                </Button>
+              </div>
+            }
+            paginationArea={createCardProPagination({
+              currentPage: page,
+              pageSize,
+              total,
+              onPageChange: (nextPage) => {
+                const nextQueryState = changeCommittedPage(queryState, nextPage);
                 setQueryState(nextQueryState);
                 loadLedger(nextQueryState);
-              }}
-            >
-              {t('查询')}
-            </Button>
-            <Button size='small' type='tertiary' onClick={resetFilters}>
-              {t('重置')}
-            </Button>
-          </div>
-        }
-        paginationArea={createCardProPagination({
-          currentPage: page,
-          pageSize,
-          total,
-          onPageChange: (nextPage) => {
-            const nextQueryState = changeCommittedPage(queryState, nextPage);
-            setQueryState(nextQueryState);
-            loadLedger(nextQueryState);
-          },
-          onPageSizeChange: (nextSize) => {
-            const nextQueryState = changeCommittedPageSize(queryState, nextSize);
-            setQueryState(nextQueryState);
-            loadLedger(nextQueryState);
-          },
-          isMobile,
-          t,
-        })}
-        t={t}
-      >
-        {listError ? (
-          <div className='mb-3 flex flex-col gap-2'>
-            <Banner type='warning' closeIcon={null} description={listError} />
-            <div>
-              <Button size='small' type='tertiary' onClick={() => loadLedger(queryState)}>
-                {t('重新加载')}
-              </Button>
-            </div>
-          </div>
-        ) : null}
-        <Table
-          className='grid-bordered-table'
-          size='default'
-          bordered={true}
-          columns={columns}
-          dataSource={items}
-          loading={loading}
-          pagination={false}
-          empty={
-            <Empty
-              description={
-                committedRequest.userId || committedRequest.entryType
-                  ? t('没有匹配的额度流水')
-                  : t('暂无额度流水')
+              },
+              onPageSizeChange: (nextSize) => {
+                const nextQueryState = changeCommittedPageSize(queryState, nextSize);
+                setQueryState(nextQueryState);
+                loadLedger(nextQueryState);
+              },
+              isMobile,
+              t,
+            })}
+            t={t}
+          >
+            {listError ? (
+              <div className='mb-3 flex flex-col gap-2'>
+                <Banner type='warning' closeIcon={null} description={listError} />
+                <div>
+                  <Button size='small' type='tertiary' onClick={() => loadLedger(queryState)}>
+                    {t('重新加载')}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            <Table
+              className='grid-bordered-table'
+              size='default'
+              bordered={true}
+              columns={columns}
+              dataSource={items}
+              loading={loading}
+              pagination={false}
+              empty={
+                <Empty
+                  description={
+                    committedRequest.userId || committedRequest.entryType
+                      ? t('没有匹配的额度流水')
+                      : t('暂无额度流水')
+                  }
+                />
               }
             />
-          }
-        />
-      </CardPro>
+          </CardPro>
+        </Tabs.TabPane>
+        <Tabs.TabPane tab={t('成本汇总')} itemKey='cost-summary'>
+          <CostSummaryTab canRead={canRead} permissionLoading={permissionLoading} />
+        </Tabs.TabPane>
+      </Tabs>
     </div>
   );
 };
