@@ -14,7 +14,9 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
 
 const ChannelName = "GPTProto Image"
@@ -99,8 +101,14 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	data := payload.Data
 	reason := parseErrorReason(data.Error)
 	taskInfo := &relaycommon.TaskInfo{
-		TaskID: data.ID,
-		Reason: reason,
+		TaskID:           data.ID,
+		Reason:           reason,
+		PromptTokens:     data.Usage.InputTokens,
+		CompletionTokens: data.Usage.OutputTokens,
+		TotalTokens:      data.Usage.TotalTokens,
+	}
+	if taskInfo.TotalTokens <= 0 && (taskInfo.PromptTokens > 0 || taskInfo.CompletionTokens > 0) {
+		taskInfo.TotalTokens = taskInfo.PromptTokens + taskInfo.CompletionTokens
 	}
 
 	switch strings.ToLower(strings.TrimSpace(data.Status)) {
@@ -127,6 +135,61 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	return taskInfo, nil
 }
 
+func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, taskInfo *relaycommon.TaskInfo) int {
+	if task == nil || taskInfo == nil || task.PrivateData.BillingContext == nil {
+		return 0
+	}
+	billingContext := task.PrivateData.BillingContext
+	if billingContext.BillingMode != types.BillingModeAdvanced {
+		return 0
+	}
+	ruleType := billingContext.AdvancedRuleType
+	if ruleType == "" && billingContext.AdvancedRuleSnapshot != nil {
+		ruleType = billingContext.AdvancedRuleSnapshot.RuleType
+	}
+	if ruleType != types.AdvancedRuleTypeTextSegment {
+		return 0
+	}
+	billingUnit := ""
+	priceSnapshot := types.AdvancedRulePriceSnapshot{}
+	if billingContext.AdvancedRuleSnapshot != nil {
+		billingUnit = strings.TrimSpace(billingContext.AdvancedRuleSnapshot.BillingUnit)
+		priceSnapshot = billingContext.AdvancedRuleSnapshot.PriceSnapshot
+	}
+	if billingUnit != "" && billingUnit != types.AdvancedBillingUnitPerMillionTokens {
+		return 0
+	}
+	if priceSnapshot.InputPrice == nil || priceSnapshot.OutputPrice == nil {
+		return 0
+	}
+
+	promptTokens := taskInfo.PromptTokens
+	completionTokens := taskInfo.CompletionTokens
+	if promptTokens <= 0 && taskInfo.TotalTokens > 0 && completionTokens > 0 && completionTokens <= taskInfo.TotalTokens {
+		promptTokens = taskInfo.TotalTokens - completionTokens
+	}
+	if completionTokens <= 0 && taskInfo.TotalTokens > 0 && promptTokens > 0 && promptTokens <= taskInfo.TotalTokens {
+		completionTokens = taskInfo.TotalTokens - promptTokens
+	}
+	if promptTokens < 0 || completionTokens < 0 || (promptTokens == 0 && completionTokens == 0) {
+		return 0
+	}
+
+	groupRatio := billingContext.GroupRatio
+	if groupRatio <= 0 {
+		groupRatio = 1
+	}
+
+	actualQuota := decimal.NewFromFloat(*priceSnapshot.InputPrice).
+		Mul(decimal.NewFromInt(int64(promptTokens))).
+		Add(decimal.NewFromFloat(*priceSnapshot.OutputPrice).Mul(decimal.NewFromInt(int64(completionTokens)))).
+		Div(decimal.NewFromInt(1000000)).
+		Mul(decimal.NewFromFloat(groupRatio)).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
+		IntPart()
+	return int(actualQuota)
+}
+
 func (a *TaskAdaptor) GetModelList() []string {
 	return []string{"gpt-image-2", "gpt-image-2-plus"}
 }
@@ -147,6 +210,13 @@ type gptProtoTaskData struct {
 	Output   any             `json:"output"`
 	Outputs  []any           `json:"outputs"`
 	Error    json.RawMessage `json:"error"`
+	Usage    gptProtoUsage   `json:"usage"`
+}
+
+type gptProtoUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	TotalTokens  int `json:"total_tokens"`
 }
 
 func parseErrorReason(raw json.RawMessage) string {

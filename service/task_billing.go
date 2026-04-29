@@ -220,9 +220,12 @@ func syncTaskUsageToConsumeLog(ctx context.Context, task *model.Task, taskResult
 	}
 
 	completionTokens := taskResult.CompletionTokens
-	promptTokens := 0
-	if completionTokens <= 0 || completionTokens > taskResult.TotalTokens {
+	promptTokens := taskResult.PromptTokens
+	if promptTokens > 0 && completionTokens > 0 {
+		// use upstream split directly
+	} else if completionTokens <= 0 || completionTokens > taskResult.TotalTokens {
 		completionTokens = taskResult.TotalTokens
+		promptTokens = 0
 	} else {
 		promptTokens = taskResult.TotalTokens - completionTokens
 	}
