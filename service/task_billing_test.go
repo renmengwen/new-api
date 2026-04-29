@@ -1139,6 +1139,76 @@ func TestSettle_TaskUsageUpdatesOriginalConsumeLogTokens(t *testing.T) {
 	assert.Equal(t, totalTokens, updated.CompletionTokens)
 }
 
+func TestSettle_TaskUsageUpdatesOriginalConsumeLogAdvancedQuota(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 40, 40, 40
+	const preConsumed = 55180
+	const actualQuota = 12995
+	const requestID = "req-task-usage-advanced-1"
+
+	seedUser(t, userID, 100000)
+	seedToken(t, tokenID, userID, "sk-task-advanced-log", 100000)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.RequestId = requestID
+	task.PrivateData.BillingContext.BillingMode = types.BillingModeAdvanced
+	task.PrivateData.BillingContext.AdvancedRuleType = types.AdvancedRuleTypeTextSegment
+	task.PrivateData.BillingContext.AdvancedRuleSnapshot = &types.AdvancedRuleSnapshot{
+		RuleType:     types.AdvancedRuleTypeTextSegment,
+		MatchSummary: "input_tokens=480, output_tokens=1756",
+	}
+	roundTripTaskPrivateData(t, task)
+
+	otherBytes, err := common.Marshal(map[string]interface{}{
+		"billing_mode":           string(types.BillingModeAdvanced),
+		"advanced_rule_type":     string(types.AdvancedRuleTypeTextSegment),
+		"advanced_rule":          task.PrivateData.BillingContext.AdvancedRuleSnapshot,
+		"advanced_charged_quota": preConsumed,
+		"quota_per_unit":         common.QuotaPerUnit,
+	})
+	require.NoError(t, err)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{
+		UserId:           userID,
+		Username:         "test_user",
+		CreatedAt:        common.GetTimestamp(),
+		Type:             model.LogTypeConsume,
+		Content:          "操作 image_generation",
+		ModelName:        "gpt-image-2",
+		Quota:            preConsumed,
+		PromptTokens:     480,
+		CompletionTokens: 1756,
+		RequestId:        requestID,
+		Group:            "default",
+		Other:            string(otherBytes),
+	}).Error)
+
+	adaptor := &mockAdaptor{adjustReturn: actualQuota}
+	taskResult := &relaycommon.TaskInfo{
+		Status:           model.TaskStatusSuccess,
+		PromptTokens:     368,
+		CompletionTokens: 805,
+		TotalTokens:      1173,
+	}
+
+	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+
+	var updated model.Log
+	require.NoError(t, model.LOG_DB.Where("request_id = ? AND type = ?", requestID, model.LogTypeConsume).First(&updated).Error)
+	assert.Equal(t, actualQuota, updated.Quota)
+	assert.Equal(t, 368, updated.PromptTokens)
+	assert.Equal(t, 805, updated.CompletionTokens)
+
+	var updatedOther map[string]interface{}
+	require.NoError(t, common.UnmarshalJsonStr(updated.Other, &updatedOther))
+	assert.EqualValues(t, actualQuota, updatedOther["advanced_charged_quota"])
+	rule, ok := updatedOther["advanced_rule"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "input_tokens=368, output_tokens=805", rule["match_summary"])
+}
+
 func TestRecalculateTaskQuotaUpdatesQuotaDataWithoutChangingRequestCount(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()

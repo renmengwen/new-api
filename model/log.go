@@ -220,6 +220,36 @@ func UpdateConsumeLogTokensByRequestID(userId int, requestId string, promptToken
 	}).Error
 }
 
+func UpdateConsumeLogSettlementByRequestID(userId int, requestId string, quota int, promptTokens int, completionTokens int, other map[string]interface{}) error {
+	if requestId == "" {
+		return nil
+	}
+
+	var consumeLog Log
+	err := LOG_DB.Where("user_id = ? and request_id = ? and type = ?", userId, requestId, LogTypeConsume).
+		Order("created_at desc").
+		Order("id desc").
+		Take(&consumeLog).Error
+	if err != nil {
+		return err
+	}
+
+	updates := map[string]interface{}{
+		"quota":             quota,
+		"prompt_tokens":     promptTokens,
+		"completion_tokens": completionTokens,
+	}
+	if other != nil {
+		otherBytes, err := common.Marshal(other)
+		if err != nil {
+			return err
+		}
+		updates["other"] = string(otherBytes)
+	}
+
+	return LOG_DB.Model(&Log{}).Where("id = ?", consumeLog.Id).Updates(updates).Error
+}
+
 type RecordTaskBillingLogParams struct {
 	UserId    int
 	LogType   int

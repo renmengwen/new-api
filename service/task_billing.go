@@ -219,19 +219,46 @@ func syncTaskUsageToConsumeLog(ctx context.Context, task *model.Task, taskResult
 		return
 	}
 
-	completionTokens := taskResult.CompletionTokens
-	promptTokens := taskResult.PromptTokens
-	if promptTokens > 0 && completionTokens > 0 {
-		// use upstream split directly
-	} else if completionTokens <= 0 || completionTokens > taskResult.TotalTokens {
-		completionTokens = taskResult.TotalTokens
-		promptTokens = 0
-	} else {
-		promptTokens = taskResult.TotalTokens - completionTokens
-	}
+	promptTokens, completionTokens := taskUsageTokenSplit(taskResult)
 
 	if err := model.UpdateConsumeLogTokensByRequestID(task.UserId, task.PrivateData.RequestId, promptTokens, completionTokens); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("回写任务 token 用量到原始消费日志失败 (task=%s, request_id=%s): %s", task.TaskID, task.PrivateData.RequestId, err.Error()))
+	}
+}
+
+// taskUsageTokenSplit returns the upstream usage split when available.
+func taskUsageTokenSplit(taskResult *relaycommon.TaskInfo) (int, int) {
+	if taskResult == nil || taskResult.TotalTokens <= 0 {
+		return 0, 0
+	}
+	completionTokens := taskResult.CompletionTokens
+	promptTokens := taskResult.PromptTokens
+	if promptTokens > 0 && completionTokens > 0 {
+		return promptTokens, completionTokens
+	}
+	if completionTokens <= 0 || completionTokens > taskResult.TotalTokens {
+		return 0, taskResult.TotalTokens
+	}
+	return taskResult.TotalTokens - completionTokens, completionTokens
+}
+
+func syncTaskSettlementToConsumeLog(ctx context.Context, task *model.Task, taskResult *relaycommon.TaskInfo, actualQuota int) {
+	if task == nil || taskResult == nil || taskResult.TotalTokens <= 0 || actualQuota <= 0 {
+		return
+	}
+	promptTokens, completionTokens := taskUsageTokenSplit(taskResult)
+	other := taskBillingOther(task)
+	if bc := task.PrivateData.BillingContext; bc != nil && bc.BillingMode == types.BillingModeAdvanced {
+		other["advanced_charged_quota"] = actualQuota
+		other["quota_per_unit"] = common.QuotaPerUnit
+		if rule, ok := other["advanced_rule"].(*types.AdvancedRuleSnapshot); ok && rule != nil {
+			cloned := *rule
+			cloned.MatchSummary = fmt.Sprintf("input_tokens=%d, output_tokens=%d", promptTokens, completionTokens)
+			other["advanced_rule"] = &cloned
+		}
+	}
+	if err := model.UpdateConsumeLogSettlementByRequestID(task.UserId, task.PrivateData.RequestId, actualQuota, promptTokens, completionTokens, other); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("sync task settlement to consume log failed (task=%s, request_id=%s): %s", task.TaskID, task.PrivateData.RequestId, err.Error()))
 	}
 }
 
