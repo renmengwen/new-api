@@ -62,6 +62,7 @@ curl -X POST "{{base_url}}/v1/video/generations" \
       "aspect_ratio": "16:9",
       "resolution": "720p",
       "duration": 5,
+      "input_video": false,
       "watermark": false
     }
   }'
@@ -88,7 +89,7 @@ curl -X POST "{{base_url}}/v1/video/generations" \
 | `generate_audio` | bool | 否 | 是否生成音频，模型相关 |
 | `resolution` | string | 否 | 分辨率，模型相关，部分模型或模式不支持 |
 | `service_tier` | string | 否 | 服务等级，模型相关 |
-| `input_video` | bool | 否 | 是否显式声明“本次请求带参考视频”。**命中高级定价中的“输入含视频”规则时建议显式传 `true`** |
+| `input_video` | bool | 否 | 是否显式声明“本次请求带参考视频”。**命中高级定价规则时建议显式传；无输入视频传 `false`，输入含视频传 `true`** |
 | `input_video_duration` | int | 否 | 输入参考视频时长，单位秒。**命中高级定价中的输入视频时长区间时必须显式传递** |
 | `image_roles` | array[string] | 否 | 与 `images` 按顺序一一对应的图片角色列表。常用值：`reference_image`、`first_frame`、`last_frame` |
 | `videos` | array[string] | 否 | 参考视频 URL 列表，会转换为火山 `content[]`，默认 `role=reference_video`；如果只传一个视频，也请放在数组中 |
@@ -104,6 +105,8 @@ curl -X POST "{{base_url}}/v1/video/generations" \
   - `metadata.aspect_ratio` 或 `metadata.ratio`
   - `metadata.resolution`
   - `metadata.duration`
+- 如果要命中“无输入视频”规则：
+  - 建议显式传 `metadata.input_video=false`
 - 如果要命中“输入含视频”规则：
   - 必须显式传 `metadata.input_video=true`
   - 并显式传 `metadata.input_video_duration`
@@ -115,6 +118,12 @@ curl -X POST "{{base_url}}/v1/video/generations" \
   - `videos` 已传
   - `input_video=true`
   - `input_video_duration` 落在规则区间内
+  - `aspect_ratio=16:9`
+  - `resolution=720p`
+  - `duration=5`
+
+- 想命中“无输入视频 / 720p / 16:9 / 输出 5 秒”这类规则时，建议同时满足：
+  - `input_video=false`
   - `aspect_ratio=16:9`
   - `resolution=720p`
   - `duration=5`
@@ -459,9 +468,12 @@ curl -X DELETE "{{base_url}}/v1/video/generations/{{task_id}}" \
 
 - 当前创建接口使用的是网关封装后的请求格式
 - `resolution`、`service_tier`、`generate_audio` 等字段是否可用，取决于具体模型和模式
-- 如果上游返回参数错误，建议先只保留以下最小参数：
+- 如果上游返回参数错误，建议先保留以下基础参数；启用高级定价时不要省略 `resolution` 和 `input_video`：
   - `model`
   - `prompt`
-  - `metadata.ratio`
+  - `size`
+  - `metadata.aspect_ratio`
+  - `metadata.resolution`
   - `metadata.duration`
+  - `metadata.input_video`
   - `metadata.watermark`

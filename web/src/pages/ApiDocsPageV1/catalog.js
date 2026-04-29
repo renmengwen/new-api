@@ -694,6 +694,7 @@ export const AI_MODEL_DOC_ITEMS = [
         aspect_ratio: '16:9',
         resolution: '720p',
         duration: 5,
+        input_video: false,
         watermark: false,
       },
     },
