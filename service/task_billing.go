@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 )
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
@@ -258,6 +260,25 @@ func syncTaskSettlementToConsumeLog(ctx context.Context, task *model.Task, taskR
 		}
 	}
 	if err := model.UpdateConsumeLogSettlementByRequestID(task.UserId, task.PrivateData.RequestId, actualQuota, promptTokens, completionTokens, other); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
+				UserId:           task.UserId,
+				LogType:          model.LogTypeConsume,
+				Content:          fmt.Sprintf("操作 %s", task.Action),
+				ChannelId:        task.ChannelId,
+				ModelName:        taskModelName(task),
+				Quota:            actualQuota,
+				TokenId:          task.PrivateData.TokenId,
+				Group:            task.Group,
+				RequestId:        task.PrivateData.RequestId,
+				PromptTokens:     promptTokens,
+				CompletionTokens: completionTokens,
+				Other:            other,
+			})
+			model.UpdateUserUsedQuotaAndRequestCount(task.UserId, actualQuota)
+			model.UpdateChannelUsedQuota(task.ChannelId, actualQuota)
+			return
+		}
 		logger.LogWarn(ctx, fmt.Sprintf("sync task settlement to consume log failed (task=%s, request_id=%s): %s", task.TaskID, task.PrivateData.RequestId, err.Error()))
 	}
 }

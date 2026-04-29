@@ -306,7 +306,6 @@ func handleGPTProtoAsyncImageResponse(c *gin.Context, resp *http.Response, info 
 	if settleErr := service.SettleBilling(c, info, chargedQuota); settleErr != nil {
 		logger.LogError(c, "settle gptproto image task billing error: "+settleErr.Error())
 	}
-	service.LogTaskConsumption(c, info)
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":      publicTaskID,

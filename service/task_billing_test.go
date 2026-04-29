@@ -1209,6 +1209,50 @@ func TestSettle_TaskUsageUpdatesOriginalConsumeLogAdvancedQuota(t *testing.T) {
 	assert.Equal(t, "input_tokens=368, output_tokens=805", rule["match_summary"])
 }
 
+func TestSettle_TaskUsageCreatesActualConsumeLogWhenSubmitLogSkipped(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 41, 41, 41
+	const preConsumed = 55180
+	const actualQuota = 12995
+	const requestID = "req-task-usage-advanced-2"
+
+	seedUser(t, userID, 100000)
+	seedToken(t, tokenID, userID, "sk-task-advanced-log-create", 100000)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.RequestId = requestID
+	task.Properties.OriginModelName = "gpt-image-2"
+	task.Group = "default"
+	task.PrivateData.BillingContext.OriginModelName = "gpt-image-2"
+	task.PrivateData.BillingContext.BillingMode = types.BillingModeAdvanced
+	task.PrivateData.BillingContext.AdvancedRuleType = types.AdvancedRuleTypeTextSegment
+	task.PrivateData.BillingContext.AdvancedRuleSnapshot = &types.AdvancedRuleSnapshot{
+		RuleType:     types.AdvancedRuleTypeTextSegment,
+		MatchSummary: "input_tokens=480, output_tokens=1756",
+	}
+	roundTripTaskPrivateData(t, task)
+
+	adaptor := &mockAdaptor{adjustReturn: actualQuota}
+	taskResult := &relaycommon.TaskInfo{
+		Status:           model.TaskStatusSuccess,
+		PromptTokens:     368,
+		CompletionTokens: 805,
+		TotalTokens:      1173,
+	}
+
+	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+
+	var created model.Log
+	require.NoError(t, model.LOG_DB.Where("request_id = ? AND type = ?", requestID, model.LogTypeConsume).First(&created).Error)
+	assert.Equal(t, actualQuota, created.Quota)
+	assert.Equal(t, 368, created.PromptTokens)
+	assert.Equal(t, 805, created.CompletionTokens)
+	assert.Equal(t, "gpt-image-2", created.ModelName)
+}
+
 func TestRecalculateTaskQuotaUpdatesQuotaDataWithoutChangingRequestCount(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()
