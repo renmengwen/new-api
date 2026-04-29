@@ -128,6 +128,36 @@ func TestParseTaskResultMapsUsageTokens(t *testing.T) {
 	}
 }
 
+func TestParseTaskResultMapsUsageTokensFromExtraParams(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	taskInfo, err := adaptor.ParseTaskResult([]byte(`{
+		"data":{
+			"id":"pred_123",
+			"status":"completed",
+			"outputs":["https://example.com/cat.png"],
+			"extra_params":{
+				"usage":{
+					"input_tokens":368,
+					"output_tokens":805,
+					"total_tokens":1173
+				}
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("ParseTaskResult returned error: %v", err)
+	}
+	if taskInfo.PromptTokens != 368 {
+		t.Fatalf("prompt tokens = %d, want 368", taskInfo.PromptTokens)
+	}
+	if taskInfo.CompletionTokens != 805 {
+		t.Fatalf("completion tokens = %d, want 805", taskInfo.CompletionTokens)
+	}
+	if taskInfo.TotalTokens != 1173 {
+		t.Fatalf("total tokens = %d, want 1173", taskInfo.TotalTokens)
+	}
+}
+
 func TestAdjustBillingOnCompleteUsesGPTProtoImageUsageForAdvancedTextRule(t *testing.T) {
 	inputPrice := 5.0
 	outputPrice := 30.0

@@ -100,12 +100,16 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 
 	data := payload.Data
 	reason := parseErrorReason(data.Error)
+	usage := data.Usage
+	if usage.IsZero() {
+		usage = data.ExtraParams.Usage
+	}
 	taskInfo := &relaycommon.TaskInfo{
 		TaskID:           data.ID,
 		Reason:           reason,
-		PromptTokens:     data.Usage.InputTokens,
-		CompletionTokens: data.Usage.OutputTokens,
-		TotalTokens:      data.Usage.TotalTokens,
+		PromptTokens:     usage.InputTokens,
+		CompletionTokens: usage.OutputTokens,
+		TotalTokens:      usage.TotalTokens,
 	}
 	if taskInfo.TotalTokens <= 0 && (taskInfo.PromptTokens > 0 || taskInfo.CompletionTokens > 0) {
 		taskInfo.TotalTokens = taskInfo.PromptTokens + taskInfo.CompletionTokens
@@ -203,20 +207,29 @@ type gptProtoTaskResponse struct {
 }
 
 type gptProtoTaskData struct {
-	ID       string          `json:"id"`
-	Status   string          `json:"status"`
-	URL      string          `json:"url"`
-	ImageURL string          `json:"image_url"`
-	Output   any             `json:"output"`
-	Outputs  []any           `json:"outputs"`
-	Error    json.RawMessage `json:"error"`
-	Usage    gptProtoUsage   `json:"usage"`
+	ID          string              `json:"id"`
+	Status      string              `json:"status"`
+	URL         string              `json:"url"`
+	ImageURL    string              `json:"image_url"`
+	Output      any                 `json:"output"`
+	Outputs     []any               `json:"outputs"`
+	Error       json.RawMessage     `json:"error"`
+	Usage       gptProtoUsage       `json:"usage"`
+	ExtraParams gptProtoExtraParams `json:"extra_params"`
+}
+
+type gptProtoExtraParams struct {
+	Usage gptProtoUsage `json:"usage"`
 }
 
 type gptProtoUsage struct {
 	InputTokens  int `json:"input_tokens"`
 	OutputTokens int `json:"output_tokens"`
 	TotalTokens  int `json:"total_tokens"`
+}
+
+func (u gptProtoUsage) IsZero() bool {
+	return u.InputTokens == 0 && u.OutputTokens == 0 && u.TotalTokens == 0
 }
 
 func parseErrorReason(raw json.RawMessage) string {
