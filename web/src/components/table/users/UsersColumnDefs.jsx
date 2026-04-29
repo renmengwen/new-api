@@ -303,6 +303,11 @@ export const getUsersColumns = ({
       render: (text, record) => renderUsername(text, record),
     },
     {
+      title: t('邮箱'),
+      dataIndex: 'email',
+      render: (text) => text || t('暂未配置'),
+    },
+    {
       title: t('状态'),
       dataIndex: 'info',
       render: (text, record) =>
